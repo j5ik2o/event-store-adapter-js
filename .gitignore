@@ -1,0 +1,17 @@
+# Node modules
+node_modules/
+
+# Build output
+dist/
+
+# Debug logs
+npm-debug.log
+yarn-error.log
+
+# IDE and editor files
+.idea/
+*.iml
+.vscode/*
+!.vscode/settings.json
+*.swp
+*.swo
