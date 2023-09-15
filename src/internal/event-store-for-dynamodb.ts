@@ -47,7 +47,7 @@ class EventStoreForDynamoDB<
     return Promise.resolve(undefined);
   }
 
-  persistEvent(event: E, version: number): Promise<undefined> {
+  persistEvent(event: E, version: number): Promise<void> {
     if (event.isCreated()) {
       throw new Error("Cannot persist created event");
     }
@@ -70,7 +70,7 @@ class EventStoreForDynamoDB<
     };
     return this.dynamodbClient
       .send(new TransactWriteItemsCommand(input))
-      .then(() => undefined);
+      .then(() => Promise.resolve());
   }
   //
   // private updateSnapshot(
@@ -177,7 +177,7 @@ class EventStoreForDynamoDB<
     return update;
   }
 
-  persistEventAndSnapshot(event: E, aggregate: A): Promise<undefined> {
+  persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
     return Promise.resolve(undefined);
   }
 
