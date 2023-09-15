@@ -6,10 +6,13 @@ interface EventStore<
   A extends Aggregate<AID>,
   E extends Event<AID>,
 > extends EventStoreOptions<EventStore<AID, A, E>, AID, A, E> {
-  persistEvent(event: E, version: number): void;
-  persistEventAndSnapshot(event: E, aggregate: A): void;
-  getEventsByIdSinceSequenceNumber(id: AID, sequenceNumber: number): E[];
-  getLatestSnapshotById(id: AID): A | undefined;
+  persistEvent(event: E, version: number): Promise<undefined>;
+  persistEventAndSnapshot(event: E, aggregate: A): Promise<undefined>;
+  getEventsByIdSinceSequenceNumber(
+    id: AID,
+    sequenceNumber: number,
+  ): Promise<E[]>;
+  getLatestSnapshotById(id: AID): Promise<A | undefined>;
 }
 
 export { EventStore };

@@ -1,0 +1,11 @@
+{
+  "[ts]": {
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": true,
+      "source.fixAll.eslint": true
+    },
+    "editor.formatOnSave": true,
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "eslint.validate": ["javascript", "javascriptreact", "json"]
+  }
+}
