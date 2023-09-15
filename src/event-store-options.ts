@@ -7,6 +7,7 @@ import {
   SnapshotSerializer,
 } from "./types";
 import * as moment from "moment";
+
 interface EventStoreOptions<
   This extends EventStoreOptions<This, AID, A, E>,
   AID extends AggregateId,
