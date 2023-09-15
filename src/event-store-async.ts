@@ -1,5 +1,6 @@
 import { Aggregate, AggregateId, Event } from "./types";
 import { EventStoreOptions } from "./event-store-options";
+
 interface EventStoreAsync<
   AID extends AggregateId,
   A extends Aggregate<AID>,
