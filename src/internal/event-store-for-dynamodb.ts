@@ -54,6 +54,25 @@ class EventStoreForDynamoDB<
     return this.updateEventAndSnapshotOpt(event, version, undefined);
   }
 
+  private async createEventAndSnapshot(event: E, aggregate: A) {
+    const putJournal = this.putJournal(event);
+    const putSnapshot = this.putSnapshot(event, 0, aggregate);
+    const transactWriteItems = [
+      {
+        Put: putJournal,
+      },
+      {
+        Put: putSnapshot,
+      },
+    ];
+    const input: TransactWriteItemsInput = {
+      TransactItems: transactWriteItems,
+    };
+    return this.dynamodbClient
+      .send(new TransactWriteItemsCommand(input))
+      .then(() => Promise.resolve());
+  }
+
   private async updateEventAndSnapshotOpt(
     event: E,
     version: number,
@@ -61,24 +80,21 @@ class EventStoreForDynamoDB<
   ) {
     const put = this.putJournal(event);
     const update = this.updateSnapshot(event, 0, version, aggregate);
-    const transactWriteItem: TransactWriteItem = {
-      Update: update,
-      Put: put,
-    };
+    const transactWriteItems = [
+      {
+        Update: update,
+      },
+      {
+        Put: put,
+      },
+    ];
     const input: TransactWriteItemsInput = {
-      TransactItems: [transactWriteItem],
+      TransactItems: transactWriteItems,
     };
     return this.dynamodbClient
       .send(new TransactWriteItemsCommand(input))
       .then(() => Promise.resolve());
   }
-  //
-  // private updateSnapshot(
-  //   event: E,
-  //   sequenceNumber: number,
-  //   version: number,
-  //   aggregate: A | undefined,
-  // ) {}
 
   private putJournal(event: E): Put {
     const pkey = this.keyResolver.resolvePartitionKey(
@@ -178,7 +194,15 @@ class EventStoreForDynamoDB<
   }
 
   persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
-    return Promise.resolve(undefined);
+    if (event.isCreated()) {
+      return this.createEventAndSnapshot(event, aggregate);
+    } else {
+      return this.updateEventAndSnapshotOpt(
+        event,
+        aggregate.sequenceNumber(),
+        aggregate,
+      );
+    }
   }
 
   withDeleteTtl(deleteTtl: moment.Duration): EventStore<AID, A, E> {
