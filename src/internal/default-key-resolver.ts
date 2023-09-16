@@ -21,3 +21,5 @@ class DefaultKeyResolver<AID extends AggregateId> implements KeyResolver<AID> {
     return `${aggregateId.typeName()}-${aggregateId.value()}-${sequenceNumber}`;
   }
 }
+
+export { DefaultKeyResolver };
