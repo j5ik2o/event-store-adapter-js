@@ -18,6 +18,7 @@ module.exports = {
       extends: ["plugin:@typescript-eslint/recommended"],
       rules: {
         // TypeScriptに関するカスタムルールをここに追加できます
+        "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
       },
     },
   ],

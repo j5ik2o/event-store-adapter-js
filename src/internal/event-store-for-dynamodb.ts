@@ -18,6 +18,10 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import * as moment from "moment/moment";
 import { DefaultKeyResolver } from "./default-key-resolver";
+import {
+  JsonEventSerializer,
+  JsonSnapshotSerializer,
+} from "./default-serializer";
 
 class EventStoreForDynamoDB<
   AID extends AggregateId,
@@ -35,8 +39,14 @@ class EventStoreForDynamoDB<
     private keepSnapshotCount: number,
     private deleteTtl: moment.Duration,
     private keyResolver: KeyResolver<AID> = new DefaultKeyResolver(),
-    private eventSerializer: EventSerializer<AID, E>,
-    private snapshotSerializer: SnapshotSerializer<AID, A>,
+    private eventSerializer: EventSerializer<AID, E> = new JsonEventSerializer<
+      AID,
+      E
+    >(),
+    private snapshotSerializer: SnapshotSerializer<
+      AID,
+      A
+    > = new JsonSnapshotSerializer<AID, A>(),
   ) {}
 
   async getEventsByIdSinceSequenceNumber(

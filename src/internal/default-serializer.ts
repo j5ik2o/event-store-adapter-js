@@ -1,0 +1,42 @@
+import {
+  Aggregate,
+  AggregateId,
+  Event,
+  EventSerializer,
+  SnapshotSerializer,
+} from "../types";
+
+class JsonEventSerializer<AID extends AggregateId, E extends Event<AID>>
+  implements EventSerializer<AID, E>
+{
+  private encoder = new TextEncoder();
+  private decoder = new TextDecoder();
+
+  deserialize(bytes: Uint8Array, _manifest?: string): E {
+    const jsonString = this.decoder.decode(bytes);
+    return JSON.parse(jsonString);
+  }
+
+  serialize(event: E): Uint8Array {
+    const jsonString = JSON.stringify(event);
+    return this.encoder.encode(jsonString);
+  }
+}
+
+class JsonSnapshotSerializer<AID extends AggregateId, A extends Aggregate<AID>>
+  implements SnapshotSerializer<AID, A>
+{
+  private encoder = new TextEncoder();
+  private decoder = new TextDecoder();
+  deserialize(bytes: Uint8Array, _manifest?: string): A {
+    const jsonString = this.decoder.decode(bytes);
+    return JSON.parse(jsonString);
+  }
+
+  serialize(aggregate: A): Uint8Array {
+    const jsonString = JSON.stringify(aggregate);
+    return this.encoder.encode(jsonString);
+  }
+}
+
+export { JsonEventSerializer, JsonSnapshotSerializer };
