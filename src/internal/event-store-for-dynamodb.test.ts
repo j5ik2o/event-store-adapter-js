@@ -5,15 +5,13 @@ import {
   Wait,
 } from "testcontainers";
 import { describe } from "node:test";
-import {
-  DynamoDBClient,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { EventStoreForDynamoDB } from "./event-store-for-dynamodb";
 import { ulid } from "ulid";
 import { UserAccountId } from "./test/user-account-id";
 import { UserAccount } from "./test/user-account";
 import { UserAccountEvent } from "./test/user-account-event";
-import {createJournalTable, createSnapshotTable} from "./test/dynamodb-utils";
+import { createJournalTable, createSnapshotTable } from "./test/dynamodb-utils";
 
 describe("EventStoreForDynamoDB", () => {
   let container: TestContainer;

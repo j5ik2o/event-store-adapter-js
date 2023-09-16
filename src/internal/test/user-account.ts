@@ -67,7 +67,12 @@ class UserAccount implements Aggregate<UserAccountId> {
 
   public static fromJSON(jsonString: string): UserAccount {
     const obj = JSON.parse(jsonString);
-    return new UserAccount(obj.data.id, obj.data.name, obj.data.sequenceNumber, obj.data.version);
+    return new UserAccount(
+      obj.data.id,
+      obj.data.name,
+      obj.data.sequenceNumber,
+      obj.data.version,
+    );
   }
 }
 
