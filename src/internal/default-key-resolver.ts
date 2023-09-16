@@ -1,5 +1,5 @@
 import { AggregateId, KeyResolver } from "../types";
-import {LoggerFactory} from "./logger-factory";
+import { LoggerFactory } from "./logger-factory";
 
 class DefaultKeyResolver<AID extends AggregateId> implements KeyResolver<AID> {
   private logger = LoggerFactory.createLogger();

@@ -5,43 +5,51 @@ import {
   Wait,
 } from "testcontainers";
 import { describe } from "node:test";
-import {CreateTableCommand, CreateTableCommandInput, DynamoDBClient} from "@aws-sdk/client-dynamodb";
+import {
+  CreateTableCommand,
+  CreateTableCommandInput,
+  DynamoDBClient,
+} from "@aws-sdk/client-dynamodb";
 import { EventStoreForDynamoDB } from "./event-store-for-dynamodb";
 import { ulid } from "ulid";
-import {UserAccountId} from "./test/user-account-id";
-import {UserAccount} from "./test/user-account";
-import {UserAccountEvent} from "./test/user-account-event";
+import { UserAccountId } from "./test/user-account-id";
+import { UserAccount } from "./test/user-account";
+import { UserAccountEvent } from "./test/user-account-event";
 
-async function createJournalTable(dynamodbClient: DynamoDBClient, tableName: string, indexName: string) {
+async function createJournalTable(
+  dynamodbClient: DynamoDBClient,
+  tableName: string,
+  indexName: string,
+) {
   const request: CreateTableCommandInput = {
     TableName: tableName,
     AttributeDefinitions: [
       {
         AttributeName: "pkey",
-        AttributeType: "S"
+        AttributeType: "S",
       },
       {
         AttributeName: "skey",
-        AttributeType: "S"
+        AttributeType: "S",
       },
       {
         AttributeName: "aid",
-        AttributeType: "S"
+        AttributeType: "S",
       },
       {
         AttributeName: "seq_nr",
-        AttributeType: "N"
-      }
+        AttributeType: "N",
+      },
     ],
     KeySchema: [
       {
         AttributeName: "pkey",
-        KeyType: "HASH"
+        KeyType: "HASH",
       },
       {
         AttributeName: "skey",
-        KeyType: "RANGE"
-      }
+        KeyType: "RANGE",
+      },
     ],
     GlobalSecondaryIndexes: [
       {
@@ -49,61 +57,65 @@ async function createJournalTable(dynamodbClient: DynamoDBClient, tableName: str
         KeySchema: [
           {
             AttributeName: "aid",
-            KeyType: "HASH"
+            KeyType: "HASH",
           },
           {
             AttributeName: "seq_nr",
-            KeyType: "RANGE"
-          }
+            KeyType: "RANGE",
+          },
         ],
         Projection: {
-            ProjectionType: "ALL"
+          ProjectionType: "ALL",
         },
         ProvisionedThroughput: {
-            ReadCapacityUnits: 10,
-            WriteCapacityUnits: 5
-        }
+          ReadCapacityUnits: 10,
+          WriteCapacityUnits: 5,
+        },
       },
     ],
     ProvisionedThroughput: {
       ReadCapacityUnits: 10,
-      WriteCapacityUnits: 5
-    }
+      WriteCapacityUnits: 5,
+    },
   };
 
   await dynamodbClient.send(new CreateTableCommand(request));
 }
 
-async function createSnapshotTable(dynamodbClient: DynamoDBClient, tableName: string, indexName: string) {
+async function createSnapshotTable(
+  dynamodbClient: DynamoDBClient,
+  tableName: string,
+  indexName: string,
+) {
   const request: CreateTableCommandInput = {
     TableName: tableName,
     AttributeDefinitions: [
       {
         AttributeName: "pkey",
-        AttributeType: "S"
+        AttributeType: "S",
       },
       {
         AttributeName: "skey",
-        AttributeType: "S"
+        AttributeType: "S",
       },
       {
         AttributeName: "aid",
-        AttributeType: "S"
+        AttributeType: "S",
       },
       {
         AttributeName: "seq_nr",
-        AttributeType: "N"
-      }
+        AttributeType: "N",
+      },
     ],
     KeySchema: [
       {
         AttributeName: "pkey",
-        KeyType: "HASH"
+        KeyType: "HASH",
       },
       {
         AttributeName: "skey",
-        KeyType: "RANGE"
-      }
+        KeyType: "RANGE",
+      },
     ],
     GlobalSecondaryIndexes: [
       {
@@ -111,26 +123,26 @@ async function createSnapshotTable(dynamodbClient: DynamoDBClient, tableName: st
         KeySchema: [
           {
             AttributeName: "aid",
-            KeyType: "HASH"
+            KeyType: "HASH",
           },
           {
             AttributeName: "seq_nr",
-            KeyType: "RANGE"
-          }
+            KeyType: "RANGE",
+          },
         ],
         Projection: {
-          ProjectionType: "ALL"
+          ProjectionType: "ALL",
         },
         ProvisionedThroughput: {
           ReadCapacityUnits: 10,
-          WriteCapacityUnits: 5
-        }
+          WriteCapacityUnits: 5,
+        },
       },
     ],
     ProvisionedThroughput: {
       ReadCapacityUnits: 10,
-      WriteCapacityUnits: 5
-    }
+      WriteCapacityUnits: 5,
+    },
   };
 
   await dynamodbClient.send(new CreateTableCommand(request));
@@ -176,10 +188,22 @@ describe("EventStoreForDynamoDB", () => {
       },
     });
 
-    await createJournalTable(dynamodbClient, JOURNAL_TABLE_NAME, JOURNAL_AID_INDEX_NAME);
-    await createSnapshotTable(dynamodbClient, SNAPSHOT_TABLE_NAME, SNAPSHOTS_AID_INDEX_NAME);
+    await createJournalTable(
+      dynamodbClient,
+      JOURNAL_TABLE_NAME,
+      JOURNAL_AID_INDEX_NAME,
+    );
+    await createSnapshotTable(
+      dynamodbClient,
+      SNAPSHOT_TABLE_NAME,
+      SNAPSHOTS_AID_INDEX_NAME,
+    );
 
-    const eventStore = new EventStoreForDynamoDB<UserAccountId, UserAccount, UserAccountEvent>(
+    const eventStore = new EventStoreForDynamoDB<
+      UserAccountId,
+      UserAccount,
+      UserAccountEvent
+    >(
       dynamodbClient,
       JOURNAL_TABLE_NAME,
       SNAPSHOT_TABLE_NAME,
@@ -195,9 +219,12 @@ describe("EventStoreForDynamoDB", () => {
 
     await eventStore.persistEventAndSnapshot(created, userAccount1);
 
-    const userAccount2 = await eventStore.getLatestSnapshotById(id, UserAccount.fromJSON);
+    const userAccount2 = await eventStore.getLatestSnapshotById(
+      id,
+      UserAccount.fromJSON,
+    );
     if (userAccount2 === undefined) {
-        throw new Error("userAccount2 is undefined");
+      throw new Error("userAccount2 is undefined");
     }
 
     expect(userAccount2.id).toEqual(id);
@@ -205,7 +232,5 @@ describe("EventStoreForDynamoDB", () => {
     expect(userAccount2.version).toEqual(1);
 
     userAccount2.rename("Bob");
-
-
   });
 });

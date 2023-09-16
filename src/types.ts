@@ -36,7 +36,7 @@ interface SnapshotSerializer<
 > {
   serialize(aggregate: A): Uint8Array;
 
-  deserialize(bytes: Uint8Array,  converter: (json: string) => A): A;
+  deserialize(bytes: Uint8Array, converter: (json: string) => A): A;
 }
 
 export {

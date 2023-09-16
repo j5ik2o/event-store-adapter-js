@@ -1,5 +1,12 @@
-import {Aggregate, AggregateId, Event, EventSerializer, KeyResolver, SnapshotSerializer,} from "../types";
-import {EventStore} from "../event-store";
+import {
+  Aggregate,
+  AggregateId,
+  Event,
+  EventSerializer,
+  KeyResolver,
+  SnapshotSerializer,
+} from "../types";
+import { EventStore } from "../event-store";
 import {
   DynamoDBClient,
   Put,
@@ -10,9 +17,12 @@ import {
   Update,
 } from "@aws-sdk/client-dynamodb";
 import * as moment from "moment/moment";
-import {DefaultKeyResolver} from "./default-key-resolver";
-import {JsonEventSerializer, JsonSnapshotSerializer,} from "./default-serializer";
-import {LoggerFactory} from "./logger-factory";
+import { DefaultKeyResolver } from "./default-key-resolver";
+import {
+  JsonEventSerializer,
+  JsonSnapshotSerializer,
+} from "./default-serializer";
+import { LoggerFactory } from "./logger-factory";
 import * as winston from "winston";
 
 class EventStoreForDynamoDB<
@@ -41,13 +51,15 @@ class EventStoreForDynamoDB<
       A
     > = new JsonSnapshotSerializer<AID, A>(),
   ) {
-    EventStoreForDynamoDB.logger = LoggerFactory.createLogger(process.env.STAGE ?? "dev");
+    EventStoreForDynamoDB.logger = LoggerFactory.createLogger(
+      process.env.STAGE ?? "dev",
+    );
   }
 
   async getEventsByIdSinceSequenceNumber(
     id: AID,
     sequenceNumber: number,
-    converter: (json: string) => E
+    converter: (json: string) => E,
   ): Promise<E[]> {
     const request: QueryCommandInput = {
       TableName: this.journalTableName,
@@ -78,7 +90,10 @@ class EventStoreForDynamoDB<
     }
   }
 
-  async getLatestSnapshotById(id: AID, converter: (json: string) => A): Promise<A | undefined> {
+  async getLatestSnapshotById(
+    id: AID,
+    converter: (json: string) => A,
+  ): Promise<A | undefined> {
     const request: QueryCommandInput = {
       TableName: this.snapshotTableName,
       IndexName: this.snapshotAidIndexName,
@@ -93,7 +108,9 @@ class EventStoreForDynamoDB<
       },
       Limit: 1,
     };
-    const queryResult = await this.dynamodbClient.send(new QueryCommand(request));
+    const queryResult = await this.dynamodbClient.send(
+      new QueryCommand(request),
+    );
     if (queryResult.Items === undefined || queryResult.Items.length === 0) {
       return undefined;
     } else {
@@ -102,30 +119,37 @@ class EventStoreForDynamoDB<
       if (payload === undefined) {
         throw new Error("Payload is undefined");
       }
-      const result = this.snapshotSerializer.deserialize(
-          payload,
-          converter,
-      );
+      const result = this.snapshotSerializer.deserialize(payload, converter);
       EventStoreForDynamoDB.logger.info("result: " + JSON.stringify(result));
       return result;
     }
   }
 
   async persistEvent(event: E, version: number): Promise<void> {
-    EventStoreForDynamoDB.logger.info(`persistEvent(${JSON.stringify(event)}, ${version}): start`);
+    EventStoreForDynamoDB.logger.info(
+      `persistEvent(${JSON.stringify(event)}, ${version}): start`,
+    );
     if (event.isCreated) {
       throw new Error("Cannot persist created event");
     }
     const result = this.updateEventAndSnapshotOpt(event, version, undefined);
-    EventStoreForDynamoDB.logger.info(`persistEvent(${JSON.stringify(event)}, ${version}): finished`);
-    return result
+    EventStoreForDynamoDB.logger.info(
+      `persistEvent(${JSON.stringify(event)}, ${version}): finished`,
+    );
+    return result;
   }
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
-    EventStoreForDynamoDB.logger.info(`persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(aggregate)}): start`);
+    EventStoreForDynamoDB.logger.info(
+      `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
+        aggregate,
+      )}): start`,
+    );
     if (event.isCreated) {
       const result = this.createEventAndSnapshot(event, aggregate);
-      EventStoreForDynamoDB.logger.info(`persistEventAndSnapshot(${event}, ${aggregate}): finished`);
+      EventStoreForDynamoDB.logger.info(
+        `persistEventAndSnapshot(${event}, ${aggregate}): finished`,
+      );
       return result;
     } else {
       const result = this.updateEventAndSnapshotOpt(
@@ -133,7 +157,11 @@ class EventStoreForDynamoDB<
         aggregate.sequenceNumber,
         aggregate,
       );
-      EventStoreForDynamoDB.logger.info(`persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(aggregate)}): finished`);
+      EventStoreForDynamoDB.logger.info(
+        `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
+          aggregate,
+        )}): finished`,
+      );
       return result;
     }
   }
@@ -236,8 +264,7 @@ class EventStoreForDynamoDB<
     const input: TransactWriteItemsInput = {
       TransactItems: transactWriteItems,
     };
-    await this.dynamodbClient
-      .send(new TransactWriteItemsCommand(input));
+    await this.dynamodbClient.send(new TransactWriteItemsCommand(input));
   }
 
   private async updateEventAndSnapshotOpt(
@@ -258,8 +285,7 @@ class EventStoreForDynamoDB<
     const input: TransactWriteItemsInput = {
       TransactItems: transactWriteItems,
     };
-    await this.dynamodbClient
-      .send(new TransactWriteItemsCommand(input));
+    await this.dynamodbClient.send(new TransactWriteItemsCommand(input));
   }
 
   private putJournal(event: E): Put {
