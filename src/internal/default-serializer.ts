@@ -28,9 +28,9 @@ class JsonSnapshotSerializer<AID extends AggregateId, A extends Aggregate<AID>>
 {
   private encoder = new TextEncoder();
   private decoder = new TextDecoder();
-  deserialize(bytes: Uint8Array, _manifest?: string): A {
+  deserialize(bytes: Uint8Array, converter: (json: string) => A): A {
     const jsonString = this.decoder.decode(bytes);
-    return JSON.parse(jsonString);
+    return converter(jsonString);
   }
 
   serialize(aggregate: A): Uint8Array {

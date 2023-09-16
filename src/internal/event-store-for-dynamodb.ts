@@ -1,12 +1,5 @@
-import {
-  Aggregate,
-  AggregateId,
-  Event,
-  EventSerializer,
-  KeyResolver,
-  SnapshotSerializer,
-} from "../types";
-import { EventStore } from "../event-store";
+import {Aggregate, AggregateId, Event, EventSerializer, KeyResolver, SnapshotSerializer,} from "../types";
+import {EventStore} from "../event-store";
 import {
   DynamoDBClient,
   Put,
@@ -17,11 +10,10 @@ import {
   Update,
 } from "@aws-sdk/client-dynamodb";
 import * as moment from "moment/moment";
-import { DefaultKeyResolver } from "./default-key-resolver";
-import {
-  JsonEventSerializer,
-  JsonSnapshotSerializer,
-} from "./default-serializer";
+import {DefaultKeyResolver} from "./default-key-resolver";
+import {JsonEventSerializer, JsonSnapshotSerializer,} from "./default-serializer";
+import {LoggerFactory} from "./logger-factory";
+import * as winston from "winston";
 
 class EventStoreForDynamoDB<
   AID extends AggregateId,
@@ -29,6 +21,7 @@ class EventStoreForDynamoDB<
   E extends Event<AID>,
 > implements EventStore<AID, A, E>
 {
+  private logger: winston.Logger;
   constructor(
     private dynamodbClient: DynamoDBClient,
     private journalTableName: string,
@@ -36,8 +29,8 @@ class EventStoreForDynamoDB<
     private journalAidIndexName: string,
     private snapshotAidIndexName: string,
     private shardCount: number,
-    private keepSnapshotCount: number,
-    private deleteTtl: moment.Duration,
+    private keepSnapshotCount: number | undefined = undefined,
+    private deleteTtl: moment.Duration | undefined = undefined,
     private keyResolver: KeyResolver<AID> = new DefaultKeyResolver(),
     private eventSerializer: EventSerializer<AID, E> = new JsonEventSerializer<
       AID,
@@ -47,7 +40,10 @@ class EventStoreForDynamoDB<
       AID,
       A
     > = new JsonSnapshotSerializer<AID, A>(),
-  ) {}
+  ) {
+    const loggerFactory = new LoggerFactory(process.env.STAGE ?? "dev");
+    this.logger = loggerFactory.createLogger();
+  }
 
   async getEventsByIdSinceSequenceNumber(
     id: AID,
@@ -62,7 +58,7 @@ class EventStoreForDynamoDB<
         "#seq_nr": "seq_nr",
       },
       ExpressionAttributeValues: {
-        ":aid": { S: id.asString() },
+        ":aid": { S: id.asString },
         ":seq_nr": { N: sequenceNumber.toString() },
       },
     };
@@ -82,7 +78,7 @@ class EventStoreForDynamoDB<
     }
   }
 
-  async getLatestSnapshotById(id: AID): Promise<A | undefined> {
+  async getLatestSnapshotById(id: AID, converter: (json: string) => A): Promise<A | undefined> {
     const request: QueryCommandInput = {
       TableName: this.snapshotTableName,
       IndexName: this.snapshotAidIndexName,
@@ -92,44 +88,54 @@ class EventStoreForDynamoDB<
         "#seq_nr": "seq_nr",
       },
       ExpressionAttributeValues: {
-        ":aid": { S: id.asString() },
+        ":aid": { S: id.asString },
         ":seq_nr": { N: "0" },
       },
       Limit: 1,
     };
-    const result = await this.dynamodbClient.send(new QueryCommand(request));
-    if (result.Items === undefined || result.Items.length === 0) {
-      return Promise.resolve(undefined);
+    const queryResult = await this.dynamodbClient.send(new QueryCommand(request));
+    if (queryResult.Items === undefined || queryResult.Items.length === 0) {
+      return undefined;
     } else {
-      const item = result.Items[0];
+      const item = queryResult.Items[0];
       const payload = item.payload.B;
       if (payload === undefined) {
         throw new Error("Payload is undefined");
       }
-      const aggregate = this.snapshotSerializer.deserialize(
-        payload,
-        "aggregate",
+      this.logger.info("payload: " + JSON.stringify(payload));
+      const result = this.snapshotSerializer.deserialize(
+          payload,
+          converter,
       );
-      return Promise.resolve(aggregate);
+      this.logger.info("result: " + JSON.stringify(result));
+      return result;
     }
   }
 
   async persistEvent(event: E, version: number): Promise<void> {
-    if (event.isCreated()) {
+    this.logger.info(`persistEvent(${event}, ${version}): start`);
+    if (event.isCreated) {
       throw new Error("Cannot persist created event");
     }
-    return this.updateEventAndSnapshotOpt(event, version, undefined);
+    const result = this.updateEventAndSnapshotOpt(event, version, undefined);
+    this.logger.info(`persistEvent(${event}, ${version}): finished`);
+    return result
   }
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
-    if (event.isCreated()) {
-      return this.createEventAndSnapshot(event, aggregate);
+    this.logger.info(`persistEventAndSnapshot(${event}, ${aggregate}): start`);
+    if (event.isCreated) {
+      const result = this.createEventAndSnapshot(event, aggregate);
+      this.logger.info(`persistEventAndSnapshot(${event}, ${aggregate}): finished`);
+      return result;
     } else {
-      return this.updateEventAndSnapshotOpt(
+      const result = this.updateEventAndSnapshotOpt(
         event,
-        aggregate.sequenceNumber(),
+        aggregate.sequenceNumber,
         aggregate,
       );
+      this.logger.info(`persistEventAndSnapshot(${event}, ${aggregate}): finished`);
+      return result;
     }
   }
 
@@ -231,9 +237,8 @@ class EventStoreForDynamoDB<
     const input: TransactWriteItemsInput = {
       TransactItems: transactWriteItems,
     };
-    return this.dynamodbClient
-      .send(new TransactWriteItemsCommand(input))
-      .then(() => Promise.resolve());
+    await this.dynamodbClient
+      .send(new TransactWriteItemsCommand(input));
   }
 
   private async updateEventAndSnapshotOpt(
@@ -254,19 +259,19 @@ class EventStoreForDynamoDB<
     const input: TransactWriteItemsInput = {
       TransactItems: transactWriteItems,
     };
-    return this.dynamodbClient
-      .send(new TransactWriteItemsCommand(input))
-      .then(() => Promise.resolve());
+    await this.dynamodbClient
+      .send(new TransactWriteItemsCommand(input));
   }
 
   private putJournal(event: E): Put {
+    console.log("putJournal: event = ", event);
     const pkey = this.keyResolver.resolvePartitionKey(
-      event.aggregateId(),
+      event.aggregateId,
       this.shardCount,
     );
     const skey = this.keyResolver.resolveSortKey(
-      event.aggregateId(),
-      event.sequenceNumber(),
+      event.aggregateId,
+      event.sequenceNumber,
     );
     const payload = this.eventSerializer.serialize(event);
     return {
@@ -274,10 +279,10 @@ class EventStoreForDynamoDB<
       Item: {
         pkey: { S: pkey },
         skey: { S: skey },
-        aid: { S: event.aggregateId().asString() },
-        seq_nr: { N: event.sequenceNumber().toString() },
+        aid: { S: event.aggregateId.asString },
+        seq_nr: { N: event.sequenceNumber.toString() },
         payload: { B: payload },
-        occurred_at: { N: event.occurredAt().getUTCMilliseconds().toString() },
+        occurred_at: { N: event.occurredAt.getUTCMilliseconds().toString() },
       },
       ConditionExpression:
         "attribute_not_exists(pkey) AND attribute_not_exists(skey)",
@@ -286,12 +291,12 @@ class EventStoreForDynamoDB<
 
   private putSnapshot(event: E, seqNr: number, aggregate: A): Put {
     const pkey = this.keyResolver.resolvePartitionKey(
-      event.aggregateId(),
+      event.aggregateId,
       this.shardCount,
     );
     const skey = this.keyResolver.resolveSortKey(
-      event.aggregateId(),
-      event.sequenceNumber(),
+      event.aggregateId,
+      event.sequenceNumber,
     );
     const payload = this.snapshotSerializer.serialize(aggregate);
     return {
@@ -299,7 +304,7 @@ class EventStoreForDynamoDB<
       Item: {
         pkey: { S: pkey },
         skey: { S: skey },
-        aid: { S: event.aggregateId().asString() },
+        aid: { S: event.aggregateId.asString },
         seq_nr: { N: seqNr.toString() },
         payload: { B: payload },
         version: { N: "1" },
@@ -315,12 +320,12 @@ class EventStoreForDynamoDB<
     aggregate: A | undefined,
   ): Update {
     const pkey = this.keyResolver.resolvePartitionKey(
-      event.aggregateId(),
+      event.aggregateId,
       this.shardCount,
     );
     const skey = this.keyResolver.resolveSortKey(
-      event.aggregateId(),
-      event.sequenceNumber(),
+      event.aggregateId,
+      event.sequenceNumber,
     );
     const update: Update = {
       TableName: this.snapshotTableName,
@@ -356,3 +361,5 @@ class EventStoreForDynamoDB<
     return update;
   }
 }
+
+export { EventStoreForDynamoDB };

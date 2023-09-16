@@ -12,7 +12,7 @@ interface EventStore<
     id: AID,
     sequenceNumber: number,
   ): Promise<E[]>;
-  getLatestSnapshotById(id: AID): Promise<A | undefined>;
+  getLatestSnapshotById(id: AID, converter: (json: string) => A): Promise<A | undefined>;
 }
 
 export { EventStore };

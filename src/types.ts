@@ -1,21 +1,21 @@
 interface AggregateId {
-  typeName(): string;
-  value(): string;
-  asString(): string;
+  typeName: string;
+  value: string;
+  asString: string;
 }
 
 interface Aggregate<AID extends AggregateId> {
-  id(): AID;
-  sequenceNumber(): number;
-  version(): number;
+  id: AID;
+  sequenceNumber: number;
+  version: number;
 }
 
 interface Event<AID extends AggregateId> {
-  id(): string;
-  aggregateId(): AID;
-  sequenceNumber(): number;
-  occurredAt(): Date;
-  isCreated(): boolean;
+  id: string;
+  aggregateId: AID;
+  sequenceNumber: number;
+  occurredAt: Date;
+  isCreated: boolean;
 }
 
 interface KeyResolver<AID extends AggregateId> {
@@ -36,7 +36,7 @@ interface SnapshotSerializer<
 > {
   serialize(aggregate: A): Uint8Array;
 
-  deserialize(bytes: Uint8Array, manifest?: string): A;
+  deserialize(bytes: Uint8Array,  converter: (json: string) => A): A;
 }
 
 export {
