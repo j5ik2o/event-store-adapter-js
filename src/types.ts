@@ -27,7 +27,7 @@ interface KeyResolver<AID extends AggregateId> {
 interface EventSerializer<AID extends AggregateId, E extends Event<AID>> {
   serialize(event: E): Uint8Array;
 
-  deserialize(bytes: Uint8Array, manifest?: string): E;
+  deserialize(bytes: Uint8Array, converter: (json: string) => E): E;
 }
 
 interface SnapshotSerializer<

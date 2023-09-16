@@ -4,7 +4,7 @@
     "rootDir": "./src",
     "strict": true,
     "module": "CommonJS",
-    "target": "es5",
+    "target": "es6",
     "moduleResolution": "Node",
     "lib": ["ESNext"],
     "types": ["node", "jest"],

@@ -21,7 +21,7 @@ class EventStoreForDynamoDB<
   E extends Event<AID>,
 > implements EventStore<AID, A, E>
 {
-  private logger: winston.Logger;
+  static logger: winston.Logger;
   constructor(
     private dynamodbClient: DynamoDBClient,
     private journalTableName: string,
@@ -41,13 +41,13 @@ class EventStoreForDynamoDB<
       A
     > = new JsonSnapshotSerializer<AID, A>(),
   ) {
-    const loggerFactory = new LoggerFactory(process.env.STAGE ?? "dev");
-    this.logger = loggerFactory.createLogger();
+    EventStoreForDynamoDB.logger = LoggerFactory.createLogger(process.env.STAGE ?? "dev");
   }
 
   async getEventsByIdSinceSequenceNumber(
     id: AID,
     sequenceNumber: number,
+    converter: (json: string) => E
   ): Promise<E[]> {
     const request: QueryCommandInput = {
       TableName: this.journalTableName,
@@ -72,7 +72,7 @@ class EventStoreForDynamoDB<
           if (payload === undefined) {
             throw new Error("Payload is undefined");
           }
-          return this.eventSerializer.deserialize(payload, "event");
+          return this.eventSerializer.deserialize(payload, converter);
         }),
       );
     }
@@ -102,31 +102,30 @@ class EventStoreForDynamoDB<
       if (payload === undefined) {
         throw new Error("Payload is undefined");
       }
-      this.logger.info("payload: " + JSON.stringify(payload));
       const result = this.snapshotSerializer.deserialize(
           payload,
           converter,
       );
-      this.logger.info("result: " + JSON.stringify(result));
+      EventStoreForDynamoDB.logger.info("result: " + JSON.stringify(result));
       return result;
     }
   }
 
   async persistEvent(event: E, version: number): Promise<void> {
-    this.logger.info(`persistEvent(${event}, ${version}): start`);
+    EventStoreForDynamoDB.logger.info(`persistEvent(${JSON.stringify(event)}, ${version}): start`);
     if (event.isCreated) {
       throw new Error("Cannot persist created event");
     }
     const result = this.updateEventAndSnapshotOpt(event, version, undefined);
-    this.logger.info(`persistEvent(${event}, ${version}): finished`);
+    EventStoreForDynamoDB.logger.info(`persistEvent(${JSON.stringify(event)}, ${version}): finished`);
     return result
   }
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
-    this.logger.info(`persistEventAndSnapshot(${event}, ${aggregate}): start`);
+    EventStoreForDynamoDB.logger.info(`persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(aggregate)}): start`);
     if (event.isCreated) {
       const result = this.createEventAndSnapshot(event, aggregate);
-      this.logger.info(`persistEventAndSnapshot(${event}, ${aggregate}): finished`);
+      EventStoreForDynamoDB.logger.info(`persistEventAndSnapshot(${event}, ${aggregate}): finished`);
       return result;
     } else {
       const result = this.updateEventAndSnapshotOpt(
@@ -134,7 +133,7 @@ class EventStoreForDynamoDB<
         aggregate.sequenceNumber,
         aggregate,
       );
-      this.logger.info(`persistEventAndSnapshot(${event}, ${aggregate}): finished`);
+      EventStoreForDynamoDB.logger.info(`persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(aggregate)}): finished`);
       return result;
     }
   }
@@ -264,7 +263,6 @@ class EventStoreForDynamoDB<
   }
 
   private putJournal(event: E): Put {
-    console.log("putJournal: event = ", event);
     const pkey = this.keyResolver.resolvePartitionKey(
       event.aggregateId,
       this.shardCount,

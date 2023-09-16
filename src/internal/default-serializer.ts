@@ -12,9 +12,9 @@ class JsonEventSerializer<AID extends AggregateId, E extends Event<AID>>
   private encoder = new TextEncoder();
   private decoder = new TextDecoder();
 
-  deserialize(bytes: Uint8Array, _manifest?: string): E {
+  deserialize(bytes: Uint8Array, converter: (json: string) => E): E {
     const jsonString = this.decoder.decode(bytes);
-    return JSON.parse(jsonString);
+    return converter(jsonString);
   }
 
   serialize(event: E): Uint8Array {

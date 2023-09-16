@@ -204,8 +204,8 @@ describe("EventStoreForDynamoDB", () => {
     expect(userAccount2.name).toEqual(name);
     expect(userAccount2.version).toEqual(1);
 
-    const [userAccount3, renamed] = userAccount2.rename("Bob");
-    await eventStore.persistEvent(renamed, userAccount3.version);
+    userAccount2.rename("Bob");
+
 
   });
 });

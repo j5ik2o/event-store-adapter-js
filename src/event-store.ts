@@ -11,6 +11,7 @@ interface EventStore<
   getEventsByIdSinceSequenceNumber(
     id: AID,
     sequenceNumber: number,
+    converter: (json: string) => E
   ): Promise<E[]>;
   getLatestSnapshotById(id: AID, converter: (json: string) => A): Promise<A | undefined>;
 }

@@ -1,8 +1,10 @@
 import { AggregateId, KeyResolver } from "../types";
+import {LoggerFactory} from "./logger-factory";
 
 class DefaultKeyResolver<AID extends AggregateId> implements KeyResolver<AID> {
+  private logger = LoggerFactory.createLogger();
   private hashString(str: string): number {
-    console.log("hashString = ", str);
+    // this.logger.debug("hashString = ", str);
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
@@ -13,6 +15,7 @@ class DefaultKeyResolver<AID extends AggregateId> implements KeyResolver<AID> {
   }
 
   resolvePartitionKey(aggregateId: AID, shardCount: number): string {
+    // this.logger.debug("resolvePartitionKey = ", aggregateId.asString, shardCount);
     const hash = this.hashString(aggregateId.asString);
     const remainder = hash % shardCount;
     return `${aggregateId.typeName}-${remainder}`;
