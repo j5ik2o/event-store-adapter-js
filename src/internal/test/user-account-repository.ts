@@ -24,19 +24,20 @@ class UserAccountRepository {
   }
 
   async findById(id: UserAccountId): Promise<UserAccount | undefined> {
-    const snapshot = await this.eventStore.getLatestSnapshotById(
+    const snapshotResult = await this.eventStore.getLatestSnapshotById(
       id,
       UserAccount.fromJSON,
     );
-    if (snapshot === undefined) {
+    if (snapshotResult === undefined) {
       return undefined;
     } else {
+      const [snapshot, version] = snapshotResult;
       const events = await this.eventStore.getEventsByIdSinceSequenceNumber(
         id,
         snapshot.sequenceNumber + 1,
         UserAccountEventFromJSON,
       );
-      return UserAccount.replay(events, snapshot, snapshot.version);
+      return UserAccount.replay(events, snapshot, version);
     }
   }
 }

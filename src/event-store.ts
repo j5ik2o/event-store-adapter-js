@@ -16,7 +16,7 @@ interface EventStore<
   getLatestSnapshotById(
     id: AID,
     converter: (json: string) => A,
-  ): Promise<A | undefined>;
+  ): Promise<[A, number] | undefined>;
 }
 
 export { EventStore };

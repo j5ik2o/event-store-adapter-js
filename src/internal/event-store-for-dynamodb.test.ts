@@ -85,14 +85,14 @@ describe("EventStoreForDynamoDB", () => {
 
     await eventStore.persistEventAndSnapshot(created, userAccount1);
 
-    const userAccount2 = await eventStore.getLatestSnapshotById(
+    const userAccount2Result = await eventStore.getLatestSnapshotById(
       id,
       UserAccount.fromJSON,
     );
-    if (userAccount2 === undefined) {
+    if (userAccount2Result === undefined) {
       throw new Error("userAccount2 is undefined");
     }
-
+    const [userAccount2, ] = userAccount2Result;
     expect(userAccount2.id).toEqual(id);
     expect(userAccount2.name).toEqual(name);
     expect(userAccount2.version).toEqual(1);
@@ -109,13 +109,14 @@ describe("EventStoreForDynamoDB", () => {
 
     await eventStore.persistEvent(renamed, userAccount2.version);
 
-    const userAccount3 = await eventStore.getLatestSnapshotById(
+    const userAccount3Result = await eventStore.getLatestSnapshotById(
       id,
       UserAccount.fromJSON,
     );
-    if (userAccount3 === undefined) {
+    if (userAccount3Result === undefined) {
       throw new Error("userAccount2 is undefined");
     }
+    const [userAccount3, ] = userAccount3Result;
 
     expect(userAccount3.id).toEqual(id);
     expect(userAccount3.name).toEqual(name);

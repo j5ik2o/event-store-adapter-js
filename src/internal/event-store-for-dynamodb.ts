@@ -93,7 +93,7 @@ class EventStoreForDynamoDB<
   async getLatestSnapshotById(
     id: AID,
     converter: (json: string) => A,
-  ): Promise<A | undefined> {
+  ): Promise<[A, number] | undefined> {
     const request: QueryCommandInput = {
       TableName: this.snapshotTableName,
       IndexName: this.snapshotAidIndexName,
@@ -115,13 +115,17 @@ class EventStoreForDynamoDB<
       return undefined;
     } else {
       const item = queryResult.Items[0];
+      const version = item.version.N;
+      if (version === undefined) {
+        throw new Error("Version is undefined");
+      }
       const payload = item.payload.B;
       if (payload === undefined) {
         throw new Error("Payload is undefined");
       }
       const result = this.snapshotSerializer.deserialize(payload, converter);
       EventStoreForDynamoDB.logger.info("result: " + JSON.stringify(result));
-      return result;
+      return [result, Number(version)];
     }
   }
 
