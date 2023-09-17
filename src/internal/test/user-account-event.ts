@@ -1,5 +1,5 @@
 import { Event } from "../../types";
-import {convertJSONToUserAccountId, UserAccountId} from "./user-account-id";
+import { convertJSONToUserAccountId, UserAccountId } from "./user-account-id";
 
 interface UserAccountEvent extends Event<UserAccountId> {}
 

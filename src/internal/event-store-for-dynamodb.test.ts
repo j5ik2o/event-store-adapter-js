@@ -9,7 +9,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { EventStoreForDynamoDB } from "./event-store-for-dynamodb";
 import { ulid } from "ulid";
 import { UserAccountId } from "./test/user-account-id";
-import {convertJSONToUserAccount, UserAccount} from "./test/user-account";
+import { convertJSONToUserAccount, UserAccount } from "./test/user-account";
 import { UserAccountEvent } from "./test/user-account-event";
 import {
   createDynamoDBClient,
@@ -92,7 +92,7 @@ describe("EventStoreForDynamoDB", () => {
     if (userAccount2Result === undefined) {
       throw new Error("userAccount2 is undefined");
     }
-    const [userAccount2, ] = userAccount2Result;
+    const [userAccount2] = userAccount2Result;
     expect(userAccount2.id).toEqual(id);
     expect(userAccount2.name).toEqual(name);
     expect(userAccount2.version).toEqual(1);
@@ -116,7 +116,7 @@ describe("EventStoreForDynamoDB", () => {
     if (userAccount3Result === undefined) {
       throw new Error("userAccount2 is undefined");
     }
-    const [userAccount3, ] = userAccount3Result;
+    const [userAccount3] = userAccount3Result;
 
     expect(userAccount3.id).toEqual(id);
     expect(userAccount3.name).toEqual(name);

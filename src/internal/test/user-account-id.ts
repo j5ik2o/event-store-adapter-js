@@ -7,7 +7,6 @@ class UserAccountId implements AggregateId {
   get asString(): string {
     return `${this.typeName}-${this.value}`;
   }
-
 }
 
 function convertJSONToUserAccountId(jsonString: string): UserAccountId {

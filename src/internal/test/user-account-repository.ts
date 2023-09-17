@@ -3,7 +3,7 @@ import {
   convertJSONtoUserAccountEvent,
 } from "./user-account-event";
 import { UserAccountId } from "./user-account-id";
-import {convertJSONToUserAccount, UserAccount} from "./user-account";
+import { convertJSONToUserAccount, UserAccount } from "./user-account";
 import { EventStore } from "../../event-store";
 
 class UserAccountRepository {

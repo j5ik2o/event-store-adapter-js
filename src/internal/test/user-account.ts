@@ -1,6 +1,6 @@
 import { Aggregate } from "../../types";
 import { ulid } from "ulid";
-import {convertJSONToUserAccountId, UserAccountId} from "./user-account-id";
+import { convertJSONToUserAccountId, UserAccountId } from "./user-account-id";
 import {
   UserAccountCreated,
   UserAccountEvent,
@@ -89,19 +89,17 @@ class UserAccount implements Aggregate<UserAccountId> {
       throw new Error("Unknown event type");
     }
   }
-
-
 }
 
 function convertJSONToUserAccount(jsonString: string): UserAccount {
   const obj = JSON.parse(jsonString);
   const id = convertJSONToUserAccountId(JSON.stringify(obj.data.id));
   return new UserAccount(
-      id,
-      obj.data.name,
-      obj.data.sequenceNumber,
-      obj.data.version,
+    id,
+    obj.data.name,
+    obj.data.sequenceNumber,
+    obj.data.version,
   );
 }
 
-export { UserAccount,convertJSONToUserAccount };
+export { UserAccount, convertJSONToUserAccount };

@@ -151,7 +151,9 @@ class EventStoreForDynamoDB<
     if (event.isCreated) {
       await this.createEventAndSnapshot(event, aggregate);
       EventStoreForDynamoDB.logger.info(
-        `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(aggregate)}): finished`,
+        `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
+          aggregate,
+        )}): finished`,
       );
     } else {
       EventStoreForDynamoDB.logger.info("update!!!");
