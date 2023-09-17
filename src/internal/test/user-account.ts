@@ -1,6 +1,6 @@
 import { Aggregate } from "../../types";
 import { ulid } from "ulid";
-import { UserAccountId } from "./user-account-id";
+import {convertJSONToUserAccountId, UserAccountId} from "./user-account-id";
 import {
   UserAccountCreated,
   UserAccountEvent,
@@ -8,7 +8,7 @@ import {
 } from "./user-account-event";
 
 class UserAccount implements Aggregate<UserAccountId> {
-  private constructor(
+  constructor(
     public readonly id: UserAccountId,
     public readonly name: string,
     public readonly sequenceNumber: number,
@@ -90,16 +90,18 @@ class UserAccount implements Aggregate<UserAccountId> {
     }
   }
 
-  public static fromJSON(jsonString: string): UserAccount {
-    const obj = JSON.parse(jsonString);
-    const id = UserAccountId.fromJSON(JSON.stringify(obj.data.id));
-    return new UserAccount(
+
+}
+
+function convertJSONToUserAccount(jsonString: string): UserAccount {
+  const obj = JSON.parse(jsonString);
+  const id = convertJSONToUserAccountId(JSON.stringify(obj.data.id));
+  return new UserAccount(
       id,
       obj.data.name,
       obj.data.sequenceNumber,
       obj.data.version,
-    );
-  }
+  );
 }
 
-export { UserAccount };
+export { UserAccount,convertJSONToUserAccount };

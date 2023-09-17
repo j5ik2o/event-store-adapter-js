@@ -9,7 +9,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { EventStoreForDynamoDB } from "./event-store-for-dynamodb";
 import { ulid } from "ulid";
 import { UserAccountId } from "./test/user-account-id";
-import { UserAccount } from "./test/user-account";
+import {convertJSONToUserAccount, UserAccount} from "./test/user-account";
 import { UserAccountEvent } from "./test/user-account-event";
 import {
   createDynamoDBClient,
@@ -87,7 +87,7 @@ describe("EventStoreForDynamoDB", () => {
 
     const userAccount2Result = await eventStore.getLatestSnapshotById(
       id,
-      UserAccount.fromJSON,
+      convertJSONToUserAccount,
     );
     if (userAccount2Result === undefined) {
       throw new Error("userAccount2 is undefined");
@@ -111,7 +111,7 @@ describe("EventStoreForDynamoDB", () => {
 
     const userAccount3Result = await eventStore.getLatestSnapshotById(
       id,
-      UserAccount.fromJSON,
+      convertJSONToUserAccount,
     );
     if (userAccount3Result === undefined) {
       throw new Error("userAccount2 is undefined");

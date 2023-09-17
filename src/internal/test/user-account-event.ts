@@ -1,12 +1,12 @@
 import { Event } from "../../types";
-import { UserAccountId } from "./user-account-id";
+import {convertJSONToUserAccountId, UserAccountId} from "./user-account-id";
 
 interface UserAccountEvent extends Event<UserAccountId> {}
 
-function UserAccountEventFromJSON(jsonString: string): UserAccountEvent {
+function convertJSONtoUserAccountEvent(jsonString: string): UserAccountEvent {
   const obj = JSON.parse(jsonString);
   console.log("UserAccountEventFromJSON", obj);
-  const aggregateId = UserAccountId.fromJSON(
+  const aggregateId = convertJSONToUserAccountId(
     JSON.stringify(obj.data.aggregateId),
   );
   switch (obj.type) {
@@ -58,5 +58,5 @@ export {
   UserAccountEvent,
   UserAccountCreated,
   UserAccountRenamed,
-  UserAccountEventFromJSON,
+  convertJSONtoUserAccountEvent,
 };

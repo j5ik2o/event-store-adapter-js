@@ -1,9 +1,9 @@
 import {
   UserAccountEvent,
-  UserAccountEventFromJSON,
+  convertJSONtoUserAccountEvent,
 } from "./user-account-event";
 import { UserAccountId } from "./user-account-id";
-import { UserAccount } from "./user-account";
+import {convertJSONToUserAccount, UserAccount} from "./user-account";
 import { EventStore } from "../../event-store";
 
 class UserAccountRepository {
@@ -26,7 +26,7 @@ class UserAccountRepository {
   async findById(id: UserAccountId): Promise<UserAccount | undefined> {
     const snapshotResult = await this.eventStore.getLatestSnapshotById(
       id,
-      UserAccount.fromJSON,
+      convertJSONToUserAccount,
     );
     if (snapshotResult === undefined) {
       return undefined;
@@ -35,7 +35,7 @@ class UserAccountRepository {
       const events = await this.eventStore.getEventsByIdSinceSequenceNumber(
         id,
         snapshot.sequenceNumber + 1,
-        UserAccountEventFromJSON,
+        convertJSONtoUserAccountEvent,
       );
       return UserAccount.replay(events, snapshot, version);
     }
