@@ -15,13 +15,17 @@
     "lint:prettier": "prettier --check \"**/*.{js,ts,jsx,tsx,json}\"",
     "clean": "rimraf ./dist"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/j5ik2o/event-store-adapter-js.git"
+  },
   "keywords": [
     "ddd",
     "cqrs",
     "evnet-sourcing",
     "dynamodb"
   ],
-  "author": "Junichi Kato",
+  "author": "Junichi Kato <j5ik2o@gmail.com>",
   "license": "MIT",
   "devDependencies": {
     "@types/jest": "^29.5.5",
