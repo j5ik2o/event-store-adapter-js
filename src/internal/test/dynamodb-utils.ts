@@ -3,6 +3,23 @@ import {
   CreateTableCommandInput,
   DynamoDBClient,
 } from "@aws-sdk/client-dynamodb";
+import { StartedTestContainer } from "testcontainers";
+
+function createDynamoDBClient(startedContainer: StartedTestContainer) {
+  const port = startedContainer.getMappedPort(4566);
+  console.log(`port = ${port}`);
+
+  const dynamodbClient: DynamoDBClient = new DynamoDBClient({
+    region: "us-west-1",
+    endpoint: `http://localhost:${port}`,
+    credentials: {
+      accessKeyId: "x",
+      secretAccessKey: "x",
+    },
+    // logger: console,
+  });
+  return dynamodbClient;
+}
 
 async function createJournalTable(
   dynamodbClient: DynamoDBClient,
@@ -136,4 +153,4 @@ async function createSnapshotTable(
   await dynamodbClient.send(new CreateTableCommand(request));
 }
 
-export { createJournalTable, createSnapshotTable };
+export { createDynamoDBClient, createJournalTable, createSnapshotTable };

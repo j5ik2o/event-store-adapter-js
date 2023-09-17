@@ -44,6 +44,7 @@ class UserAccount implements Aggregate<UserAccountId> {
     const event = new UserAccountRenamed(
       eventId,
       this.id,
+      name,
       ua.sequenceNumber,
       new Date(),
     );
@@ -59,16 +60,41 @@ class UserAccount implements Aggregate<UserAccountId> {
     const event = new UserAccountCreated(
       eventId,
       id,
+      name,
       ua.sequenceNumber,
       new Date(),
     );
     return [ua, event];
   }
 
+  public static replay(
+    events: UserAccountEvent[],
+    snapshot: UserAccount,
+    version: number,
+  ): UserAccount {
+    console.log("replay = ", version);
+    let acc = snapshot;
+    for (const event of events) {
+      acc = acc.applyEvent(event);
+    }
+    return acc.withVersion((_) => version);
+  }
+
+  public applyEvent(event: UserAccountEvent): UserAccount {
+    console.log("applyEvent", event);
+    if (event instanceof UserAccountRenamed) {
+      const [result] = this.rename(event.name);
+      return result;
+    } else {
+      throw new Error("Unknown event type");
+    }
+  }
+
   public static fromJSON(jsonString: string): UserAccount {
     const obj = JSON.parse(jsonString);
+    const id = UserAccountId.fromJSON(JSON.stringify(obj.data.id));
     return new UserAccount(
-      obj.data.id,
+      id,
       obj.data.name,
       obj.data.sequenceNumber,
       obj.data.version,

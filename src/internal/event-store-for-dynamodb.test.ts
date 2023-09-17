@@ -1,7 +1,7 @@
 import {
-  TestContainer,
-  StartedTestContainer,
   GenericContainer,
+  StartedTestContainer,
+  TestContainer,
   Wait,
 } from "testcontainers";
 import { describe } from "node:test";
@@ -11,16 +11,42 @@ import { ulid } from "ulid";
 import { UserAccountId } from "./test/user-account-id";
 import { UserAccount } from "./test/user-account";
 import { UserAccountEvent } from "./test/user-account-event";
-import { createJournalTable, createSnapshotTable } from "./test/dynamodb-utils";
+import {
+  createDynamoDBClient,
+  createJournalTable,
+  createSnapshotTable,
+} from "./test/dynamodb-utils";
 
 describe("EventStoreForDynamoDB", () => {
   let container: TestContainer;
   let startedContainer: StartedTestContainer;
+  let eventStore: EventStoreForDynamoDB<
+    UserAccountId,
+    UserAccount,
+    UserAccountEvent
+  >;
 
   const JOURNAL_TABLE_NAME = "journal";
   const SNAPSHOT_TABLE_NAME = "snapshot";
   const JOURNAL_AID_INDEX_NAME = "journal-aid-index";
   const SNAPSHOTS_AID_INDEX_NAME = "snapshots-aid-index";
+
+  function createEventStore(
+    dynamodbClient: DynamoDBClient,
+  ): EventStoreForDynamoDB<UserAccountId, UserAccount, UserAccountEvent> {
+    return new EventStoreForDynamoDB<
+      UserAccountId,
+      UserAccount,
+      UserAccountEvent
+    >(
+      dynamodbClient,
+      JOURNAL_TABLE_NAME,
+      SNAPSHOT_TABLE_NAME,
+      JOURNAL_AID_INDEX_NAME,
+      SNAPSHOTS_AID_INDEX_NAME,
+      32,
+    );
+  }
 
   beforeAll(async () => {
     container = new GenericContainer("localstack/localstack:2.1.0")
@@ -34,25 +60,7 @@ describe("EventStoreForDynamoDB", () => {
       .withWaitStrategy(Wait.forLogMessage("Ready."))
       .withExposedPorts(4566);
     startedContainer = await container.start();
-  });
-
-  afterAll(async () => {
-    await startedContainer.stop();
-  });
-
-  test("persistAndSnapshot", async () => {
-    const port = startedContainer.getMappedPort(4566);
-    console.log(`port = ${port}`);
-
-    const dynamodbClient: DynamoDBClient = new DynamoDBClient({
-      region: "us-west-1",
-      endpoint: `http://localhost:${port}`,
-      credentials: {
-        accessKeyId: "x",
-        secretAccessKey: "x",
-      },
-    });
-
+    const dynamodbClient = createDynamoDBClient(startedContainer);
     await createJournalTable(
       dynamodbClient,
       JOURNAL_TABLE_NAME,
@@ -63,22 +71,15 @@ describe("EventStoreForDynamoDB", () => {
       SNAPSHOT_TABLE_NAME,
       SNAPSHOTS_AID_INDEX_NAME,
     );
+    eventStore = createEventStore(dynamodbClient);
+  });
 
-    const eventStore = new EventStoreForDynamoDB<
-      UserAccountId,
-      UserAccount,
-      UserAccountEvent
-    >(
-      dynamodbClient,
-      JOURNAL_TABLE_NAME,
-      SNAPSHOT_TABLE_NAME,
-      JOURNAL_AID_INDEX_NAME,
-      SNAPSHOTS_AID_INDEX_NAME,
-      32,
-    );
+  afterAll(async () => {
+    await startedContainer.stop();
+  });
 
-    const userAccountIdValue = ulid();
-    const id = new UserAccountId(userAccountIdValue);
+  test("persistAndSnapshot", async () => {
+    const id = new UserAccountId(ulid());
     const name = "Alice";
     const [userAccount1, created] = UserAccount.create(id, name);
 
@@ -95,7 +96,30 @@ describe("EventStoreForDynamoDB", () => {
     expect(userAccount2.id).toEqual(id);
     expect(userAccount2.name).toEqual(name);
     expect(userAccount2.version).toEqual(1);
+  });
 
-    userAccount2.rename("Bob");
+  test("persistAndSnapshot2", async () => {
+    const id = new UserAccountId(ulid());
+    const name = "Alice";
+    const [userAccount1, created] = UserAccount.create(id, name);
+
+    await eventStore.persistEventAndSnapshot(created, userAccount1);
+
+    const [userAccount2, renamed] = userAccount1.rename("Bob");
+
+    await eventStore.persistEvent(renamed, userAccount2.version);
+
+    const userAccount3 = await eventStore.getLatestSnapshotById(
+      id,
+      UserAccount.fromJSON,
+    );
+    if (userAccount3 === undefined) {
+      throw new Error("userAccount2 is undefined");
+    }
+
+    expect(userAccount3.id).toEqual(id);
+    expect(userAccount3.name).toEqual(name);
+    expect(userAccount3.sequenceNumber).toEqual(1);
+    expect(userAccount3.version).toEqual(1);
   });
 });

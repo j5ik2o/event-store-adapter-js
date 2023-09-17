@@ -132,11 +132,10 @@ class EventStoreForDynamoDB<
     if (event.isCreated) {
       throw new Error("Cannot persist created event");
     }
-    const result = this.updateEventAndSnapshotOpt(event, version, undefined);
+    await this.updateEventAndSnapshotOpt(event, version, undefined);
     EventStoreForDynamoDB.logger.info(
       `persistEvent(${JSON.stringify(event)}, ${version}): finished`,
     );
-    return result;
   }
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
@@ -146,13 +145,13 @@ class EventStoreForDynamoDB<
       )}): start`,
     );
     if (event.isCreated) {
-      const result = this.createEventAndSnapshot(event, aggregate);
+      await this.createEventAndSnapshot(event, aggregate);
       EventStoreForDynamoDB.logger.info(
-        `persistEventAndSnapshot(${event}, ${aggregate}): finished`,
+        `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(aggregate)}): finished`,
       );
-      return result;
     } else {
-      const result = this.updateEventAndSnapshotOpt(
+      EventStoreForDynamoDB.logger.info("update!!!");
+      await this.updateEventAndSnapshotOpt(
         event,
         aggregate.sequenceNumber,
         aggregate,
@@ -162,7 +161,6 @@ class EventStoreForDynamoDB<
           aggregate,
         )}): finished`,
       );
-      return result;
     }
   }
 
@@ -250,15 +248,15 @@ class EventStoreForDynamoDB<
     );
   }
 
-  private async createEventAndSnapshot(event: E, aggregate: A) {
-    const putJournal = this.putJournal(event);
+  private async createEventAndSnapshot(event: E, aggregate: A): Promise<void> {
     const putSnapshot = this.putSnapshot(event, 0, aggregate);
+    const putJournal = this.putJournal(event);
     const transactWriteItems = [
       {
-        Put: putJournal,
+        Put: putSnapshot,
       },
       {
-        Put: putSnapshot,
+        Put: putJournal,
       },
     ];
     const input: TransactWriteItemsInput = {
@@ -271,9 +269,9 @@ class EventStoreForDynamoDB<
     event: E,
     version: number,
     aggregate: A | undefined,
-  ) {
-    const put = this.putJournal(event);
+  ): Promise<void> {
     const update = this.updateSnapshot(event, 0, version, aggregate);
+    const put = this.putJournal(event);
     const transactWriteItems = [
       {
         Update: update,
@@ -313,14 +311,14 @@ class EventStoreForDynamoDB<
     };
   }
 
-  private putSnapshot(event: E, seqNr: number, aggregate: A): Put {
+  private putSnapshot(event: E, sequenceNumber: number, aggregate: A): Put {
     const pkey = this.keyResolver.resolvePartitionKey(
       event.aggregateId,
       this.shardCount,
     );
     const skey = this.keyResolver.resolveSortKey(
       event.aggregateId,
-      event.sequenceNumber,
+      sequenceNumber,
     );
     const payload = this.snapshotSerializer.serialize(aggregate);
     return {
@@ -328,18 +326,23 @@ class EventStoreForDynamoDB<
       Item: {
         pkey: { S: pkey },
         skey: { S: skey },
-        aid: { S: event.aggregateId.asString },
-        seq_nr: { N: seqNr.toString() },
         payload: { B: payload },
+        aid: { S: event.aggregateId.asString },
+        seq_nr: { N: sequenceNumber.toString() },
         version: { N: "1" },
         ttl: { N: "0" },
+        last_updated_at: {
+          N: event.occurredAt.getUTCMilliseconds().toString(),
+        },
       },
+      ConditionExpression:
+        "attribute_not_exists(pkey) AND attribute_not_exists(skey)",
     };
   }
 
   private updateSnapshot(
     event: E,
-    seqNr: number,
+    sequenceNumber: number,
     version: number,
     aggregate: A | undefined,
   ): Update {
@@ -349,40 +352,58 @@ class EventStoreForDynamoDB<
     );
     const skey = this.keyResolver.resolveSortKey(
       event.aggregateId,
-      event.sequenceNumber,
+      sequenceNumber,
     );
-    const update: Update = {
-      TableName: this.snapshotTableName,
-      UpdateExpression: "SET #version=:after_version",
-      Key: {
-        pkey: { S: pkey },
-        skey: { S: skey },
-      },
-      ExpressionAttributeNames: {
-        "#version": "version",
-      },
-      ExpressionAttributeValues: {
-        ":before_version": { N: version.toString() },
-        ":after_version": { N: (version + 1).toString() },
-      },
-      ConditionExpression: "#version=:before_version",
+    const keys = {
+      pkey: { S: pkey },
+      skey: { S: skey },
     };
-    if (aggregate !== undefined) {
+    const names = {
+      "#version": "version",
+      "#last_updated_at": "last_updated_at",
+    };
+    const values = {
+      ":before_version": { N: version.toString() },
+      ":after_version": { N: (version + 1).toString() },
+      ":last_updated_at": {
+        N: event.occurredAt.getUTCMilliseconds().toString(),
+      },
+    };
+
+    if (aggregate === undefined) {
+      const update: Update = {
+        TableName: this.snapshotTableName,
+        UpdateExpression:
+          "SET #version=:after_version, #last_updated_at=:last_updated_at",
+        Key: { ...keys },
+        ExpressionAttributeNames: { ...names },
+        ExpressionAttributeValues: { ...values },
+        ConditionExpression: "#version=:before_version",
+      };
+      EventStoreForDynamoDB.logger.info("update1: " + JSON.stringify(update));
+      return update;
+    } else {
       const payload = this.snapshotSerializer.serialize(aggregate);
-      update.UpdateExpression =
-        "SET #payload=:payload, #seq_nr=:seq_nr, #version=:after_version";
-      if (!update.ExpressionAttributeNames) {
-        update.ExpressionAttributeNames = {};
-      }
-      if (!update.ExpressionAttributeValues) {
-        update.ExpressionAttributeValues = {};
-      }
-      update.ExpressionAttributeNames["#seq_nr"] = "seq_nr";
-      update.ExpressionAttributeNames["#payload"] = "payload";
-      update.ExpressionAttributeValues[":seq_nr"] = { N: seqNr.toString() };
-      update.ExpressionAttributeValues[":payload"] = { B: payload };
+      const update: Update = {
+        TableName: this.snapshotTableName,
+        UpdateExpression:
+          "SET #payload=:payload, #seq_nr=:seq_nr, #version=:after_version, #last_updated_at=:last_updated_at",
+        Key: { ...keys },
+        ExpressionAttributeNames: {
+          ...names,
+          "#seq_nr": "seq_nr",
+          "#payload": "payload",
+        },
+        ExpressionAttributeValues: {
+          ...values,
+          ":seq_nr": { N: sequenceNumber.toString() },
+          ":payload": { B: payload },
+        },
+        ConditionExpression: "#version=:before_version",
+      };
+      EventStoreForDynamoDB.logger.info("update2: " + JSON.stringify(update));
+      return update;
     }
-    return update;
   }
 }
 

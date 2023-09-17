@@ -4,6 +4,9 @@ import { LoggerFactory } from "./logger-factory";
 class DefaultKeyResolver<AID extends AggregateId> implements KeyResolver<AID> {
   private logger = LoggerFactory.createLogger();
   private hashString(str: string): number {
+    if (str === undefined || str === null) {
+      throw new Error(`str is undefined or null: ${str}`);
+    }
     // this.logger.debug("hashString = ", str);
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -15,7 +18,9 @@ class DefaultKeyResolver<AID extends AggregateId> implements KeyResolver<AID> {
   }
 
   resolvePartitionKey(aggregateId: AID, shardCount: number): string {
-    // this.logger.debug("resolvePartitionKey = ", aggregateId.asString, shardCount);
+    if (aggregateId === undefined || aggregateId === null) {
+      throw new Error(`aggregateId is undefined or null: ${aggregateId}`);
+    }
     const hash = this.hashString(aggregateId.asString);
     const remainder = hash % shardCount;
     return `${aggregateId.typeName}-${remainder}`;
