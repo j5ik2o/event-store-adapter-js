@@ -24,6 +24,8 @@ jobs:
           cache: 'npm'
       - run: npm install
       - run: |
+          git config --global user.email "j5ik2o@gmail.com"
+          git config --global user.name "Junichi Kato"
           npm version prerelease --preid=snapshot --no-git-tag-version
           SNAPSHOT_VERSION=$(npm version --json | jq -r '.["event-store-adapter-js"]')
           git add .
