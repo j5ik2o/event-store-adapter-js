@@ -51,13 +51,12 @@ jobs:
         if: steps.changes.outputs.count > 0
       - name: set the next version
         run: |
-          npm version ${{ steps.versions.outputs.next_version }}
       - name: git commit & push
         id: git_commit_push
         run: |
           git config --global user.email "j5ik2o@gmail.com"
           git config --global user.name "Junichi Kato"
-          git diff
+          npm version ${{ steps.versions.outputs.next_version }} --no-git-tag-version
           git add .
           git commit -m "version up to ${{ steps.versions.outputs.next_tag }}"
           git push origin main
@@ -88,4 +87,13 @@ jobs:
           tag_name: ${{ steps.versions.outputs.next_tag }}
           release_name: Release ${{ steps.versions.outputs.next_tag }}
           body_path: changelog.txt
+        if: steps.changes.outputs.count > 0
+      - name: Switch to Snapshot version
+        run: |
+          rm changelog.txt
+          npm version prerelease --preid=snapshot --no-git-tag-version
+          SNAPSHOT_VERSION=$(npm version --json | jq -r '.["event-store-adapter-js"]')
+          git add .
+          git commit -m "version up to ${SNAPSHOT_VERSION}"
+          git push origin main
         if: steps.changes.outputs.count > 0
