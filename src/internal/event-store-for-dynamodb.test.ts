@@ -1,4 +1,9 @@
-import {GenericContainer, StartedTestContainer, TestContainer, Wait} from "testcontainers";
+import {
+  GenericContainer,
+  StartedTestContainer,
+  TestContainer,
+  Wait,
+} from "testcontainers";
 import { describe } from "node:test";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { EventStoreForDynamoDB } from "./event-store-for-dynamodb";
@@ -13,11 +18,11 @@ import {
 } from "./test/dynamodb-utils";
 
 afterEach(() => {
-    jest.useRealTimers();
-    const TEST_TIME_FACTOR = parseFloat(process.env.TEST_TIME_FACTOR ?? "1.0");
-    const TIMEOUT: number = 5 * 1000 * TEST_TIME_FACTOR;
-    console.log("TIMEOUT = ", TIMEOUT);
-    jest.setTimeout(TIMEOUT);
+  jest.useRealTimers();
+  const TEST_TIME_FACTOR = parseFloat(process.env.TEST_TIME_FACTOR ?? "1.0");
+  const TIMEOUT: number = 5 * 1000 * TEST_TIME_FACTOR;
+  console.log("TIMEOUT = ", TIMEOUT);
+  jest.setTimeout(TIMEOUT);
 });
 
 describe("EventStoreForDynamoDB", () => {
@@ -78,60 +83,54 @@ describe("EventStoreForDynamoDB", () => {
   });
 
   afterAll(async () => {
-      if (startedContainer !== undefined) {
-          await startedContainer.stop();
-      }
+    if (startedContainer !== undefined) {
+      await startedContainer.stop();
+    }
   });
 
-  test(
-    "persistAndSnapshot",
-    async () => {
-      const id = new UserAccountId(ulid());
-      const name = "Alice";
-      const [userAccount1, created] = UserAccount.create(id, name);
+  test("persistAndSnapshot", async () => {
+    const id = new UserAccountId(ulid());
+    const name = "Alice";
+    const [userAccount1, created] = UserAccount.create(id, name);
 
-      await eventStore.persistEventAndSnapshot(created, userAccount1);
+    await eventStore.persistEventAndSnapshot(created, userAccount1);
 
-      const userAccount2Result = await eventStore.getLatestSnapshotById(
-        id,
-        convertJSONToUserAccount,
-      );
-      if (userAccount2Result === undefined) {
-        throw new Error("userAccount2 is undefined");
-      }
-      const [userAccount2] = userAccount2Result;
-      expect(userAccount2.id).toEqual(id);
-      expect(userAccount2.name).toEqual(name);
-      expect(userAccount2.version).toEqual(1);
+    const userAccount2Result = await eventStore.getLatestSnapshotById(
+      id,
+      convertJSONToUserAccount,
+    );
+    if (userAccount2Result === undefined) {
+      throw new Error("userAccount2 is undefined");
     }
-  );
+    const [userAccount2] = userAccount2Result;
+    expect(userAccount2.id).toEqual(id);
+    expect(userAccount2.name).toEqual(name);
+    expect(userAccount2.version).toEqual(1);
+  });
 
-  test(
-    "persistAndSnapshot2",
-    async () => {
-      const id = new UserAccountId(ulid());
-      const name = "Alice";
-      const [userAccount1, created] = UserAccount.create(id, name);
+  test("persistAndSnapshot2", async () => {
+    const id = new UserAccountId(ulid());
+    const name = "Alice";
+    const [userAccount1, created] = UserAccount.create(id, name);
 
-      await eventStore.persistEventAndSnapshot(created, userAccount1);
+    await eventStore.persistEventAndSnapshot(created, userAccount1);
 
-      const [userAccount2, renamed] = userAccount1.rename("Bob");
+    const [userAccount2, renamed] = userAccount1.rename("Bob");
 
-      await eventStore.persistEvent(renamed, userAccount2.version);
+    await eventStore.persistEvent(renamed, userAccount2.version);
 
-      const userAccount3Result = await eventStore.getLatestSnapshotById(
-        id,
-        convertJSONToUserAccount,
-      );
-      if (userAccount3Result === undefined) {
-        throw new Error("userAccount2 is undefined");
-      }
-      const [userAccount3] = userAccount3Result;
-
-      expect(userAccount3.id).toEqual(id);
-      expect(userAccount3.name).toEqual(name);
-      expect(userAccount3.sequenceNumber).toEqual(1);
-      expect(userAccount3.version).toEqual(1);
+    const userAccount3Result = await eventStore.getLatestSnapshotById(
+      id,
+      convertJSONToUserAccount,
+    );
+    if (userAccount3Result === undefined) {
+      throw new Error("userAccount2 is undefined");
     }
-  );
+    const [userAccount3] = userAccount3Result;
+
+    expect(userAccount3.id).toEqual(id);
+    expect(userAccount3.name).toEqual(name);
+    expect(userAccount3.sequenceNumber).toEqual(1);
+    expect(userAccount3.version).toEqual(1);
+  });
 });

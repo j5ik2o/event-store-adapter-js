@@ -1,5 +1,10 @@
 import { describe } from "node:test";
-import {GenericContainer, StartedTestContainer, TestContainer, Wait} from "testcontainers";
+import {
+  GenericContainer,
+  StartedTestContainer,
+  TestContainer,
+  Wait,
+} from "testcontainers";
 import { EventStoreForDynamoDB } from "../event-store-for-dynamodb";
 import { UserAccountId } from "./user-account-id";
 import { UserAccount } from "./user-account";
@@ -14,11 +19,11 @@ import { ulid } from "ulid";
 import { UserAccountRepository } from "./user-account-repository";
 
 afterEach(() => {
-    jest.useRealTimers();
-    const TEST_TIME_FACTOR = parseFloat(process.env.TEST_TIME_FACTOR ?? "1.0");
-    const TIMEOUT: number = 5 * 1000 * TEST_TIME_FACTOR;
-    console.log("TIMEOUT = ", TIMEOUT);
-    jest.setTimeout(TIMEOUT);
+  jest.useRealTimers();
+  const TEST_TIME_FACTOR = parseFloat(process.env.TEST_TIME_FACTOR ?? "1.0");
+  const TIMEOUT: number = 5 * 1000 * TEST_TIME_FACTOR;
+  console.log("TIMEOUT = ", TIMEOUT);
+  jest.setTimeout(TIMEOUT);
 });
 
 describe("UserAccountRepository", () => {
@@ -79,35 +84,32 @@ describe("UserAccountRepository", () => {
   });
 
   afterAll(async () => {
-      if (startedContainer !== undefined) {
-          await startedContainer.stop();
-      }
+    if (startedContainer !== undefined) {
+      await startedContainer.stop();
+    }
   });
 
-  test(
-    "storeAndFindById",
-    async () => {
-      const userAccountRepository = new UserAccountRepository(eventStore);
+  test("storeAndFindById", async () => {
+    const userAccountRepository = new UserAccountRepository(eventStore);
 
-      const id = new UserAccountId(ulid());
-      const name = "Alice";
-      const [userAccount1, created] = UserAccount.create(id, name);
+    const id = new UserAccountId(ulid());
+    const name = "Alice";
+    const [userAccount1, created] = UserAccount.create(id, name);
 
-      await userAccountRepository.storeEventAndSnapshot(created, userAccount1);
+    await userAccountRepository.storeEventAndSnapshot(created, userAccount1);
 
-      const [userAccount2, renamed] = userAccount1.rename("Bob");
+    const [userAccount2, renamed] = userAccount1.rename("Bob");
 
-      await userAccountRepository.storeEvent(renamed, userAccount2.version);
+    await userAccountRepository.storeEvent(renamed, userAccount2.version);
 
-      const userAccount3 = await userAccountRepository.findById(id);
-      if (userAccount3 === undefined) {
-        throw new Error("userAccount3 is undefined");
-      }
-
-      expect(userAccount3.id).toEqual(id);
-      expect(userAccount3.name).toEqual("Bob");
-      expect(userAccount3.sequenceNumber).toEqual(2);
-      expect(userAccount3.version).toEqual(2);
+    const userAccount3 = await userAccountRepository.findById(id);
+    if (userAccount3 === undefined) {
+      throw new Error("userAccount3 is undefined");
     }
-  );
+
+    expect(userAccount3.id).toEqual(id);
+    expect(userAccount3.name).toEqual("Bob");
+    expect(userAccount3.sequenceNumber).toEqual(2);
+    expect(userAccount3.version).toEqual(2);
+  });
 });
