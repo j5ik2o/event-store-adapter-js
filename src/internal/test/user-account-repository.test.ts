@@ -20,13 +20,13 @@ import { UserAccountRepository } from "./user-account-repository";
 
 afterEach(() => {
   jest.useRealTimers();
-  const TEST_TIME_FACTOR = parseFloat(process.env.TEST_TIME_FACTOR ?? "1.0");
-  const TIMEOUT: number = 5 * 1000 * TEST_TIME_FACTOR;
-  console.log("TIMEOUT = ", TIMEOUT);
-  jest.setTimeout(TIMEOUT);
 });
 
 describe("UserAccountRepository", () => {
+  const TEST_TIME_FACTOR = parseFloat(process.env.TEST_TIME_FACTOR ?? "1.0");
+  const TIMEOUT: number = 5 * 1000 * TEST_TIME_FACTOR;
+  console.log("TIMEOUT = ", TIMEOUT);
+
   let container: TestContainer;
   let startedContainer: StartedTestContainer;
   let eventStore: EventStoreForDynamoDB<
@@ -81,13 +81,13 @@ describe("UserAccountRepository", () => {
       SNAPSHOTS_AID_INDEX_NAME,
     );
     eventStore = createEventStore(dynamodbClient);
-  });
+  }, TIMEOUT);
 
   afterAll(async () => {
     if (startedContainer !== undefined) {
       await startedContainer.stop();
     }
-  });
+  }, TIMEOUT);
 
   test("storeAndFindById", async () => {
     const userAccountRepository = new UserAccountRepository(eventStore);
@@ -102,14 +102,16 @@ describe("UserAccountRepository", () => {
 
     await userAccountRepository.storeEvent(renamed, userAccount2.version);
 
-    const userAccount3 = await userAccountRepository.findById(id);
-    if (userAccount3 === undefined) {
-      throw new Error("userAccount3 is undefined");
-    }
+      const userAccount3 = await userAccountRepository.findById(id);
+      if (userAccount3 === undefined) {
+        throw new Error("userAccount3 is undefined");
+      }
 
-    expect(userAccount3.id).toEqual(id);
-    expect(userAccount3.name).toEqual("Bob");
-    expect(userAccount3.sequenceNumber).toEqual(2);
-    expect(userAccount3.version).toEqual(2);
-  });
+      expect(userAccount3.id).toEqual(id);
+      expect(userAccount3.name).toEqual("Bob");
+      expect(userAccount3.sequenceNumber).toEqual(2);
+      expect(userAccount3.version).toEqual(2);
+    },
+    TIMEOUT,
+  );
 });
