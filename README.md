@@ -2,8 +2,6 @@
 
 This library is designed to turn DynamoDB into an Event Store for Event Sourcing.
 
-Status: WIP
-
 ## License.
 
 MIT License. See [LICENSE](LICENSE) for details.
