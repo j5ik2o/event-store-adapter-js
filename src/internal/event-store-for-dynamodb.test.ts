@@ -1,4 +1,4 @@
-import { GenericContainer, StartedTestContainer, Wait } from "testcontainers";
+import {GenericContainer, StartedTestContainer, TestContainer, Wait} from "testcontainers";
 import { describe } from "node:test";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { EventStoreForDynamoDB } from "./event-store-for-dynamodb";
@@ -12,10 +12,16 @@ import {
   createSnapshotTable,
 } from "./test/dynamodb-utils";
 
-describe("EventStoreForDynamoDB", () => {
-  const TEST_TIME_FACTOR = parseFloat(process.env.TEST_TIME_FACTOR ?? "1.0");
-  const TIMEOUT: number = 3000 * TEST_TIME_FACTOR;
+afterEach(() => {
+    jest.useRealTimers();
+    const TEST_TIME_FACTOR = parseFloat(process.env.TEST_TIME_FACTOR ?? "1.0");
+    const TIMEOUT: number = 5 * 1000 * TEST_TIME_FACTOR;
+    console.log("TIMEOUT = ", TIMEOUT);
+    jest.setTimeout(TIMEOUT);
+});
 
+describe("EventStoreForDynamoDB", () => {
+  let container: TestContainer;
   let startedContainer: StartedTestContainer;
   let eventStore: EventStoreForDynamoDB<
     UserAccountId,
@@ -46,7 +52,7 @@ describe("EventStoreForDynamoDB", () => {
   }
 
   beforeAll(async () => {
-    const container = new GenericContainer("localstack/localstack:2.1.0")
+    container = new GenericContainer("localstack/localstack:2.1.0")
       .withEnvironment({
         SERVICES: "dynamodb",
         DEFAULT_REGION: "us-west-1",
@@ -69,11 +75,13 @@ describe("EventStoreForDynamoDB", () => {
       SNAPSHOTS_AID_INDEX_NAME,
     );
     eventStore = createEventStore(dynamodbClient);
-  }, TIMEOUT);
+  });
 
   afterAll(async () => {
-    await startedContainer.stop();
-  }, TIMEOUT);
+      if (startedContainer !== undefined) {
+          await startedContainer.stop();
+      }
+  });
 
   test(
     "persistAndSnapshot",
@@ -95,8 +103,7 @@ describe("EventStoreForDynamoDB", () => {
       expect(userAccount2.id).toEqual(id);
       expect(userAccount2.name).toEqual(name);
       expect(userAccount2.version).toEqual(1);
-    },
-    TIMEOUT,
+    }
   );
 
   test(
@@ -125,7 +132,6 @@ describe("EventStoreForDynamoDB", () => {
       expect(userAccount3.name).toEqual(name);
       expect(userAccount3.sequenceNumber).toEqual(1);
       expect(userAccount3.version).toEqual(1);
-    },
-    TIMEOUT,
+    }
   );
 });

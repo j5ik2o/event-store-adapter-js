@@ -1,5 +1,5 @@
 import { describe } from "node:test";
-import { GenericContainer, StartedTestContainer, Wait } from "testcontainers";
+import {GenericContainer, StartedTestContainer, TestContainer, Wait} from "testcontainers";
 import { EventStoreForDynamoDB } from "../event-store-for-dynamodb";
 import { UserAccountId } from "./user-account-id";
 import { UserAccount } from "./user-account";
@@ -13,10 +13,16 @@ import {
 import { ulid } from "ulid";
 import { UserAccountRepository } from "./user-account-repository";
 
-describe("UserAccountRepository", () => {
-  const TEST_TIME_FACTOR = parseFloat(process.env.TEST_TIME_FACTOR ?? "1.0");
-  const TIMEOUT: number = 3000 * TEST_TIME_FACTOR;
+afterEach(() => {
+    jest.useRealTimers();
+    const TEST_TIME_FACTOR = parseFloat(process.env.TEST_TIME_FACTOR ?? "1.0");
+    const TIMEOUT: number = 5 * 1000 * TEST_TIME_FACTOR;
+    console.log("TIMEOUT = ", TIMEOUT);
+    jest.setTimeout(TIMEOUT);
+});
 
+describe("UserAccountRepository", () => {
+  let container: TestContainer;
   let startedContainer: StartedTestContainer;
   let eventStore: EventStoreForDynamoDB<
     UserAccountId,
@@ -47,7 +53,7 @@ describe("UserAccountRepository", () => {
   }
 
   beforeAll(async () => {
-    const container = new GenericContainer("localstack/localstack:2.1.0")
+    container = new GenericContainer("localstack/localstack:2.1.0")
       .withEnvironment({
         SERVICES: "dynamodb",
         DEFAULT_REGION: "us-west-1",
@@ -70,11 +76,13 @@ describe("UserAccountRepository", () => {
       SNAPSHOTS_AID_INDEX_NAME,
     );
     eventStore = createEventStore(dynamodbClient);
-  }, TIMEOUT);
+  });
 
   afterAll(async () => {
-    await startedContainer.stop();
-  }, TIMEOUT);
+      if (startedContainer !== undefined) {
+          await startedContainer.stop();
+      }
+  });
 
   test(
     "storeAndFindById",
@@ -100,7 +108,6 @@ describe("UserAccountRepository", () => {
       expect(userAccount3.name).toEqual("Bob");
       expect(userAccount3.sequenceNumber).toEqual(2);
       expect(userAccount3.version).toEqual(2);
-    },
-    TIMEOUT,
+    }
   );
 });
