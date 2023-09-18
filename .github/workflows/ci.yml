@@ -4,9 +4,12 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  schedule:
+    - cron: '0 * * * *'
 jobs:
   lint:
     runs-on: ubuntu-latest
+    name: "Run lint"
     steps:
     - uses: actions/checkout@v3
     - uses: actions/setup-node@v3
