@@ -89,18 +89,20 @@ describe("UserAccountRepository", () => {
     }
   }, TIMEOUT);
 
-  test("storeAndFindById", async () => {
-    const userAccountRepository = new UserAccountRepository(eventStore);
+  test(
+    "storeAndFindById",
+    async () => {
+      const userAccountRepository = new UserAccountRepository(eventStore);
 
-    const id = new UserAccountId(ulid());
-    const name = "Alice";
-    const [userAccount1, created] = UserAccount.create(id, name);
+      const id = new UserAccountId(ulid());
+      const name = "Alice";
+      const [userAccount1, created] = UserAccount.create(id, name);
 
-    await userAccountRepository.storeEventAndSnapshot(created, userAccount1);
+      await userAccountRepository.storeEventAndSnapshot(created, userAccount1);
 
-    const [userAccount2, renamed] = userAccount1.rename("Bob");
+      const [userAccount2, renamed] = userAccount1.rename("Bob");
 
-    await userAccountRepository.storeEvent(renamed, userAccount2.version);
+      await userAccountRepository.storeEvent(renamed, userAccount2.version);
 
       const userAccount3 = await userAccountRepository.findById(id);
       if (userAccount3 === undefined) {

@@ -88,12 +88,14 @@ describe("EventStoreForDynamoDB", () => {
     }
   }, TIMEOUT);
 
-  test("persistAndSnapshot", async () => {
-    const id = new UserAccountId(ulid());
-    const name = "Alice";
-    const [userAccount1, created] = UserAccount.create(id, name);
+  test(
+    "persistAndSnapshot",
+    async () => {
+      const id = new UserAccountId(ulid());
+      const name = "Alice";
+      const [userAccount1, created] = UserAccount.create(id, name);
 
-    await eventStore.persistEventAndSnapshot(created, userAccount1);
+      await eventStore.persistEventAndSnapshot(created, userAccount1);
 
       const userAccount2Result = await eventStore.getLatestSnapshotById(
         id,
@@ -110,16 +112,18 @@ describe("EventStoreForDynamoDB", () => {
     TIMEOUT,
   );
 
-  test("persistAndSnapshot2", async () => {
-    const id = new UserAccountId(ulid());
-    const name = "Alice";
-    const [userAccount1, created] = UserAccount.create(id, name);
+  test(
+    "persistAndSnapshot2",
+    async () => {
+      const id = new UserAccountId(ulid());
+      const name = "Alice";
+      const [userAccount1, created] = UserAccount.create(id, name);
 
-    await eventStore.persistEventAndSnapshot(created, userAccount1);
+      await eventStore.persistEventAndSnapshot(created, userAccount1);
 
-    const [userAccount2, renamed] = userAccount1.rename("Bob");
+      const [userAccount2, renamed] = userAccount1.rename("Bob");
 
-    await eventStore.persistEvent(renamed, userAccount2.version);
+      await eventStore.persistEvent(renamed, userAccount2.version);
 
       const userAccount3Result = await eventStore.getLatestSnapshotById(
         id,
