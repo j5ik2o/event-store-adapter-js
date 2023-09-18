@@ -26,7 +26,7 @@ class JsonEventSerializer<AID extends AggregateId, E extends Event<AID>>
   }
 }
 
-class JsonSnapshotSerializer<AID extends AggregateId, A extends Aggregate<AID>>
+class JsonSnapshotSerializer<AID extends AggregateId, A extends Aggregate<A, AID>>
   implements SnapshotSerializer<AID, A>
 {
   private encoder = new TextEncoder();

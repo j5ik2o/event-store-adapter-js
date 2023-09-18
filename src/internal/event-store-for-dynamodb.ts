@@ -27,7 +27,7 @@ import * as winston from "winston";
 
 class EventStoreForDynamoDB<
   AID extends AggregateId,
-  A extends Aggregate<AID>,
+  A extends Aggregate<A, AID>,
   E extends Event<AID>,
 > implements EventStore<AID, A, E>
 {
@@ -93,7 +93,7 @@ class EventStoreForDynamoDB<
   async getLatestSnapshotById(
     id: AID,
     converter: (json: string) => A,
-  ): Promise<[A, number] | undefined> {
+  ): Promise<A | undefined> {
     const request: QueryCommandInput = {
       TableName: this.snapshotTableName,
       IndexName: this.snapshotAidIndexName,
@@ -125,7 +125,7 @@ class EventStoreForDynamoDB<
       }
       const result = this.snapshotSerializer.deserialize(payload, converter);
       EventStoreForDynamoDB.logger.info("result: " + JSON.stringify(result));
-      return [result, Number(version)];
+      return result.withVersion(Number(version));
     }
   }
 

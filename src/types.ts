@@ -4,10 +4,12 @@ interface AggregateId {
   asString: string;
 }
 
-interface Aggregate<AID extends AggregateId> {
+interface Aggregate<This extends Aggregate<This, AID>,AID extends AggregateId> {
   id: AID;
   sequenceNumber: number;
   version: number;
+  withVersion(version: number): This;
+  updateVersion(version: (value: number) => number): This;
 }
 
 interface Event<AID extends AggregateId> {
@@ -32,7 +34,7 @@ interface EventSerializer<AID extends AggregateId, E extends Event<AID>> {
 
 interface SnapshotSerializer<
   AID extends AggregateId,
-  A extends Aggregate<AID>,
+  A extends Aggregate<A, AID>,
 > {
   serialize(aggregate: A): Uint8Array;
 
