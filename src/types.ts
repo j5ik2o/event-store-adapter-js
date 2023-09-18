@@ -4,7 +4,10 @@ interface AggregateId {
   asString: string;
 }
 
-interface Aggregate<This extends Aggregate<This, AID>,AID extends AggregateId> {
+interface Aggregate<
+  This extends Aggregate<This, AID>,
+  AID extends AggregateId,
+> {
   id: AID;
   sequenceNumber: number;
   version: number;

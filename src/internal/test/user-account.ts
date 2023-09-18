@@ -25,12 +25,7 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
   }
 
   withVersion(version: number): UserAccount {
-    return new UserAccount(
-        this.id,
-        this.name,
-        this.sequenceNumber,
-        version,
-    );
+    return new UserAccount(this.id, this.name, this.sequenceNumber, version);
   }
 
   updateVersion(version: (value: number) => number): UserAccount {
@@ -78,7 +73,7 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
 
   public static replay(
     events: UserAccountEvent[],
-    snapshot: UserAccount
+    snapshot: UserAccount,
   ): UserAccount {
     let acc = snapshot;
     for (const event of events) {
@@ -96,8 +91,6 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
       throw new Error("Unknown event type");
     }
   }
-
-
 }
 
 function convertJSONToUserAccount(jsonString: string): UserAccount {
