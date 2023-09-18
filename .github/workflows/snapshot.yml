@@ -15,12 +15,20 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
+          persist-credentials: true
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
       - uses: actions/setup-node@v3
         with:
           node-version: 20.x
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
       - run: npm install
+      - run: |
+          npm version prerelease --preid=snapshot --no-git-tag-version
+          SNAPSHOT_VERSION=$(npm version --json | jq -r '.["event-store-adapter-js"]')
+          git add .
+          git commit -m "version up to ${SNAPSHOT_VERSION}"
+          git push origin main
       - run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
