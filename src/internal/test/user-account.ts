@@ -7,7 +7,7 @@ import {
   UserAccountRenamed,
 } from "./user-account-event";
 
-class UserAccount implements Aggregate<UserAccountId> {
+class UserAccount implements Aggregate<UserAccount, UserAccountId> {
   constructor(
     public readonly id: UserAccountId,
     public readonly name: string,
@@ -24,7 +24,11 @@ class UserAccount implements Aggregate<UserAccountId> {
     );
   }
 
-  withVersion(version: (value: number) => number): UserAccount {
+  withVersion(version: number): UserAccount {
+    return new UserAccount(this.id, this.name, this.sequenceNumber, version);
+  }
+
+  updateVersion(version: (value: number) => number): UserAccount {
     return new UserAccount(
       this.id,
       this.name,
@@ -70,14 +74,12 @@ class UserAccount implements Aggregate<UserAccountId> {
   public static replay(
     events: UserAccountEvent[],
     snapshot: UserAccount,
-    version: number,
   ): UserAccount {
-    console.log("replay = ", version);
     let acc = snapshot;
     for (const event of events) {
       acc = acc.applyEvent(event);
     }
-    return acc.withVersion((_) => version);
+    return acc;
   }
 
   public applyEvent(event: UserAccountEvent): UserAccount {

@@ -3,7 +3,7 @@ import { EventStoreOptions } from "./event-store-options";
 
 interface EventStore<
   AID extends AggregateId,
-  A extends Aggregate<AID>,
+  A extends Aggregate<A, AID>,
   E extends Event<AID>,
 > extends EventStoreOptions<EventStore<AID, A, E>, AID, A, E> {
   persistEvent(event: E, version: number): Promise<void>;
@@ -16,7 +16,7 @@ interface EventStore<
   getLatestSnapshotById(
     id: AID,
     converter: (json: string) => A,
-  ): Promise<[A, number] | undefined>;
+  ): Promise<A | undefined>;
 }
 
 export { EventStore };
