@@ -4,6 +4,7 @@ import {
   Event,
   EventSerializer,
   KeyResolver,
+  Logger,
   SnapshotSerializer,
 } from "../types";
 import { EventStore } from "../event-store";
@@ -22,8 +23,6 @@ import {
   JsonEventSerializer,
   JsonSnapshotSerializer,
 } from "./default-serializer";
-import { LoggerFactory } from "./logger-factory";
-import * as winston from "winston";
 
 class EventStoreForDynamoDB<
   AID extends AggregateId,
@@ -31,7 +30,6 @@ class EventStoreForDynamoDB<
   E extends Event<AID>,
 > implements EventStore<AID, A, E>
 {
-  static logger: winston.Logger;
   constructor(
     private dynamodbClient: DynamoDBClient,
     private journalTableName: string,
@@ -50,11 +48,8 @@ class EventStoreForDynamoDB<
       AID,
       A
     > = new JsonSnapshotSerializer<AID, A>(),
-  ) {
-    EventStoreForDynamoDB.logger = LoggerFactory.createLogger(
-      process.env.STAGE ?? "dev",
-    );
-  }
+    private logger: Logger = console,
+  ) {}
 
   async getEventsByIdSinceSequenceNumber(
     id: AID,
@@ -94,6 +89,7 @@ class EventStoreForDynamoDB<
     id: AID,
     converter: (json: string) => A,
   ): Promise<A | undefined> {
+    this.logger.debug("getLatestSnapshotById: start");
     const request: QueryCommandInput = {
       TableName: this.snapshotTableName,
       IndexName: this.snapshotAidIndexName,
@@ -124,45 +120,45 @@ class EventStoreForDynamoDB<
         throw new Error("Payload is undefined");
       }
       const result = this.snapshotSerializer.deserialize(payload, converter);
-      EventStoreForDynamoDB.logger.info("result: " + JSON.stringify(result));
+      this.logger.debug("result: " + JSON.stringify(result));
       return result.withVersion(Number(version));
     }
   }
 
   async persistEvent(event: E, version: number): Promise<void> {
-    EventStoreForDynamoDB.logger.info(
+    this.logger.debug(
       `persistEvent(${JSON.stringify(event)}, ${version}): start`,
     );
     if (event.isCreated) {
       throw new Error("Cannot persist created event");
     }
     await this.updateEventAndSnapshotOpt(event, version, undefined);
-    EventStoreForDynamoDB.logger.info(
+    this.logger.debug(
       `persistEvent(${JSON.stringify(event)}, ${version}): finished`,
     );
   }
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
-    EventStoreForDynamoDB.logger.info(
+    this.logger.debug(
       `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
         aggregate,
       )}): start`,
     );
     if (event.isCreated) {
       await this.createEventAndSnapshot(event, aggregate);
-      EventStoreForDynamoDB.logger.info(
+      this.logger.debug(
         `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
           aggregate,
         )}): finished`,
       );
     } else {
-      EventStoreForDynamoDB.logger.info("update!!!");
+      this.logger.debug("update!!!");
       await this.updateEventAndSnapshotOpt(
         event,
         aggregate.sequenceNumber,
         aggregate,
       );
-      EventStoreForDynamoDB.logger.info(
+      this.logger.debug(
         `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
           aggregate,
         )}): finished`,
@@ -386,7 +382,7 @@ class EventStoreForDynamoDB<
         ExpressionAttributeValues: { ...values },
         ConditionExpression: "#version=:before_version",
       };
-      EventStoreForDynamoDB.logger.info("update1: " + JSON.stringify(update));
+      this.logger.info("update1: " + JSON.stringify(update));
       return update;
     } else {
       const payload = this.snapshotSerializer.serialize(aggregate);
@@ -407,7 +403,7 @@ class EventStoreForDynamoDB<
         },
         ConditionExpression: "#version=:before_version",
       };
-      EventStoreForDynamoDB.logger.info("update2: " + JSON.stringify(update));
+      this.logger.info("update2: " + JSON.stringify(update));
       return update;
     }
   }

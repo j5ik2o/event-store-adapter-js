@@ -6,7 +6,7 @@ import {
   KeyResolver,
   SnapshotSerializer,
 } from "./types";
-import * as moment from "moment";
+import moment from "moment";
 
 interface EventStoreOptions<
   This extends EventStoreOptions<This, AID, A, E>,
