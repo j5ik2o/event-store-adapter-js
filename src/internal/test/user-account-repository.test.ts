@@ -5,7 +5,6 @@ import {
   TestContainer,
   Wait,
 } from "testcontainers";
-import { EventStoreForDynamoDB } from "../event-store-for-dynamodb";
 import { UserAccountId } from "./user-account-id";
 import { UserAccount } from "./user-account";
 import { UserAccountEvent } from "./user-account-event";
