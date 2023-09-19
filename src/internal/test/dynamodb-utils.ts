@@ -7,7 +7,6 @@ import { StartedTestContainer } from "testcontainers";
 
 function createDynamoDBClient(startedContainer: StartedTestContainer) {
   const port = startedContainer.getMappedPort(4566);
-  console.log(`port = ${port}`);
 
   const dynamodbClient: DynamoDBClient = new DynamoDBClient({
     region: "us-west-1",
@@ -16,7 +15,6 @@ function createDynamoDBClient(startedContainer: StartedTestContainer) {
       accessKeyId: "x",
       secretAccessKey: "x",
     },
-    // logger: console,
   });
   return dynamodbClient;
 }

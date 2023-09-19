@@ -24,7 +24,6 @@ afterEach(() => {
 describe("EventStoreForDynamoDB", () => {
   const TEST_TIME_FACTOR = parseFloat(process.env.TEST_TIME_FACTOR ?? "1.0");
   const TIMEOUT: number = 10 * 1000 * TEST_TIME_FACTOR;
-  console.log("TIMEOUT = ", TIMEOUT);
 
   let container: TestContainer;
   let startedContainer: StartedTestContainer;

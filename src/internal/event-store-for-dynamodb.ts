@@ -48,7 +48,7 @@ class EventStoreForDynamoDB<
       AID,
       A
     > = new JsonSnapshotSerializer<AID, A>(),
-    private logger: Logger = console,
+    private logger: Logger | undefined = undefined,
   ) {}
 
   async getEventsByIdSinceSequenceNumber(
@@ -56,6 +56,7 @@ class EventStoreForDynamoDB<
     sequenceNumber: number,
     converter: (json: string) => E,
   ): Promise<E[]> {
+    this.logger?.debug(`getEventsByIdSinceSequenceNumber(${JSON.stringify(id)}, ${sequenceNumber}, ...): start`);
     const request: QueryCommandInput = {
       TableName: this.journalTableName,
       IndexName: this.journalAidIndexName,
@@ -69,27 +70,28 @@ class EventStoreForDynamoDB<
         ":seq_nr": { N: sequenceNumber.toString() },
       },
     };
-    const result = await this.dynamodbClient.send(new QueryCommand(request));
-    if (result.Items === undefined) {
-      return Promise.resolve([]);
+    const queryResult = await this.dynamodbClient.send(new QueryCommand(request));
+    let result: E[];
+    if (queryResult.Items === undefined) {
+      result = [];
     } else {
-      return Promise.resolve(
-        result.Items.map((item) => {
+      result = queryResult.Items.map((item) => {
           const payload = item.payload.B;
           if (payload === undefined) {
             throw new Error("Payload is undefined");
           }
           return this.eventSerializer.deserialize(payload, converter);
-        }),
-      );
+        });
     }
+    this.logger?.debug(`getEventsByIdSinceSequenceNumber(${JSON.stringify(id)}, ${sequenceNumber}, ...): finished`);
+    return result;
   }
 
   async getLatestSnapshotById(
     id: AID,
     converter: (json: string) => A,
   ): Promise<A | undefined> {
-    this.logger.debug("getLatestSnapshotById: start");
+    this.logger?.debug(`getLatestSnapshotById(${JSON.stringify(id)}, ...): start`);
     const request: QueryCommandInput = {
       TableName: this.snapshotTableName,
       IndexName: this.snapshotAidIndexName,
@@ -120,50 +122,45 @@ class EventStoreForDynamoDB<
         throw new Error("Payload is undefined");
       }
       const result = this.snapshotSerializer.deserialize(payload, converter);
-      this.logger.debug("result: " + JSON.stringify(result));
+      this.logger?.debug(`getLatestSnapshotById(${JSON.stringify(id)}, ...): finished`);
       return result.withVersion(Number(version));
     }
   }
 
   async persistEvent(event: E, version: number): Promise<void> {
-    this.logger.debug(
+    this.logger?.debug(
       `persistEvent(${JSON.stringify(event)}, ${version}): start`,
     );
     if (event.isCreated) {
       throw new Error("Cannot persist created event");
     }
     await this.updateEventAndSnapshotOpt(event, version, undefined);
-    this.logger.debug(
+    this.logger?.debug(
       `persistEvent(${JSON.stringify(event)}, ${version}): finished`,
     );
   }
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
-    this.logger.debug(
+    this.logger?.debug(
       `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
         aggregate,
       )}): start`,
     );
     if (event.isCreated) {
       await this.createEventAndSnapshot(event, aggregate);
-      this.logger.debug(
-        `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
-          aggregate,
-        )}): finished`,
-      );
     } else {
-      this.logger.debug("update!!!");
+      this.logger?.debug("update!!!");
       await this.updateEventAndSnapshotOpt(
         event,
         aggregate.sequenceNumber,
         aggregate,
       );
-      this.logger.debug(
-        `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
-          aggregate,
-        )}): finished`,
-      );
     }
+    this.logger?.debug(
+        `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
+            aggregate,
+        )}): finished`,
+    );
   }
 
   withDeleteTtl(deleteTtl: moment.Duration): EventStore<AID, A, E> {
@@ -251,6 +248,9 @@ class EventStoreForDynamoDB<
   }
 
   private async createEventAndSnapshot(event: E, aggregate: A): Promise<void> {
+    this.logger?.debug(
+        `createEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(aggregate)}): start`,
+    );
     const putSnapshot = this.putSnapshot(event, 0, aggregate);
     const putJournal = this.putJournal(event);
     const transactWriteItems = [
@@ -265,6 +265,9 @@ class EventStoreForDynamoDB<
       TransactItems: transactWriteItems,
     };
     await this.dynamodbClient.send(new TransactWriteItemsCommand(input));
+    this.logger?.debug(
+        `createEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(aggregate)}): finished`,
+    );
   }
 
   private async updateEventAndSnapshotOpt(
@@ -272,6 +275,9 @@ class EventStoreForDynamoDB<
     version: number,
     aggregate: A | undefined,
   ): Promise<void> {
+    this.logger?.debug(
+        `updateEventAndSnapshotOpt(${JSON.stringify(event)}, ${version}, ${JSON.stringify(aggregate)}): start`,
+    );
     const update = this.updateSnapshot(event, 0, version, aggregate);
     const put = this.putJournal(event);
     const transactWriteItems = [
@@ -286,9 +292,15 @@ class EventStoreForDynamoDB<
       TransactItems: transactWriteItems,
     };
     await this.dynamodbClient.send(new TransactWriteItemsCommand(input));
+    this.logger?.debug(
+        `updateEventAndSnapshotOpt(${JSON.stringify(event)}, ${version}, ${JSON.stringify(aggregate)}): finished`,
+    );
   }
 
   private putJournal(event: E): Put {
+    this.logger?.debug(
+        `putSnapshot(${JSON.stringify(event)}): start`,
+    );
     const pkey = this.keyResolver.resolvePartitionKey(
       event.aggregateId,
       this.shardCount,
@@ -298,7 +310,7 @@ class EventStoreForDynamoDB<
       event.sequenceNumber,
     );
     const payload = this.eventSerializer.serialize(event);
-    return {
+    const result = {
       TableName: this.journalTableName,
       Item: {
         pkey: { S: pkey },
@@ -311,9 +323,16 @@ class EventStoreForDynamoDB<
       ConditionExpression:
         "attribute_not_exists(pkey) AND attribute_not_exists(skey)",
     };
+    this.logger?.debug(
+        `putSnapshot(${JSON.stringify(event)}): finished`,
+    );
+    return result;
   }
 
   private putSnapshot(event: E, sequenceNumber: number, aggregate: A): Put {
+    this.logger?.debug(
+        `putSnapshot(${JSON.stringify(event)}, ${sequenceNumber}, ${JSON.stringify(aggregate)}): start`,
+    );
     const pkey = this.keyResolver.resolvePartitionKey(
       event.aggregateId,
       this.shardCount,
@@ -323,7 +342,7 @@ class EventStoreForDynamoDB<
       sequenceNumber,
     );
     const payload = this.snapshotSerializer.serialize(aggregate);
-    return {
+    const result = {
       TableName: this.snapshotTableName,
       Item: {
         pkey: { S: pkey },
@@ -340,6 +359,10 @@ class EventStoreForDynamoDB<
       ConditionExpression:
         "attribute_not_exists(pkey) AND attribute_not_exists(skey)",
     };
+    this.logger?.debug(
+        `putSnapshot(${JSON.stringify(event)}, ${sequenceNumber}, ${JSON.stringify(aggregate)}): finished`,
+    );
+    return result;
   }
 
   private updateSnapshot(
@@ -348,6 +371,9 @@ class EventStoreForDynamoDB<
     version: number,
     aggregate: A | undefined,
   ): Update {
+    this.logger?.debug(
+        `updateSnapshot(${JSON.stringify(event)}, ${sequenceNumber}, ${version}, ${JSON.stringify(aggregate)}): start`,
+    );
     const pkey = this.keyResolver.resolvePartitionKey(
       event.aggregateId,
       this.shardCount,
@@ -371,9 +397,9 @@ class EventStoreForDynamoDB<
         N: event.occurredAt.getUTCMilliseconds().toString(),
       },
     };
-
+    let result: Update;
     if (aggregate === undefined) {
-      const update: Update = {
+      result = {
         TableName: this.snapshotTableName,
         UpdateExpression:
           "SET #version=:after_version, #last_updated_at=:last_updated_at",
@@ -382,11 +408,9 @@ class EventStoreForDynamoDB<
         ExpressionAttributeValues: { ...values },
         ConditionExpression: "#version=:before_version",
       };
-      this.logger.info("update1: " + JSON.stringify(update));
-      return update;
     } else {
       const payload = this.snapshotSerializer.serialize(aggregate);
-      const update: Update = {
+      result = {
         TableName: this.snapshotTableName,
         UpdateExpression:
           "SET #payload=:payload, #seq_nr=:seq_nr, #version=:after_version, #last_updated_at=:last_updated_at",
@@ -403,9 +427,11 @@ class EventStoreForDynamoDB<
         },
         ConditionExpression: "#version=:before_version",
       };
-      this.logger.info("update2: " + JSON.stringify(update));
-      return update;
     }
+    this.logger?.debug(
+        `updateSnapshot(${JSON.stringify(event)}, ${sequenceNumber}, ${version}, ${JSON.stringify(aggregate)}): finished`,
+    );
+    return result;
   }
 }
 
