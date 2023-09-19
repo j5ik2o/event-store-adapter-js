@@ -1,18 +1,18 @@
 # event-store-adapter-js
 
-This library is designed to turn DynamoDB into an Event Store for Event Sourcing.
+このライブラリは、DynamoDBをEvent Sourcing用のEvent Storeにするためのものです。
 
-[日本語](./README.ja.md)
+[English](./README.md)
 
-# Installation
+# 導入方法
 
 ```shell
 $ npm i event-store-adapter-js
 ```
 
-# Usage
+# 使い方
 
-You can easily implement an Event Sourcing-enabled repository using EventStore.
+EventStoreを使えば、Event Sourcing対応リポジトリを簡単に実装できます。
 
 ```typescript
 class UserAccountRepository {
@@ -51,7 +51,7 @@ class UserAccountRepository {
 }
 ```
 
-The following is an example of the repository usage.
+以下はリポジトリの使用例です。
 
 ```typescript
 const eventStore = EventStoreFactory.ofDynamoDB<
@@ -89,15 +89,15 @@ expect(userAccount3.sequenceNumber).toEqual(2);
 expect(userAccount3.version).toEqual(2);
 ```
 
-## Table Specifications
+## テーブル仕様
 
-See [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md).
+[docs/DATABASE_SCHEMA.ja.md](docs/DATABASE_SCHEMA.ja.md)を参照してください。
 
-## License.
+## ライセンス
 
-MIT License. See [LICENSE](LICENSE) for details.
+MITライセンスです。詳細は[LICENSE](LICENSE)を参照してください。
 
-## Other language implementations
+## 他の言語のための実装
 
 - [for Java](https://github.com/j5ik2o/event-store-adapter-java)
 - [for Scala](https://github.com/j5ik2o/event-store-adapter-scala)
