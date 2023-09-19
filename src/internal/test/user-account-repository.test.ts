@@ -17,6 +17,7 @@ import {
 } from "./dynamodb-utils";
 import { ulid } from "ulid";
 import { UserAccountRepository } from "./user-account-repository";
+import { EventStore, EventStoreFactory } from "../../event-store";
 
 afterEach(() => {
   jest.useRealTimers();
@@ -29,11 +30,7 @@ describe("UserAccountRepository", () => {
 
   let container: TestContainer;
   let startedContainer: StartedTestContainer;
-  let eventStore: EventStoreForDynamoDB<
-    UserAccountId,
-    UserAccount,
-    UserAccountEvent
-  >;
+  let eventStore: EventStore<UserAccountId, UserAccount, UserAccountEvent>;
 
   const JOURNAL_TABLE_NAME = "journal";
   const SNAPSHOT_TABLE_NAME = "snapshot";
@@ -42,8 +39,8 @@ describe("UserAccountRepository", () => {
 
   function createEventStore(
     dynamodbClient: DynamoDBClient,
-  ): EventStoreForDynamoDB<UserAccountId, UserAccount, UserAccountEvent> {
-    return new EventStoreForDynamoDB<
+  ): EventStore<UserAccountId, UserAccount, UserAccountEvent> {
+    return EventStoreFactory.ofDynamoDB<
       UserAccountId,
       UserAccount,
       UserAccountEvent
