@@ -44,6 +44,19 @@ interface SnapshotSerializer<
   deserialize(bytes: Uint8Array, converter: (json: string) => A): A;
 }
 
+export interface Logger {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  trace?: (...content: any[]) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  debug: (...content: any[]) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  info: (...content: any[]) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  warn: (...content: any[]) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  error: (...content: any[]) => void;
+}
+
 export {
   AggregateId,
   Aggregate,

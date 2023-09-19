@@ -9,7 +9,7 @@ import {
 import { EventStoreOptions } from "./event-store-options";
 import { EventStoreForDynamoDB } from "./internal/event-store-for-dynamodb";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import * as moment from "moment";
+import moment from "moment";
 import { DefaultKeyResolver } from "./internal/default-key-resolver";
 import {
   JsonEventSerializer,

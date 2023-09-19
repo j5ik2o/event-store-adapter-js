@@ -5,7 +5,6 @@ interface UserAccountEvent extends Event<UserAccountId> {}
 
 function convertJSONtoUserAccountEvent(jsonString: string): UserAccountEvent {
   const obj = JSON.parse(jsonString);
-  console.log("UserAccountEventFromJSON", obj);
   const aggregateId = convertJSONToUserAccountId(
     JSON.stringify(obj.data.aggregateId),
   );

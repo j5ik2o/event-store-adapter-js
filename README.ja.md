@@ -105,3 +105,4 @@ MITライセンスです。詳細は[LICENSE](LICENSE)を参照してくださ�
 - [for Rust](https://github.com/j5ik2o/event-store-adapter-rs)
 - [for Go](https://github.com/j5ik2o/event-store-adapter-go)
 - [for JavaScript/TypeScript](https://github.com/j5ik2o/event-store-adapter-js)
+- [for .NET](https://github.com/j5ik2o/event-store-adapter-dotnet)
