@@ -1,13 +1,10 @@
 import { AggregateId, KeyResolver } from "../types";
-import { LoggerFactory } from "./logger-factory";
 
 class DefaultKeyResolver<AID extends AggregateId> implements KeyResolver<AID> {
-  private logger = LoggerFactory.createLogger();
   private hashString(str: string): number {
     if (str === undefined || str === null) {
       throw new Error(`str is undefined or null: ${str}`);
     }
-    // this.logger.debug("hashString = ", str);
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
