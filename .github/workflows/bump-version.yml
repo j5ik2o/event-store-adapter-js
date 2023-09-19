@@ -1,15 +1,11 @@
 name: Bump-Version
 on:
-  workflow_run:
-    workflows:
-      - CI
-    types:
-      - completed
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
 jobs:
-  snapshot:
+  bump-version:
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
-    name: "Publish Snapshot"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,17 +15,85 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 20.x
-          registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
-      - run: npm install
-      - run: |
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - run: pip install semver
+      - id: defines
+        run: |
+          LATEST_TAG=$(git describe --abbrev=0 --tags)
+          echo "LATEST_TAG=$LATEST_TAG"
+          echo "prev_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+      - name: Calculate changes from the latest tag to HEAD
+        id: changes
+        run: |
+          COUNT=$(git log ${{ steps.defines.outputs.prev_tag }}..HEAD --pretty=format:"%s" \
+            --no-merges -P --grep='^(BREAKING CHANGE|build|ci|feat|fix|docs|style|refactor|perf|test|revert|chore)(\(.*\))?:' | awk 'END{print NR}')
+          echo "COUNT=$COUNT"
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
+      - name: Calculate semver level
+        id: semver_level
+        run: |
+          SEMVER_LEVEL=$(git log ${{ steps.defines.outputs.prev_tag }}..HEAD --pretty=format:"%h%x09%H%x09%s" \
+            --no-merges -P --grep='^(BREAKING CHANGE|build|ci|feat|fix|docs|style|refactor|perf|test|revert|chore)(\(.*\))?:' \
+            | python3 "${GITHUB_WORKSPACE}"/.github/semver-level.py)
+          echo "SEMVER_LEVEL=$SEMVER_LEVEL"
+          echo "semver_level=$SEMVER_LEVEL" >> $GITHUB_OUTPUT
+        if: steps.changes.outputs.count > 0
+      - name: Get the next version
+        id: versions
+        run: |
+          NEXT_VERSION=$(echo ${{ steps.defines.outputs.prev_tag }} | python3 "${GITHUB_WORKSPACE}"/.github/next-semver.py ${{ steps.semver_level.outputs.semver_level }})
+          echo "NEXT_VERSION=$NEXT_VERSION"
+          echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          echo "next_tag=v$NEXT_VERSION" >> $GITHUB_OUTPUT
+        if: steps.changes.outputs.count > 0
+      - name: set the next version
+        run: |
+      - name: git commit & push
+        id: git_commit_push
+        run: |
           git config --global user.email "j5ik2o@gmail.com"
           git config --global user.name "Junichi Kato"
+          npm version ${{ steps.versions.outputs.next_version }} --no-git-tag-version
+          git add .
+          git commit -m "[skip ci] version up to ${{ steps.versions.outputs.next_tag }}"
+          git push origin main
+          COMMIT_SHA=$(git rev-parse HEAD)
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+        if: steps.changes.outputs.count > 0
+      - name: tagging and push tag
+        id: tag_version
+        run: |
+          git tag -a "${{ steps.versions.outputs.next_tag }}" ${{ steps.git_commit_push.outputs.commit_sha }} -m "${{ steps.versions.outputs.next_tag }}"
+          git push origin ${{ steps.versions.outputs.next_tag }}
+          python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-header.py \
+            ${{ github.server_url }} \
+            ${{ github.repository }} \
+            ${{ steps.defines.outputs.prev_tag }} \
+            ${{ steps.versions.outputs.next_tag }} \
+            > changelog.txt
+          git log ${{ steps.defines.outputs.prev_tag }}..${{ steps.versions.outputs.next_tag }} --pretty=format:"%h%x09%H%x09%s" \
+            -P --grep='^(BREAKING CHANGE|build|ci|feat|fix|docs|style|refactor|perf|test|revert|chore)(.*)?:.*$' \
+            --no-merges --full-history | \
+            python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-body.py >> changelog.txt
+        if: steps.changes.outputs.count > 0
+      - name: Create a GitHub release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        with:
+          tag_name: ${{ steps.versions.outputs.next_tag }}
+          release_name: Release ${{ steps.versions.outputs.next_tag }}
+          body_path: changelog.txt
+        if: steps.changes.outputs.count > 0
+      - name: Switch to Snapshot version
+        run: |
+          rm changelog.txt
           npm version prerelease --preid=snapshot --no-git-tag-version
           SNAPSHOT_VERSION=$(npm version --json | jq -r '.["event-store-adapter-js"]')
           git add .
           git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
           git push origin main
-      - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        if: steps.changes.outputs.count > 0
