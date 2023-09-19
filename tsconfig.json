@@ -5,11 +5,16 @@
     "strict": true,
     "module": "CommonJS",
     "target": "es6",
-    "moduleResolution": "Node",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
     "lib": ["ESNext"],
     "types": ["node", "jest"],
     "skipLibCheck": true,
-    "declaration": true
+    "declaration": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules"]
