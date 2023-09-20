@@ -49,8 +49,6 @@ jobs:
           echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
           echo "next_tag=v$NEXT_VERSION" >> $GITHUB_OUTPUT
         if: steps.changes.outputs.count > 0
-      - name: set the next version
-        run: |
       - name: git commit & push
         id: git_commit_push
         run: |
