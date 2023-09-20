@@ -82,7 +82,7 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
     return acc;
   }
 
-  public applyEvent(event: UserAccountEvent): UserAccount {
+  private applyEvent(event: UserAccountEvent): UserAccount {
     if (event instanceof UserAccountRenamed) {
       const [result] = this.rename(event.name);
       return result;
