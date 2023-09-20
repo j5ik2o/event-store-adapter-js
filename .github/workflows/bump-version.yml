@@ -56,7 +56,7 @@ jobs:
           git config --global user.name "Junichi Kato"
           npm version ${{ steps.versions.outputs.next_version }} --no-git-tag-version
           git add .
-          git commit -m "[skip ci] version up to ${{ steps.versions.outputs.next_tag }}"
+          git commit -m "version up to ${{ steps.versions.outputs.next_tag }}"
           git push origin main
           COMMIT_SHA=$(git rev-parse HEAD)
           echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
