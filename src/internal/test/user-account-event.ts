@@ -3,6 +3,29 @@ import { convertJSONToUserAccountId, UserAccountId } from "./user-account-id";
 
 interface UserAccountEvent extends Event<UserAccountId> {}
 
+class UserAccountCreated implements UserAccountEvent {
+  public readonly isCreated: boolean = true;
+
+  constructor(
+    public readonly id: string,
+    public readonly aggregateId: UserAccountId,
+    public readonly name: string,
+    public readonly sequenceNumber: number,
+    public readonly occurredAt: Date,
+  ) {}
+}
+
+class UserAccountRenamed implements UserAccountEvent {
+  public readonly isCreated: boolean = false;
+  constructor(
+    public readonly id: string,
+    public readonly aggregateId: UserAccountId,
+    public readonly name: string,
+    public readonly sequenceNumber: number,
+    public readonly occurredAt: Date,
+  ) {}
+}
+
 function convertJSONtoUserAccountEvent(jsonString: string): UserAccountEvent {
   const obj = JSON.parse(jsonString);
   const aggregateId = convertJSONToUserAccountId(
@@ -28,29 +51,6 @@ function convertJSONtoUserAccountEvent(jsonString: string): UserAccountEvent {
     default:
       throw new Error(`Unknown type: ${obj.type}`);
   }
-}
-
-class UserAccountCreated implements UserAccountEvent {
-  public readonly isCreated: boolean = true;
-
-  constructor(
-    public readonly id: string,
-    public readonly aggregateId: UserAccountId,
-    public readonly name: string,
-    public readonly sequenceNumber: number,
-    public readonly occurredAt: Date,
-  ) {}
-}
-
-class UserAccountRenamed implements UserAccountEvent {
-  public readonly isCreated: boolean = false;
-  constructor(
-    public readonly id: string,
-    public readonly aggregateId: UserAccountId,
-    public readonly name: string,
-    public readonly sequenceNumber: number,
-    public readonly occurredAt: Date,
-  ) {}
 }
 
 export {
