@@ -11,7 +11,7 @@ This library is designed to turn DynamoDB into an Event Store for Event Sourcing
 # Installation
 
 ```shell
-$ npm i event-store-adapter-js
+$ npm install event-store-adapter-js
 ```
 
 # Usage
