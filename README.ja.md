@@ -11,7 +11,7 @@
 # 導入方法
 
 ```shell
-$ npm i event-store-adapter-js
+$ npm install event-store-adapter-js
 ```
 
 # 使い方
