@@ -9,6 +9,7 @@ import {
 } from "../types";
 import { EventStore } from "../event-store";
 import {
+  BatchWriteItemCommand,
   DynamoDBClient,
   Put,
   QueryCommand,
@@ -16,8 +17,11 @@ import {
   TransactWriteItemsCommand,
   TransactWriteItemsInput,
   Update,
+  UpdateItemCommand,
+  UpdateItemInput,
+  WriteRequest,
 } from "@aws-sdk/client-dynamodb";
-import * as moment from "moment/moment";
+import moment from "moment/moment";
 import { DefaultKeyResolver } from "./default-key-resolver";
 import {
   JsonEventSerializer,
@@ -149,6 +153,7 @@ class EventStoreForDynamoDB<
       throw new Error("Cannot persist created event");
     }
     await this.updateEventAndSnapshotOpt(event, version, undefined);
+    await this.tryPurgeExcessSnapshots(event);
     this.logger?.debug(
       `persistEvent(${JSON.stringify(event)}, ${version}): finished`,
     );
@@ -163,12 +168,12 @@ class EventStoreForDynamoDB<
     if (event.isCreated) {
       await this.createEventAndSnapshot(event, aggregate);
     } else {
-      this.logger?.debug("update!!!");
       await this.updateEventAndSnapshotOpt(
         event,
         aggregate.sequenceNumber,
         aggregate,
       );
+      await this.tryPurgeExcessSnapshots(event);
     }
     this.logger?.debug(
       `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
@@ -460,6 +465,154 @@ class EventStoreForDynamoDB<
       )}): finished`,
     );
     return result;
+  }
+
+  private async tryPurgeExcessSnapshots(event: E) {
+    if (this.keepSnapshotCount !== undefined) {
+      if (this.deleteTtl !== undefined) {
+        await this.updateTtlOfExcessSnapshots(event.aggregateId);
+      } else {
+        await this.deleteExcessSnapshots(event.aggregateId);
+      }
+    }
+  }
+
+  private async getSnapshotCount(aggregateId: AID) {
+    const request: QueryCommandInput = {
+      TableName: this.snapshotTableName,
+      IndexName: this.snapshotAidIndexName,
+      KeyConditionExpression: "#aid = :aid",
+      ExpressionAttributeNames: {
+        "#aid": "aid",
+      },
+      ExpressionAttributeValues: {
+        ":aid": { S: aggregateId.asString },
+      },
+      Select: "COUNT",
+    };
+    const queryResult = await this.dynamodbClient.send(
+      new QueryCommand(request),
+    );
+    return queryResult.Count;
+  }
+
+  private async getLastSnapshotKeys(aggregateId: AID, limit: number) {
+    const names = {
+      "#aid": "aid",
+      "#seq_nr": "seq_nr",
+    };
+    const values = {
+      ":aid": { S: aggregateId.asString },
+      ":seq_nr": { N: "0" },
+    };
+    const request: QueryCommandInput = {
+      TableName: this.snapshotTableName,
+      IndexName: this.snapshotAidIndexName,
+      KeyConditionExpression: "#aid = :aid AND #seq_nr > :seq_nr",
+      ExpressionAttributeNames: { ...names },
+      ExpressionAttributeValues: { ...values },
+      ScanIndexForward: false,
+      Limit: limit,
+    };
+    if (this.deleteTtl !== undefined) {
+      request.FilterExpression = "#ttl = :ttl";
+      request.ExpressionAttributeNames = {
+        ...names,
+        "#ttl": "ttl",
+      };
+      request.ExpressionAttributeValues = {
+        ...values,
+        ":ttl": { N: "0" },
+      };
+    }
+    const queryResult = await this.dynamodbClient.send(
+      new QueryCommand(request),
+    );
+    if (queryResult.Items === undefined || queryResult.Items.length === 0) {
+      return undefined;
+    } else {
+      return queryResult.Items.map((item) => {
+        const pkey = item.pkey.S;
+        const skey = item.skey.S;
+        if (pkey === undefined || skey === undefined) {
+          throw new Error("pkey or skey is undefined");
+        }
+        return { pkey, skey };
+      });
+    }
+  }
+
+  private async updateTtlOfExcessSnapshots(aggregateId: AID) {
+    if (this.keepSnapshotCount !== undefined && this.deleteTtl !== undefined) {
+      let snapshotCount = await this.getSnapshotCount(aggregateId);
+      if (snapshotCount === undefined) {
+        return undefined;
+      }
+      snapshotCount -= 1;
+      const excessCount = snapshotCount - this.keepSnapshotCount;
+      if (excessCount > 0) {
+        const keys = await this.getLastSnapshotKeys(aggregateId, excessCount);
+        if (keys === undefined) {
+          return undefined;
+        }
+        const ttl = moment().add(this.deleteTtl);
+        const result = keys.map((key) => {
+          const request: UpdateItemInput = {
+            TableName: this.snapshotTableName,
+            Key: {
+              pkey: { S: key.pkey },
+              skey: { S: key.skey },
+            },
+            UpdateExpression: "SET #ttl = :ttl",
+            ExpressionAttributeNames: {
+              "#ttl": "ttl",
+            },
+            ExpressionAttributeValues: {
+              ":ttl": { N: ttl.seconds().toString() },
+            },
+          };
+          return this.dynamodbClient.send(new UpdateItemCommand(request));
+        });
+        return await Promise.all(result);
+      }
+    }
+    return undefined;
+  }
+
+  private async deleteExcessSnapshots(aggregateId: AID) {
+    if (this.keepSnapshotCount !== undefined && this.deleteTtl !== undefined) {
+      let snapshotCount = await this.getSnapshotCount(aggregateId);
+      if (snapshotCount === undefined) {
+        return undefined;
+      }
+      snapshotCount -= 1;
+      const excessCount = snapshotCount - this.keepSnapshotCount;
+      if (excessCount > 0) {
+        const keys = await this.getLastSnapshotKeys(aggregateId, excessCount);
+        if (keys === undefined) {
+          return undefined;
+        }
+        const result = keys.map((key) => {
+          const request: WriteRequest = {
+            DeleteRequest: {
+              Key: {
+                pkey: { S: key.pkey },
+                skey: { S: key.skey },
+              },
+            },
+          };
+          return this.dynamodbClient.send(
+            new BatchWriteItemCommand({
+              RequestItems: {
+                [this.snapshotTableName]: [request],
+              },
+            }),
+          );
+        });
+        return await Promise.all(result);
+      }
+    }
+    return undefined;
   }
 }
 
