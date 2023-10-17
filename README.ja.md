@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![](https://tokei.rs/b1/github/j5ik2o/event-store-adapter-js)](https://github.com/XAMPPRocky/tokei)
 
-このライブラリは、DynamoDBをEvent Sourcing用のEvent Storeにするためのものです。
+このライブラリは、DynamoDBをCQRS/Event Sourcing用のEvent Storeにするためのものです。
 
 [English](./README.md)
 
