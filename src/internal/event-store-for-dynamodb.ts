@@ -571,7 +571,7 @@ class EventStoreForDynamoDB<
               ":ttl": { N: ttl.seconds().toString() },
             },
           };
-          return this.dynamodbClient.send(new UpdateItemCommand(request));
+          return this.dynamodbClient.send(new UpdateItemCommand(request)).then(_ => {});
         });
         return await Promise.all(result);
       }
@@ -592,7 +592,7 @@ class EventStoreForDynamoDB<
         if (keys === undefined) {
           return undefined;
         }
-        const result = keys.map((key) => {
+        const request = keys.map((key) => {
           const request: WriteRequest = {
             DeleteRequest: {
               Key: {
@@ -601,15 +601,15 @@ class EventStoreForDynamoDB<
               },
             },
           };
-          return this.dynamodbClient.send(
+          return request;
+        });
+        return this.dynamodbClient.send(
             new BatchWriteItemCommand({
               RequestItems: {
-                [this.snapshotTableName]: [request],
+                [this.snapshotTableName]: request,
               },
             }),
-          );
-        });
-        return await Promise.all(result);
+        ).then(_ => {});
       }
     }
     return undefined;
