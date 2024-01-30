@@ -71,6 +71,8 @@ const eventStore = EventStoreFactory.ofDynamoDB<
     JOURNAL_AID_INDEX_NAME,
     SNAPSHOTS_AID_INDEX_NAME,
     32,
+    convertJSONtoUserAccountEvent,
+    convertJSONToUserAccount,
 );
 const userAccountRepository = new UserAccountRepository(eventStore);
 

@@ -41,7 +41,6 @@ class UserAccountRepository {
     async findById(id: UserAccountId): Promise<UserAccount | undefined> {
         const snapshot = await this.eventStore.getLatestSnapshotById(
             id,
-            convertJSONToUserAccount,
         );
         if (snapshot === undefined) {
             return undefined;
@@ -49,7 +48,6 @@ class UserAccountRepository {
             const events = await this.eventStore.getEventsByIdSinceSequenceNumber(
                 id,
                 snapshot.sequenceNumber + 1,
-                convertJSONtoUserAccountEvent,
             );
             return UserAccount.replay(events, snapshot);
         }
@@ -71,6 +69,8 @@ const eventStore = EventStoreFactory.ofDynamoDB<
     JOURNAL_AID_INDEX_NAME,
     SNAPSHOTS_AID_INDEX_NAME,
     32,
+    convertJSONtoUserAccountEvent,
+    convertJSONToUserAccount,
 );
 const userAccountRepository = new UserAccountRepository(eventStore);
 
