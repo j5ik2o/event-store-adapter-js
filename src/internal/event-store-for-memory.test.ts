@@ -1,10 +1,9 @@
 import { describe } from "node:test";
 import { UserAccountId } from "./test/user-account-id";
-// import {ulid} from "ulid";
 import { UserAccount } from "./test/user-account";
 import { UserAccountEvent } from "./test/user-account-event";
-import { EventStore } from "../event-store";
-import { EventStoreForMemory } from "./event-store-for-memory";
+import { EventStore, EventStoreFactory } from "../event-store";
+import { ulid } from "ulid";
 
 afterEach(() => {
   jest.useRealTimers();
@@ -21,11 +20,11 @@ describe("EventStoreForDynamoDB", () => {
     UserAccount,
     UserAccountEvent
   > {
-    return new EventStoreForMemory<
+    return EventStoreFactory.ofMemory<
       UserAccountId,
       UserAccount,
       UserAccountEvent
-    >(new Map(), new Map());
+    >();
   }
 
   beforeAll(async () => {
@@ -35,7 +34,7 @@ describe("EventStoreForDynamoDB", () => {
   test(
     "persistAndSnapshot",
     async () => {
-      const id = new UserAccountId("1");
+      const id = new UserAccountId(ulid());
       const name = "Alice";
       const [userAccount1, created] = UserAccount.create(id, name);
 
@@ -55,7 +54,7 @@ describe("EventStoreForDynamoDB", () => {
   test(
     "persistAndSnapshot2",
     async () => {
-      const id = new UserAccountId("2");
+      const id = new UserAccountId(ulid());
       const name = "Alice";
       const [userAccount1, created] = UserAccount.create(id, name);
 

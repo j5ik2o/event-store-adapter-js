@@ -10,7 +10,10 @@ class EventStoreForMemory<
   private readonly events: Map<string, E[]>;
   private readonly snapshots: Map<string, A>;
 
-  constructor(events: Map<AID, E[]>, snapshots: Map<AID, A>) {
+  constructor(
+    events: Map<AID, E[]> = new Map(),
+    snapshots: Map<AID, A> = new Map(),
+  ) {
     this.events = new Map(
       Array.from(events).map(([key, values]) => {
         return [key.asString, values];

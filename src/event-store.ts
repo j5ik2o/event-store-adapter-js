@@ -78,7 +78,10 @@ class EventStoreFactory {
     AID extends AggregateId,
     A extends Aggregate<A, AID>,
     E extends Event<AID>,
-  >(events: Map<AID, E[]>, snapshots: Map<AID, A>): EventStore<AID, A, E> {
+  >(
+    events: Map<AID, E[]> = new Map(),
+    snapshots: Map<AID, A> = new Map(),
+  ): EventStore<AID, A, E> {
     return new EventStoreForMemory(events, snapshots);
   }
 }
