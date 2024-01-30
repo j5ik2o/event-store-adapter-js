@@ -161,7 +161,7 @@ class EventStoreForDynamoDB<
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
     if (event.aggregateId.asString !== aggregate.id.asString) {
-      throw new Error("aggregateId mismatch")
+      throw new Error("aggregateId mismatch");
     }
     this.logger?.debug(
       `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
@@ -574,7 +574,9 @@ class EventStoreForDynamoDB<
               ":ttl": { N: ttl.seconds().toString() },
             },
           };
-          return this.dynamodbClient.send(new UpdateItemCommand(request)).then(_ => {});
+          return this.dynamodbClient
+            .send(new UpdateItemCommand(request))
+            .then((_) => {});
         });
         return await Promise.all(result);
       }
@@ -606,13 +608,15 @@ class EventStoreForDynamoDB<
           };
           return request;
         });
-        return this.dynamodbClient.send(
+        return this.dynamodbClient
+          .send(
             new BatchWriteItemCommand({
               RequestItems: {
                 [this.snapshotTableName]: request,
               },
             }),
-        ).then(_ => {});
+          )
+          .then((_) => {});
       }
     }
     return undefined;
