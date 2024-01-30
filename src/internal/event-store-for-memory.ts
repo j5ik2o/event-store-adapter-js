@@ -1,13 +1,6 @@
-import {
-  Aggregate,
-  AggregateId,
-  Event,
-  EventSerializer,
-  KeyResolver,
-  SnapshotSerializer,
-} from "../types";
-import { EventStore } from "../event-store";
-import { Duration } from "moment";
+import {Aggregate, AggregateId, Event, EventSerializer, KeyResolver, SnapshotSerializer,} from "../types";
+import {EventStore} from "../event-store";
+import {Duration} from "moment";
 
 class EventStoreForMemory<
   AID extends AggregateId,
@@ -64,7 +57,7 @@ class EventStoreForMemory<
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
     if (event.aggregateId.asString !== aggregate.id.asString) {
-      throw new Error("aggregateId mismatch");
+      throw new Error(`aggregateId mismatch: expected ${event.aggregateId.asString}, got ${aggregate.id.asString}`);
     }
     const aggregateIdString = event.aggregateId.asString;
     const events = this.events.get(aggregateIdString) ?? [];
@@ -102,9 +95,7 @@ class EventStoreForMemory<
     _converter: (json: string) => A,
   ): Promise<A | undefined> {
     const aggregateIdString = id.asString;
-    const snapshot = this.snapshots.get(aggregateIdString);
-    console.log(`getLatestSnapshotById = ${JSON.stringify(snapshot)}`);
-    return snapshot;
+    return this.snapshots.get(aggregateIdString);
   }
 
   withKeepSnapshotCount(_keepSnapshotCount: number): EventStore<AID, A, E> {
