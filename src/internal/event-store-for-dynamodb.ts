@@ -160,6 +160,9 @@ class EventStoreForDynamoDB<
   }
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
+    if (event.aggregateId.asString !== aggregate.id.asString) {
+      throw new Error("aggregateId mismatch")
+    }
     this.logger?.debug(
       `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
         aggregate,
