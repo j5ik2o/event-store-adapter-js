@@ -72,6 +72,9 @@ const eventStore = EventStoreFactory.ofDynamoDB<
     convertJSONtoUserAccountEvent,
     convertJSONToUserAccount,
 );
+// if you want to use in-memory event store, use the following code.
+// const eventStore = EventStoreFactory.ofMemory<UserAccountId, UserAccount, UserAccountEvent>();
+
 const userAccountRepository = new UserAccountRepository(eventStore);
 
 const id = new UserAccountId(ulid());
