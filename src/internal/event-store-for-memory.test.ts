@@ -67,7 +67,7 @@ describe("EventStoreForDynamoDB", () => {
 
       const latestSnapshot = await eventStore.getLatestSnapshotById(id);
       if (latestSnapshot === undefined) {
-        throw new Error("userAccount3 is undefined");
+        throw new Error("latestSnapshot is undefined");
       }
       const eventsAfterSnapshot =
         await eventStore.getEventsByIdSinceSequenceNumber(
