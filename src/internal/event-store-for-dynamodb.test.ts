@@ -10,7 +10,10 @@ import { EventStoreForDynamoDB } from "./event-store-for-dynamodb";
 import { ulid } from "ulid";
 import { UserAccountId } from "./test/user-account-id";
 import { convertJSONToUserAccount, UserAccount } from "./test/user-account";
-import { UserAccountEvent } from "./test/user-account-event";
+import {
+  convertJSONtoUserAccountEvent,
+  UserAccountEvent,
+} from "./test/user-account-event";
 import {
   createDynamoDBClient,
   createJournalTable,
@@ -52,6 +55,8 @@ describe("EventStoreForDynamoDB", () => {
       JOURNAL_AID_INDEX_NAME,
       SNAPSHOTS_AID_INDEX_NAME,
       32,
+      convertJSONtoUserAccountEvent,
+      convertJSONToUserAccount,
     );
   }
 
@@ -96,10 +101,7 @@ describe("EventStoreForDynamoDB", () => {
 
       await eventStore.persistEventAndSnapshot(created, userAccount1);
 
-      const userAccount2 = await eventStore.getLatestSnapshotById(
-        id,
-        convertJSONToUserAccount,
-      );
+      const userAccount2 = await eventStore.getLatestSnapshotById(id);
       if (userAccount2 === undefined) {
         throw new Error("userAccount2 is undefined");
       }
@@ -123,17 +125,23 @@ describe("EventStoreForDynamoDB", () => {
 
       await eventStore.persistEvent(renamed, userAccount2.version);
 
-      const userAccount3 = await eventStore.getLatestSnapshotById(
-        id,
-        convertJSONToUserAccount,
-      );
-      if (userAccount3 === undefined) {
-        throw new Error("userAccount2 is undefined");
+      const latestSnapshot = await eventStore.getLatestSnapshotById(id);
+      if (latestSnapshot === undefined) {
+        throw new Error("userAccount3 is undefined");
       }
+      const eventsAfterSnapshot =
+        await eventStore.getEventsByIdSinceSequenceNumber(
+          id,
+          latestSnapshot.sequenceNumber + 1,
+        );
+      const userAccount3 = UserAccount.replay(
+        eventsAfterSnapshot,
+        latestSnapshot,
+      );
 
       expect(userAccount3.id).toEqual(id);
-      expect(userAccount3.name).toEqual(name);
-      expect(userAccount3.sequenceNumber).toEqual(1);
+      expect(userAccount3.name).toEqual("Bob");
+      expect(userAccount3.sequenceNumber).toEqual(2);
       expect(userAccount3.version).toEqual(2);
     },
     TIMEOUT,

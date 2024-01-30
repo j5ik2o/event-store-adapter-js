@@ -6,8 +6,11 @@ import {
   Wait,
 } from "testcontainers";
 import { UserAccountId } from "./user-account-id";
-import { UserAccount } from "./user-account";
-import { UserAccountEvent } from "./user-account-event";
+import { convertJSONToUserAccount, UserAccount } from "./user-account";
+import {
+  convertJSONtoUserAccountEvent,
+  UserAccountEvent,
+} from "./user-account-event";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   createDynamoDBClient,
@@ -49,6 +52,8 @@ describe("UserAccountRepository", () => {
       JOURNAL_AID_INDEX_NAME,
       SNAPSHOTS_AID_INDEX_NAME,
       32,
+      convertJSONtoUserAccountEvent,
+      convertJSONToUserAccount,
     );
   }
 

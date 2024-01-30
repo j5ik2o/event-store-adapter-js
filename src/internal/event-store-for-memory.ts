@@ -1,6 +1,5 @@
-import {Aggregate, AggregateId, Event, EventSerializer, KeyResolver, SnapshotSerializer,} from "../types";
-import {EventStore} from "../event-store";
-import {Duration} from "moment";
+import { Aggregate, AggregateId, Event } from "../types";
+import { EventStore } from "../event-store";
 
 class EventStoreForMemory<
   AID extends AggregateId,
@@ -57,7 +56,9 @@ class EventStoreForMemory<
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
     if (event.aggregateId.asString !== aggregate.id.asString) {
-      throw new Error(`aggregateId mismatch: expected ${event.aggregateId.asString}, got ${aggregate.id.asString}`);
+      throw new Error(
+        `aggregateId mismatch: expected ${event.aggregateId.asString}, got ${aggregate.id.asString}`,
+      );
     }
     const aggregateIdString = event.aggregateId.asString;
     const events = this.events.get(aggregateIdString) ?? [];
@@ -80,7 +81,6 @@ class EventStoreForMemory<
   async getEventsByIdSinceSequenceNumber(
     id: AID,
     sequenceNumber: number,
-    _converter: (json: string) => E,
   ): Promise<E[]> {
     const aggregateIdString = id.asString;
     const events = this.events.get(aggregateIdString);
@@ -90,36 +90,9 @@ class EventStoreForMemory<
     return events.filter((event) => event.sequenceNumber >= sequenceNumber);
   }
 
-  async getLatestSnapshotById(
-    id: AID,
-    _converter: (json: string) => A,
-  ): Promise<A | undefined> {
+  async getLatestSnapshotById(id: AID): Promise<A | undefined> {
     const aggregateIdString = id.asString;
     return this.snapshots.get(aggregateIdString);
-  }
-
-  withKeepSnapshotCount(_keepSnapshotCount: number): EventStore<AID, A, E> {
-    throw new Error("Method not implemented.");
-  }
-
-  withDeleteTtl(_deleteTtl: Duration): EventStore<AID, A, E> {
-    throw new Error("Method not implemented.");
-  }
-
-  withKeyResolver(_keyResolver: KeyResolver<AID>): EventStore<AID, A, E> {
-    throw new Error("Method not implemented.");
-  }
-
-  withEventSerializer(
-    _eventSerializer: EventSerializer<AID, E>,
-  ): EventStore<AID, A, E> {
-    throw new Error("Method not implemented.");
-  }
-
-  withSnapshotSerializer(
-    _snapshotSerializer: SnapshotSerializer<AID, A>,
-  ): EventStore<AID, A, E> {
-    throw new Error("Method not implemented.");
   }
 }
 
