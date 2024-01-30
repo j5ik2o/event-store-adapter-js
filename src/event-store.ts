@@ -15,6 +15,7 @@ import {
   JsonEventSerializer,
   JsonSnapshotSerializer,
 } from "./internal/default-serializer";
+import {EventStoreForMemory} from "./internal/event-store-for-memory";
 
 interface EventStore<
   AID extends AggregateId,
@@ -71,6 +72,14 @@ class EventStoreFactory {
       eventSerializer,
       snapshotSerializer,
     );
+  }
+
+  static ofMemory<
+    AID extends AggregateId,
+    A extends Aggregate<A, AID>,
+    E extends Event<AID>,
+    >(events: Map<AID, E[]>, snapshots: Map<AID, A>): EventStore<AID, A, E> {
+    return new EventStoreForMemory(events, snapshots);
   }
 }
 
