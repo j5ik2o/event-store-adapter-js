@@ -4,6 +4,7 @@ import { convertJSONToUserAccountId, UserAccountId } from "./user-account-id";
 interface UserAccountEvent extends Event<UserAccountId> {}
 
 class UserAccountCreated implements UserAccountEvent {
+  public readonly typeName: string = "UserAccountCreated";
   public readonly isCreated: boolean = true;
 
   constructor(
@@ -16,6 +17,7 @@ class UserAccountCreated implements UserAccountEvent {
 }
 
 class UserAccountRenamed implements UserAccountEvent {
+  public readonly typeName: string = "UserAccountRenamed";
   public readonly isCreated: boolean = false;
   constructor(
     public readonly id: string,

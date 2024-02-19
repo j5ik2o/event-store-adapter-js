@@ -73,7 +73,6 @@ class EventStoreFactory {
       snapshotSerializer,
     );
   }
-
   static ofMemory<
     AID extends AggregateId,
     A extends Aggregate<A, AID>,

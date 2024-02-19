@@ -19,7 +19,7 @@ class JsonEventSerializer<AID extends AggregateId, E extends Event<AID>>
 
   serialize(event: E): Uint8Array {
     const jsonString = JSON.stringify({
-      type: event.constructor.name,
+      type: event.typeName,
       data: event,
     });
     return this.encoder.encode(jsonString);
@@ -40,7 +40,7 @@ class JsonSnapshotSerializer<
 
   serialize(aggregate: A): Uint8Array {
     const jsonString = JSON.stringify({
-      type: aggregate.constructor.name,
+      type: aggregate.typeName,
       data: aggregate,
     });
     return this.encoder.encode(jsonString);

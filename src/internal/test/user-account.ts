@@ -8,6 +8,7 @@ import {
 } from "./user-account-event";
 
 class UserAccount implements Aggregate<UserAccount, UserAccountId> {
+  public readonly typeName: string = "UserAccount";
   constructor(
     public readonly id: UserAccountId,
     public readonly name: string,

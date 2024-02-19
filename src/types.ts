@@ -8,6 +8,7 @@ interface Aggregate<
   This extends Aggregate<This, AID>,
   AID extends AggregateId,
 > {
+  typeName: string;
   id: AID;
   sequenceNumber: number;
   version: number;
@@ -16,6 +17,7 @@ interface Aggregate<
 }
 
 interface Event<AID extends AggregateId> {
+  typeName: string;
   id: string;
   aggregateId: AID;
   sequenceNumber: number;
