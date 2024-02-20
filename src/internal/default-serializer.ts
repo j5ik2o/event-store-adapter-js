@@ -12,9 +12,11 @@ class JsonEventSerializer<AID extends AggregateId, E extends Event<AID>>
   private encoder = new TextEncoder();
   private decoder = new TextDecoder();
 
-  deserialize(bytes: Uint8Array, converter: (json: string) => E): E {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  deserialize(bytes: Uint8Array, converter: (json: any) => E): E {
     const jsonString = this.decoder.decode(bytes);
-    return converter(jsonString);
+    const json = JSON.parse(jsonString);
+    return converter(json);
   }
 
   serialize(event: E): Uint8Array {
@@ -33,9 +35,11 @@ class JsonSnapshotSerializer<
 {
   private encoder = new TextEncoder();
   private decoder = new TextDecoder();
-  deserialize(bytes: Uint8Array, converter: (json: string) => A): A {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  deserialize(bytes: Uint8Array, converter: (json: any) => A): A {
     const jsonString = this.decoder.decode(bytes);
-    return converter(jsonString);
+    const obj = JSON.parse(jsonString);
+    return converter(obj);
   }
 
   serialize(aggregate: A): Uint8Array {

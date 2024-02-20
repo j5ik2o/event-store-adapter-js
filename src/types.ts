@@ -33,8 +33,8 @@ interface KeyResolver<AID extends AggregateId> {
 
 interface EventSerializer<AID extends AggregateId, E extends Event<AID>> {
   serialize(event: E): Uint8Array;
-
-  deserialize(bytes: Uint8Array, converter: (json: string) => E): E;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  deserialize(bytes: Uint8Array, converter: (json: any) => E): E;
 }
 
 interface SnapshotSerializer<
@@ -42,8 +42,8 @@ interface SnapshotSerializer<
   A extends Aggregate<A, AID>,
 > {
   serialize(aggregate: A): Uint8Array;
-
-  deserialize(bytes: Uint8Array, converter: (json: string) => A): A;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  deserialize(bytes: Uint8Array, converter: (json: any) => A): A;
 }
 
 export interface Logger {
