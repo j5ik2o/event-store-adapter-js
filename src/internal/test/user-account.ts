@@ -93,14 +93,14 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
   }
 }
 
-function convertJSONToUserAccount(jsonString: string): UserAccount {
-  const obj = JSON.parse(jsonString);
-  const id = convertJSONToUserAccountId(JSON.stringify(obj.data.id));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function convertJSONToUserAccount(json: any): UserAccount {
+  const id = convertJSONToUserAccountId(json.data.id);
   return new UserAccount(
     id,
-    obj.data.name,
-    obj.data.sequenceNumber,
-    obj.data.version,
+    json.data.name,
+    json.data.sequenceNumber,
+    json.data.version,
   );
 }
 

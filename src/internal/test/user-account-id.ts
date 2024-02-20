@@ -9,9 +9,9 @@ class UserAccountId implements AggregateId {
   }
 }
 
-function convertJSONToUserAccountId(jsonString: string): UserAccountId {
-  const obj = JSON.parse(jsonString);
-  return new UserAccountId(obj.value);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function convertJSONToUserAccountId(json: any): UserAccountId {
+  return new UserAccountId(json.value);
 }
 
 export { UserAccountId, convertJSONToUserAccountId };

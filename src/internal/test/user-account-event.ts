@@ -28,30 +28,28 @@ class UserAccountRenamed implements UserAccountEvent {
   ) {}
 }
 
-function convertJSONtoUserAccountEvent(jsonString: string): UserAccountEvent {
-  const obj = JSON.parse(jsonString);
-  const aggregateId = convertJSONToUserAccountId(
-    JSON.stringify(obj.data.aggregateId),
-  );
-  switch (obj.type) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function convertJSONtoUserAccountEvent(json: any): UserAccountEvent {
+  const aggregateId = convertJSONToUserAccountId(json.data.aggregateId);
+  switch (json.type) {
     case "UserAccountCreated":
       return new UserAccountCreated(
-        obj.data.id,
+        json.data.id,
         aggregateId,
-        obj.data.name,
-        obj.data.sequenceNumber,
-        obj.data.occurredAt,
+        json.data.name,
+        json.data.sequenceNumber,
+        json.data.occurredAt,
       );
     case "UserAccountRenamed":
       return new UserAccountRenamed(
-        obj.data.id,
+        json.data.id,
         aggregateId,
-        obj.data.name,
-        obj.data.sequenceNumber,
-        obj.data.occurredAt,
+        json.data.name,
+        json.data.sequenceNumber,
+        json.data.occurredAt,
       );
     default:
-      throw new Error(`Unknown type: ${obj.type}`);
+      throw new Error(`Unknown type: ${json.type}`);
   }
 }
 
