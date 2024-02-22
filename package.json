@@ -1,6 +1,6 @@
 {
   "name": "event-store-adapter-js",
-  "version": "2.0.20",
+  "version": "2.0.21-snapshot.0",
   "description": "This library is designed to turn DynamoDB into an Event Store for Event Sourcing.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
