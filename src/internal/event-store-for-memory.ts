@@ -16,12 +16,12 @@ class EventStoreForMemory<
   ) {
     this.events = new Map(
       Array.from(events).map(([key, values]) => {
-        return [key.asString, values];
+        return [key.asString(), values];
       }),
     );
     this.snapshots = new Map(
       Array.from(snapshots).map(([key, value]) => {
-        return [key.asString, value];
+        return [key.asString(), value];
       }),
     );
   }
@@ -30,17 +30,17 @@ class EventStoreForMemory<
     if (event.isCreated) {
       throw new Error("event is created");
     }
-    const aggregateIdString = event.aggregateId.asString;
+    const aggregateIdString = event.aggregateId.asString();
     const snapshot = this.snapshots.get(aggregateIdString);
     if (snapshot === undefined) {
       throw new Error("snapshot is undefined");
     }
-    if (snapshot.id.asString !== event.aggregateId.asString) {
+    if (snapshot.id.asString() !== event.aggregateId.asString()) {
       throw new Error(
         "aggregateId mismatch: snapshot.id = " +
-          snapshot.id.asString +
+          snapshot.id.asString() +
           ", event.aggregateId = " +
-          event.aggregateId.asString,
+          event.aggregateId.asString(),
       );
     }
     if (snapshot.version !== version) {
@@ -58,12 +58,12 @@ class EventStoreForMemory<
   }
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
-    if (event.aggregateId.asString !== aggregate.id.asString) {
+    if (event.aggregateId.asString() !== aggregate.id.asString()) {
       throw new Error(
-        `aggregateId mismatch: expected ${event.aggregateId.asString}, got ${aggregate.id.asString}`,
+        `aggregateId mismatch: expected ${event.aggregateId.asString()}, got ${aggregate.id.asString()}`,
       );
     }
-    const aggregateIdString = event.aggregateId.asString;
+    const aggregateIdString = event.aggregateId.asString();
     const events = this.events.get(aggregateIdString) ?? [];
     const snapshot = this.snapshots.get(aggregateIdString) ?? aggregate;
 
@@ -85,7 +85,7 @@ class EventStoreForMemory<
     id: AID,
     sequenceNumber: number,
   ): Promise<E[]> {
-    const aggregateIdString = id.asString;
+    const aggregateIdString = id.asString();
     const events = this.events.get(aggregateIdString);
     if (events === undefined) {
       throw new Error("events is undefined");
@@ -94,7 +94,7 @@ class EventStoreForMemory<
   }
 
   async getLatestSnapshotById(id: AID): Promise<A | undefined> {
-    const aggregateIdString = id.asString;
+    const aggregateIdString = id.asString();
     return this.snapshots.get(aggregateIdString);
   }
 }

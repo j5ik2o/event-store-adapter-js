@@ -76,7 +76,7 @@ class EventStoreForDynamoDB<
         "#seq_nr": "seq_nr",
       },
       ExpressionAttributeValues: {
-        ":aid": { S: id.asString },
+        ":aid": { S: id.asString() },
         ":seq_nr": { N: sequenceNumber.toString() },
       },
     };
@@ -119,7 +119,7 @@ class EventStoreForDynamoDB<
         "#seq_nr": "seq_nr",
       },
       ExpressionAttributeValues: {
-        ":aid": { S: id.asString },
+        ":aid": { S: id.asString() },
         ":seq_nr": { N: "0" },
       },
       Limit: 1,
@@ -165,9 +165,9 @@ class EventStoreForDynamoDB<
   }
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
-    if (event.aggregateId.asString !== aggregate.id.asString) {
+    if (event.aggregateId.asString() !== aggregate.id.asString()) {
       throw new Error(
-        `aggregateId mismatch: expected ${event.aggregateId.asString}, got ${aggregate.id.asString}`,
+        `aggregateId mismatch: expected ${event.aggregateId.asString()}, got ${aggregate.id.asString()}`,
       );
     }
     this.logger?.debug(
@@ -364,7 +364,7 @@ class EventStoreForDynamoDB<
       Item: {
         pkey: { S: pkey },
         skey: { S: skey },
-        aid: { S: event.aggregateId.asString },
+        aid: { S: event.aggregateId.asString() },
         seq_nr: { N: event.sequenceNumber.toString() },
         payload: { B: payload },
         occurred_at: { N: event.occurredAt.getUTCMilliseconds().toString() },
@@ -397,7 +397,7 @@ class EventStoreForDynamoDB<
         pkey: { S: pkey },
         skey: { S: skey },
         payload: { B: payload },
-        aid: { S: event.aggregateId.asString },
+        aid: { S: event.aggregateId.asString() },
         seq_nr: { N: sequenceNumber.toString() },
         version: { N: "1" },
         ttl: { N: "0" },
@@ -510,7 +510,7 @@ class EventStoreForDynamoDB<
         "#aid": "aid",
       },
       ExpressionAttributeValues: {
-        ":aid": { S: aggregateId.asString },
+        ":aid": { S: aggregateId.asString() },
       },
       Select: "COUNT",
     };
@@ -526,7 +526,7 @@ class EventStoreForDynamoDB<
       "#seq_nr": "seq_nr",
     };
     const values = {
-      ":aid": { S: aggregateId.asString },
+      ":aid": { S: aggregateId.asString() },
       ":seq_nr": { N: "0" },
     };
     const request: QueryCommandInput = {

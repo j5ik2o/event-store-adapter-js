@@ -18,7 +18,7 @@ class DefaultKeyResolver<AID extends AggregateId> implements KeyResolver<AID> {
     if (aggregateId === undefined || aggregateId === null) {
       throw new Error(`aggregateId is undefined or null: ${aggregateId}`);
     }
-    const hash = this.hashString(aggregateId.asString);
+    const hash = this.hashString(aggregateId.asString());
     const remainder = hash % shardCount;
     return `${aggregateId.typeName}-${remainder}`;
   }
