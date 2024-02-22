@@ -1,7 +1,7 @@
 interface AggregateId {
   typeName: string;
   value: string;
-  asString: string;
+  asString: () => string;
 }
 
 interface Aggregate<
