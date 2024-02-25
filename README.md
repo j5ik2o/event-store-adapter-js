@@ -104,6 +104,10 @@ expect(userAccount3.version).toEqual(2);
 
 See [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md).
 
+## CQRS/Event Sourcing Example
+
+See [j5ik2o/cqrs-es-example-js](https://github.com/j5ik2o/cqrs-es-example-js).
+
 ## License.
 
 MIT License. See [LICENSE](LICENSE) for details.
