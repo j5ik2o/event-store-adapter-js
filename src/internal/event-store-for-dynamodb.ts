@@ -5,6 +5,7 @@ import {
   EventSerializer,
   KeyResolver,
   Logger,
+  OptimisticLockError,
   SnapshotSerializer,
 } from "../types";
 import {
@@ -13,6 +14,7 @@ import {
   Put,
   QueryCommand,
   QueryCommandInput,
+  TransactionCanceledException,
   TransactWriteItemsCommand,
   TransactWriteItemsInput,
   Update,
@@ -309,7 +311,18 @@ class EventStoreForDynamoDB<
     const input: TransactWriteItemsInput = {
       TransactItems: transactWriteItems,
     };
-    await this.dynamodbClient.send(new TransactWriteItemsCommand(input));
+    try {
+      await this.dynamodbClient.send(new TransactWriteItemsCommand(input));
+    } catch (e) {
+      if (
+        e instanceof TransactionCanceledException &&
+        e.CancellationReasons?.some((e) => e.Code == "ConditionalCheckFailed")
+      ) {
+        throw new OptimisticLockError("Optimistic locking failed", e);
+      } else {
+        throw e;
+      }
+    }
     this.logger?.debug(
       `createEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
         aggregate,
@@ -340,7 +353,18 @@ class EventStoreForDynamoDB<
     const input: TransactWriteItemsInput = {
       TransactItems: transactWriteItems,
     };
-    await this.dynamodbClient.send(new TransactWriteItemsCommand(input));
+    try {
+      await this.dynamodbClient.send(new TransactWriteItemsCommand(input));
+    } catch (e) {
+      if (
+        e instanceof TransactionCanceledException &&
+        e.CancellationReasons?.some((e) => e.Code == "ConditionalCheckFailed")
+      ) {
+        throw new OptimisticLockError("Optimistic locking failed", e);
+      } else {
+        throw e;
+      }
+    }
     this.logger?.debug(
       `updateEventAndSnapshotOpt(${JSON.stringify(
         event,
