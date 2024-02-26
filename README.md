@@ -112,14 +112,7 @@ See [j5ik2o/cqrs-es-example-js](https://github.com/j5ik2o/cqrs-es-example-js).
 
 MIT License. See [LICENSE](LICENSE) for details.
 
-## Other language implementations
+## Links
 
-- [for Java](https://github.com/j5ik2o/event-store-adapter-java)
-- [for Scala](https://github.com/j5ik2o/event-store-adapter-scala)
-- [for Kotlin](https://github.com/j5ik2o/event-store-adapter-kotlin)
-- [for Rust](https://github.com/j5ik2o/event-store-adapter-rs)
-- [for Go](https://github.com/j5ik2o/event-store-adapter-go)
-- [for JavaScript/TypeScript](https://github.com/j5ik2o/event-store-adapter-js)
-- [for .NET](https://github.com/j5ik2o/event-store-adapter-dotnet)
-- [for PHP](https://github.com/j5ik2o/event-store-adapter-php)
+- [Common Documents](https://github.com/j5ik2o/event-store-adapter)
 
