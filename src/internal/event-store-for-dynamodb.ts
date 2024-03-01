@@ -209,6 +209,7 @@ class EventStoreForDynamoDB<
       this.keyResolver,
       this.eventSerializer,
       this.snapshotSerializer,
+      this.logger,
     );
   }
 
@@ -229,6 +230,7 @@ class EventStoreForDynamoDB<
       this.keyResolver,
       eventSerializer,
       this.snapshotSerializer,
+      this.logger,
     );
   }
 
@@ -249,6 +251,7 @@ class EventStoreForDynamoDB<
       this.keyResolver,
       this.eventSerializer,
       this.snapshotSerializer,
+      this.logger,
     );
   }
 
@@ -269,6 +272,7 @@ class EventStoreForDynamoDB<
       keyResolver,
       this.eventSerializer,
       this.snapshotSerializer,
+      this.logger,
     );
   }
 
@@ -289,6 +293,26 @@ class EventStoreForDynamoDB<
       this.keyResolver,
       this.eventSerializer,
       snapshotSerializer,
+      this.logger,
+    );
+  }
+
+  withLogger(logger: Logger): EventStoreWithOptions<AID, A, E> {
+    return new EventStoreForDynamoDB(
+      this.dynamodbClient,
+      this.journalTableName,
+      this.snapshotTableName,
+      this.journalAidIndexName,
+      this.snapshotAidIndexName,
+      this.shardCount,
+      this.eventConverter,
+      this.snapshotConverter,
+      this.keepSnapshotCount,
+      this.deleteTtl,
+      this.keyResolver,
+      this.eventSerializer,
+      this.snapshotSerializer,
+      logger,
     );
   }
 

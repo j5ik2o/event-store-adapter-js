@@ -4,6 +4,7 @@ import {
   Event,
   EventSerializer,
   KeyResolver,
+  Logger,
   SnapshotSerializer,
 } from "./types";
 import moment from "moment";
@@ -23,6 +24,8 @@ interface EventStoreOptions<
   withEventSerializer(eventSerializer: EventSerializer<AID, E>): This;
 
   withSnapshotSerializer(snapshotSerializer: SnapshotSerializer<AID, A>): This;
+
+  withLogger(logger: Logger): This;
 }
 
 export { EventStoreOptions };
