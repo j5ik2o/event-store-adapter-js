@@ -318,7 +318,7 @@ class EventStoreForDynamoDB<
 
   private async createEventAndSnapshot(event: E, aggregate: A): Promise<void> {
     this.logger?.debug(
-      `createEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
+      `private createEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
         aggregate,
       )}): start`,
     );
@@ -347,11 +347,7 @@ class EventStoreForDynamoDB<
         throw e;
       }
     }
-    this.logger?.debug(
-      `createEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
-        aggregate,
-      )}): finished`,
-    );
+    this.logger?.debug(`private createEventAndSnapshot(...): finished`);
   }
 
   private async updateEventAndSnapshotOpt(
@@ -360,7 +356,7 @@ class EventStoreForDynamoDB<
     aggregate: A | undefined,
   ): Promise<void> {
     this.logger?.debug(
-      `updateEventAndSnapshotOpt(${JSON.stringify(
+      `private updateEventAndSnapshotOpt(${JSON.stringify(
         event,
       )}, ${version}, ${JSON.stringify(aggregate)}): start`,
     );
@@ -389,15 +385,11 @@ class EventStoreForDynamoDB<
         throw e;
       }
     }
-    this.logger?.debug(
-      `updateEventAndSnapshotOpt(${JSON.stringify(
-        event,
-      )}, ${version}, ${JSON.stringify(aggregate)}): finished`,
-    );
+    this.logger?.debug(`private updateEventAndSnapshotOpt(...): finished`);
   }
 
   private putJournal(event: E): Put {
-    this.logger?.debug(`putSnapshot(${JSON.stringify(event)}): start`);
+    this.logger?.debug(`private putSnapshot(${JSON.stringify(event)}): start`);
     const pkey = this.keyResolver.resolvePartitionKey(
       event.aggregateId,
       this.shardCount,
@@ -420,13 +412,13 @@ class EventStoreForDynamoDB<
       ConditionExpression:
         "attribute_not_exists(pkey) AND attribute_not_exists(skey)",
     };
-    this.logger?.debug(`putSnapshot(${JSON.stringify(event)}): finished`);
+    this.logger?.debug(`private putSnapshot(...): finished`);
     return result;
   }
 
   private putSnapshot(event: E, sequenceNumber: number, aggregate: A): Put {
     this.logger?.debug(
-      `putSnapshot(${JSON.stringify(
+      `private putSnapshot(${JSON.stringify(
         event,
       )}, ${sequenceNumber}, ${JSON.stringify(aggregate)}): start`,
     );
@@ -456,11 +448,8 @@ class EventStoreForDynamoDB<
       ConditionExpression:
         "attribute_not_exists(pkey) AND attribute_not_exists(skey)",
     };
-    this.logger?.debug(
-      `putSnapshot(${JSON.stringify(
-        event,
-      )}, ${sequenceNumber}, ${JSON.stringify(aggregate)}): finished`,
-    );
+    this.logger?.debug("result = " + JSON.stringify(result));
+    this.logger?.debug(`private putSnapshot(...): finished`);
     return result;
   }
 
@@ -471,9 +460,9 @@ class EventStoreForDynamoDB<
     aggregate: A | undefined,
   ): Update {
     this.logger?.debug(
-      `updateSnapshot(${JSON.stringify(
+      `private updateSnapshot(event = ${JSON.stringify(
         event,
-      )}, ${sequenceNumber}, ${version}, ${JSON.stringify(aggregate)}): start`,
+      )}, sequenceNumber = ${sequenceNumber}, version = ${version}, aggregate = ${JSON.stringify(aggregate)}): start`,
     );
     const pkey = this.keyResolver.resolvePartitionKey(
       event.aggregateId,
@@ -529,13 +518,8 @@ class EventStoreForDynamoDB<
         ConditionExpression: "#version=:before_version",
       };
     }
-    this.logger?.debug(
-      `updateSnapshot(${JSON.stringify(
-        event,
-      )}, ${sequenceNumber}, ${version}, ${JSON.stringify(
-        aggregate,
-      )}): finished`,
-    );
+    this.logger?.debug("result = " + JSON.stringify(result));
+    this.logger?.debug(`private updateSnapshot(...): finished`);
     return result;
   }
 
