@@ -4,6 +4,7 @@ import {
   Event,
   EventSerializer,
   KeyResolver,
+  Logger,
   SnapshotSerializer,
 } from "./types";
 import { EventStoreForDynamoDB } from "./internal/event-store-for-dynamodb";
@@ -56,6 +57,7 @@ class EventStoreFactory {
       AID,
       A
     >(),
+    logger: Logger | undefined = undefined,
   ): EventStoreWithOptions<AID, A, E> {
     return new EventStoreForDynamoDB<AID, A, E>(
       dynamodbClient,
@@ -71,6 +73,7 @@ class EventStoreFactory {
       keyResolver,
       eventSerializer,
       snapshotSerializer,
+      logger,
     );
   }
   static ofMemory<
