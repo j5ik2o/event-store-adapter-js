@@ -180,11 +180,7 @@ class EventStoreForDynamoDB<
     if (event.isCreated) {
       await this.createEventAndSnapshot(event, aggregate);
     } else {
-      await this.updateEventAndSnapshotOpt(
-        event,
-        aggregate.sequenceNumber,
-        aggregate,
-      );
+      await this.updateEventAndSnapshotOpt(event, aggregate.version, aggregate);
       await this.tryPurgeExcessSnapshots(event);
     }
     this.logger?.debug(
