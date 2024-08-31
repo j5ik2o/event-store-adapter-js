@@ -1,7 +1,7 @@
-import { UserAccountEvent } from "./user-account-event";
-import { UserAccountId } from "./user-account-id";
+import type { EventStore } from "../../event-store";
 import { UserAccount } from "./user-account";
-import { EventStore } from "../../event-store";
+import type { UserAccountEvent } from "./user-account-event";
+import type { UserAccountId } from "./user-account-id";
 
 class UserAccountRepository {
   constructor(
@@ -24,13 +24,12 @@ class UserAccountRepository {
     const snapshot = await this.eventStore.getLatestSnapshotById(id);
     if (snapshot === undefined) {
       return undefined;
-    } else {
-      const events = await this.eventStore.getEventsByIdSinceSequenceNumber(
-        id,
-        snapshot.sequenceNumber + 1,
-      );
-      return UserAccount.replay(events, snapshot);
     }
+    const events = await this.eventStore.getEventsByIdSinceSequenceNumber(
+      id,
+      snapshot.sequenceNumber + 1,
+    );
+    return UserAccount.replay(events, snapshot);
   }
 }
 

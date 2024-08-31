@@ -1,5 +1,8 @@
-import { Event } from "../../types";
-import { convertJSONToUserAccountId, UserAccountId } from "./user-account-id";
+import type { Event } from "../../types";
+import {
+  type UserAccountId,
+  convertJSONToUserAccountId,
+} from "./user-account-id";
 
 interface UserAccountEvent extends Event<UserAccountId> {}
 
@@ -28,7 +31,7 @@ class UserAccountRenamed implements UserAccountEvent {
   ) {}
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny:
 function convertJSONtoUserAccountEvent(json: any): UserAccountEvent {
   const aggregateId = convertJSONToUserAccountId(json.data.aggregateId);
   switch (json.type) {
@@ -54,7 +57,7 @@ function convertJSONtoUserAccountEvent(json: any): UserAccountEvent {
 }
 
 export {
-  UserAccountEvent,
+  type UserAccountEvent,
   UserAccountCreated,
   UserAccountRenamed,
   convertJSONtoUserAccountEvent,

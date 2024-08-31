@@ -1,9 +1,9 @@
 import {
   CreateTableCommand,
-  CreateTableCommandInput,
+  type CreateTableCommandInput,
   DynamoDBClient,
 } from "@aws-sdk/client-dynamodb";
-import { StartedTestContainer } from "testcontainers";
+import type { StartedTestContainer } from "testcontainers";
 
 function createDynamoDBClient(startedContainer: StartedTestContainer) {
   const port = startedContainer.getMappedPort(4566);

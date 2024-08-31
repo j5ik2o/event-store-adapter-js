@@ -1,4 +1,5 @@
-import {
+import type moment from "moment";
+import type {
   Aggregate,
   AggregateId,
   Event,
@@ -7,7 +8,6 @@ import {
   Logger,
   SnapshotSerializer,
 } from "./types";
-import moment from "moment";
 
 interface EventStoreOptions<
   This extends EventStoreOptions<This, AID, A, E>,
@@ -28,4 +28,4 @@ interface EventStoreOptions<
   withLogger(logger: Logger): This;
 }
 
-export { EventStoreOptions };
+export type { EventStoreOptions };

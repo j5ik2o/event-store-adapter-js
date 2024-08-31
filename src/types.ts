@@ -33,7 +33,7 @@ interface KeyResolver<AID extends AggregateId> {
 
 interface EventSerializer<AID extends AggregateId, E extends Event<AID>> {
   serialize(event: E): Uint8Array;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny:
   deserialize(bytes: Uint8Array, converter: (json: any) => E): E;
 }
 
@@ -42,20 +42,20 @@ interface SnapshotSerializer<
   A extends Aggregate<A, AID>,
 > {
   serialize(aggregate: A): Uint8Array;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny:
   deserialize(bytes: Uint8Array, converter: (json: any) => A): A;
 }
 
 export interface Logger {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny:
   trace?: (...content: any[]) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny:
   debug: (...content: any[]) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny:
   info: (...content: any[]) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny:
   warn: (...content: any[]) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny:
   error: (...content: any[]) => void;
 }
 
@@ -71,11 +71,11 @@ class OptimisticLockError extends Error {
 }
 
 export {
-  AggregateId,
-  Aggregate,
-  Event,
-  KeyResolver,
-  EventSerializer,
-  SnapshotSerializer,
+  type AggregateId,
+  type Aggregate,
+  type Event,
+  type KeyResolver,
+  type EventSerializer,
+  type SnapshotSerializer,
   OptimisticLockError,
 };

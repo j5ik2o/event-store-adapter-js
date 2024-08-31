@@ -1,11 +1,14 @@
-import { Aggregate } from "../../types";
 import { ulid } from "ulid";
-import { convertJSONToUserAccountId, UserAccountId } from "./user-account-id";
+import type { Aggregate } from "../../types";
 import {
   UserAccountCreated,
-  UserAccountEvent,
+  type UserAccountEvent,
   UserAccountRenamed,
 } from "./user-account-event";
+import {
+  type UserAccountId,
+  convertJSONToUserAccountId,
+} from "./user-account-id";
 
 class UserAccount implements Aggregate<UserAccount, UserAccountId> {
   public readonly typeName: string = "UserAccount";
@@ -87,13 +90,12 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
     if (event instanceof UserAccountRenamed) {
       const [result] = this.rename(event.name);
       return result;
-    } else {
-      throw new Error("Unknown event type");
     }
+    throw new Error("Unknown event type");
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny:
 function convertJSONToUserAccount(json: any): UserAccount {
   const id = convertJSONToUserAccountId(json.data.id);
   return new UserAccount(

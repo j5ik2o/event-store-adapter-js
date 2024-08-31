@@ -1,34 +1,34 @@
 import {
-  Aggregate,
-  AggregateId,
-  Event,
-  EventSerializer,
-  KeyResolver,
-  Logger,
-  OptimisticLockError,
-  SnapshotSerializer,
-} from "../types";
-import {
   BatchWriteItemCommand,
-  DynamoDBClient,
-  Put,
+  type DynamoDBClient,
+  type Put,
   QueryCommand,
-  QueryCommandInput,
-  TransactionCanceledException,
+  type QueryCommandInput,
   TransactWriteItemsCommand,
-  TransactWriteItemsInput,
-  Update,
+  type TransactWriteItemsInput,
+  TransactionCanceledException,
+  type Update,
   UpdateItemCommand,
-  UpdateItemInput,
-  WriteRequest,
+  type UpdateItemInput,
+  type WriteRequest,
 } from "@aws-sdk/client-dynamodb";
 import moment from "moment/moment";
+import type { EventStoreWithOptions } from "../event-store-with-options";
+import {
+  type Aggregate,
+  type AggregateId,
+  type Event,
+  type EventSerializer,
+  type KeyResolver,
+  type Logger,
+  OptimisticLockError,
+  type SnapshotSerializer,
+} from "../types";
 import { DefaultKeyResolver } from "./default-key-resolver";
 import {
   JsonEventSerializer,
   JsonSnapshotSerializer,
 } from "./default-serializer";
-import { EventStoreWithOptions } from "../event-store-with-options";
 
 class EventStoreForDynamoDB<
   AID extends AggregateId,
@@ -131,25 +131,24 @@ class EventStoreForDynamoDB<
     );
     if (queryResult.Items === undefined || queryResult.Items.length === 0) {
       return undefined;
-    } else {
-      const item = queryResult.Items[0];
-      const version = item.version.N;
-      if (version === undefined) {
-        throw new Error("Version is undefined");
-      }
-      const payload = item.payload.B;
-      if (payload === undefined) {
-        throw new Error("Payload is undefined");
-      }
-      const result = this.snapshotSerializer.deserialize(
-        payload,
-        this.snapshotConverter,
-      );
-      this.logger?.debug(
-        `getLatestSnapshotById(${JSON.stringify(id)}, ...): finished`,
-      );
-      return result.withVersion(Number(version));
     }
+    const item = queryResult.Items[0];
+    const version = item.version.N;
+    if (version === undefined) {
+      throw new Error("Version is undefined");
+    }
+    const payload = item.payload.B;
+    if (payload === undefined) {
+      throw new Error("Payload is undefined");
+    }
+    const result = this.snapshotSerializer.deserialize(
+      payload,
+      this.snapshotConverter,
+    );
+    this.logger?.debug(
+      `getLatestSnapshotById(${JSON.stringify(id)}, ...): finished`,
+    );
+    return result.withVersion(Number(version));
   }
 
   async persistEvent(event: E, version: number): Promise<void> {
@@ -336,14 +335,13 @@ class EventStoreForDynamoDB<
     } catch (e) {
       if (
         e instanceof TransactionCanceledException &&
-        e.CancellationReasons?.some((e) => e.Code == "ConditionalCheckFailed")
+        e.CancellationReasons?.some((e) => e.Code === "ConditionalCheckFailed")
       ) {
         throw new OptimisticLockError("Optimistic locking failed", e);
-      } else {
-        throw e;
       }
+      throw e;
     }
-    this.logger?.debug(`private createEventAndSnapshot(...): finished`);
+    this.logger?.debug("private createEventAndSnapshot(...): finished");
   }
 
   private async updateEventAndSnapshotOpt(
@@ -374,14 +372,13 @@ class EventStoreForDynamoDB<
     } catch (e) {
       if (
         e instanceof TransactionCanceledException &&
-        e.CancellationReasons?.some((e) => e.Code == "ConditionalCheckFailed")
+        e.CancellationReasons?.some((e) => e.Code === "ConditionalCheckFailed")
       ) {
         throw new OptimisticLockError("Optimistic locking failed", e);
-      } else {
-        throw e;
       }
+      throw e;
     }
-    this.logger?.debug(`private updateEventAndSnapshotOpt(...): finished`);
+    this.logger?.debug("private updateEventAndSnapshotOpt(...): finished");
   }
 
   private putJournal(event: E): Put {
@@ -408,7 +405,7 @@ class EventStoreForDynamoDB<
       ConditionExpression:
         "attribute_not_exists(pkey) AND attribute_not_exists(skey)",
     };
-    this.logger?.debug(`private putSnapshot(...): finished`);
+    this.logger?.debug("private putSnapshot(...): finished");
     return result;
   }
 
@@ -444,8 +441,8 @@ class EventStoreForDynamoDB<
       ConditionExpression:
         "attribute_not_exists(pkey) AND attribute_not_exists(skey)",
     };
-    this.logger?.debug("result = " + JSON.stringify(result));
-    this.logger?.debug(`private putSnapshot(...): finished`);
+    this.logger?.debug(`result = ${JSON.stringify(result)}`);
+    this.logger?.debug("private putSnapshot(...): finished");
     return result;
   }
 
@@ -514,8 +511,8 @@ class EventStoreForDynamoDB<
         ConditionExpression: "#version=:before_version",
       };
     }
-    this.logger?.debug("result = " + JSON.stringify(result));
-    this.logger?.debug(`private updateSnapshot(...): finished`);
+    this.logger?.debug(`result·=·${JSON.stringify(result)}`);
+    this.logger?.debug("private·updateSnapshot(...):·finished");
     return result;
   }
 
@@ -582,16 +579,15 @@ class EventStoreForDynamoDB<
     );
     if (queryResult.Items === undefined || queryResult.Items.length === 0) {
       return undefined;
-    } else {
-      return queryResult.Items.map((item) => {
-        const pkey = item.pkey.S;
-        const skey = item.skey.S;
-        if (pkey === undefined || skey === undefined) {
-          throw new Error("pkey or skey is undefined");
-        }
-        return { pkey, skey };
-      });
     }
+    return queryResult.Items.map((item) => {
+      const pkey = item.pkey.S;
+      const skey = item.skey.S;
+      if (pkey === undefined || skey === undefined) {
+        throw new Error("pkey or skey is undefined");
+      }
+      return { pkey, skey };
+    });
   }
 
   private async updateTtlOfExcessSnapshots(aggregateId: AID) {

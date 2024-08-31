@@ -1,5 +1,5 @@
-import { Aggregate, AggregateId, Event } from "../types";
-import { EventStore } from "../event-store";
+import type { EventStore } from "../event-store";
+import type { Aggregate, AggregateId, Event } from "../types";
 
 class EventStoreForMemory<
   AID extends AggregateId,
@@ -37,10 +37,7 @@ class EventStoreForMemory<
     }
     if (snapshot.id.asString() !== event.aggregateId.asString()) {
       throw new Error(
-        "aggregateId mismatch: snapshot.id = " +
-          snapshot.id.asString() +
-          ", event.aggregateId = " +
-          event.aggregateId.asString(),
+        `aggregateId·mismatch:·snapshot.id·=·${snapshot.id.asString()},·event.aggregateId·=·${event.aggregateId.asString()}`,
       );
     }
     if (snapshot.version !== version) {
