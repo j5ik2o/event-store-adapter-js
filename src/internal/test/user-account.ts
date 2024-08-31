@@ -90,9 +90,8 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
     if (event instanceof UserAccountRenamed) {
       const [result] = this.rename(event.name);
       return result;
-    } else {
-      throw new Error("Unknown event type");
     }
+    throw new Error("Unknown event type");
   }
 }
 

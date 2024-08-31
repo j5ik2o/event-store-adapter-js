@@ -37,10 +37,7 @@ class EventStoreForMemory<
     }
     if (snapshot.id.asString() !== event.aggregateId.asString()) {
       throw new Error(
-        "aggregateId mismatch: snapshot.id = " +
-          snapshot.id.asString() +
-          ", event.aggregateId = " +
-          event.aggregateId.asString(),
+        `aggregateId·mismatch:·snapshot.id·=·${snapshot.id.asString()},·event.aggregateId·=·${event.aggregateId.asString()}`,
       );
     }
     if (snapshot.version !== version) {
