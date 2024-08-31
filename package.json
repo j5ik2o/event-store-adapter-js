@@ -1,6 +1,6 @@
 {
   "name": "event-store-adapter-js",
-  "version": "2.1.34-snapshot.0",
+  "version": "2.1.34-snapshot.1",
   "description": "This library is designed to turn DynamoDB into an Event Store for Event Sourcing.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -18,7 +18,12 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
-  "keywords": ["ddd", "cqrs", "evnet-sourcing", "dynamodb"],
+  "keywords": [
+    "ddd",
+    "cqrs",
+    "evnet-sourcing",
+    "dynamodb"
+  ],
   "author": "Junichi Kato <j5ik2o@gmail.com>",
   "license": "MIT",
   "devDependencies": {
