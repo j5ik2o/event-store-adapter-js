@@ -1,31 +1,33 @@
+import { describe } from "node:test";
+import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   GenericContainer,
-  StartedTestContainer,
-  TestContainer,
+  type StartedTestContainer,
+  type TestContainer,
   Wait,
 } from "testcontainers";
-import { describe } from "node:test";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { EventStoreForDynamoDB } from "./event-store-for-dynamodb";
 import { ulid } from "ulid";
-import { UserAccountId } from "./test/user-account-id";
-import { convertJSONToUserAccount, UserAccount } from "./test/user-account";
-import {
-  convertJSONtoUserAccountEvent,
-  UserAccountEvent,
-} from "./test/user-account-event";
+import { EventStoreForDynamoDB } from "./event-store-for-dynamodb";
 import {
   createDynamoDBClient,
   createJournalTable,
   createSnapshotTable,
 } from "./test/dynamodb-utils";
+import { UserAccount, convertJSONToUserAccount } from "./test/user-account";
+import {
+  type UserAccountEvent,
+  convertJSONtoUserAccountEvent,
+} from "./test/user-account-event";
+import { UserAccountId } from "./test/user-account-id";
 
 afterEach(() => {
   jest.useRealTimers();
 });
 
 describe("EventStoreForDynamoDB", () => {
-  const TEST_TIME_FACTOR = parseFloat(process.env.TEST_TIME_FACTOR ?? "1.0");
+  const TEST_TIME_FACTOR = Number.parseFloat(
+    process.env.TEST_TIME_FACTOR ?? "1.0",
+  );
   const TIMEOUT: number = 10 * 1000 * TEST_TIME_FACTOR;
 
   let container: TestContainer;

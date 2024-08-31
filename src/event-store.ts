@@ -1,4 +1,14 @@
+import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import type moment from "moment";
+import type { EventStoreWithOptions } from "./event-store-with-options";
+import { DefaultKeyResolver } from "./internal/default-key-resolver";
 import {
+  JsonEventSerializer,
+  JsonSnapshotSerializer,
+} from "./internal/default-serializer";
+import { EventStoreForDynamoDB } from "./internal/event-store-for-dynamodb";
+import { EventStoreForMemory } from "./internal/event-store-for-memory";
+import type {
   Aggregate,
   AggregateId,
   Event,
@@ -7,16 +17,6 @@ import {
   Logger,
   SnapshotSerializer,
 } from "./types";
-import { EventStoreForDynamoDB } from "./internal/event-store-for-dynamodb";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import moment from "moment";
-import { DefaultKeyResolver } from "./internal/default-key-resolver";
-import {
-  JsonEventSerializer,
-  JsonSnapshotSerializer,
-} from "./internal/default-serializer";
-import { EventStoreForMemory } from "./internal/event-store-for-memory";
-import { EventStoreWithOptions } from "./event-store-with-options";
 
 interface EventStore<
   AID extends AggregateId,
@@ -88,4 +88,4 @@ class EventStoreFactory {
   }
 }
 
-export { EventStore, EventStoreFactory };
+export { type EventStore, EventStoreFactory };

@@ -1,5 +1,5 @@
-import { Aggregate, AggregateId, Event } from "../types";
-import { EventStore } from "../event-store";
+import type { EventStore } from "../event-store";
+import type { Aggregate, AggregateId, Event } from "../types";
 
 class EventStoreForMemory<
   AID extends AggregateId,

@@ -1,4 +1,4 @@
-import { AggregateId, KeyResolver } from "../types";
+import type { AggregateId, KeyResolver } from "../types";
 
 class DefaultKeyResolver<AID extends AggregateId> implements KeyResolver<AID> {
   private hashString(str: string): number {

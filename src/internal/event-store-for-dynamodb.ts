@@ -1,34 +1,34 @@
 import {
-  Aggregate,
-  AggregateId,
-  Event,
-  EventSerializer,
-  KeyResolver,
-  Logger,
-  OptimisticLockError,
-  SnapshotSerializer,
-} from "../types";
-import {
   BatchWriteItemCommand,
-  DynamoDBClient,
-  Put,
+  type DynamoDBClient,
+  type Put,
   QueryCommand,
-  QueryCommandInput,
-  TransactionCanceledException,
+  type QueryCommandInput,
   TransactWriteItemsCommand,
-  TransactWriteItemsInput,
-  Update,
+  type TransactWriteItemsInput,
+  TransactionCanceledException,
+  type Update,
   UpdateItemCommand,
-  UpdateItemInput,
-  WriteRequest,
+  type UpdateItemInput,
+  type WriteRequest,
 } from "@aws-sdk/client-dynamodb";
 import moment from "moment/moment";
+import type { EventStoreWithOptions } from "../event-store-with-options";
+import {
+  type Aggregate,
+  type AggregateId,
+  type Event,
+  type EventSerializer,
+  type KeyResolver,
+  type Logger,
+  OptimisticLockError,
+  type SnapshotSerializer,
+} from "../types";
 import { DefaultKeyResolver } from "./default-key-resolver";
 import {
   JsonEventSerializer,
   JsonSnapshotSerializer,
 } from "./default-serializer";
-import { EventStoreWithOptions } from "../event-store-with-options";
 
 class EventStoreForDynamoDB<
   AID extends AggregateId,

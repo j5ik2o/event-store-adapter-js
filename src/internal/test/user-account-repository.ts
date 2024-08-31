@@ -1,7 +1,7 @@
-import { UserAccountEvent } from "./user-account-event";
-import { UserAccountId } from "./user-account-id";
+import type { EventStore } from "../../event-store";
 import { UserAccount } from "./user-account";
-import { EventStore } from "../../event-store";
+import type { UserAccountEvent } from "./user-account-event";
+import type { UserAccountId } from "./user-account-id";
 
 class UserAccountRepository {
   constructor(

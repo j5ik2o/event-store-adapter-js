@@ -1,4 +1,4 @@
-import { AggregateId } from "../../types";
+import type { AggregateId } from "../../types";
 
 class UserAccountId implements AggregateId {
   public readonly typeName = "user-account";
@@ -9,7 +9,7 @@ class UserAccountId implements AggregateId {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny:
 function convertJSONToUserAccountId(json: any): UserAccountId {
   return new UserAccountId(json.value);
 }
