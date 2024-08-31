@@ -3,6 +3,9 @@
   "organizeImports": {
     "enabled": true
   },
+  "files": {
+    "include": ["./**/*.ts"]
+  },
   "vcs": {
     "enabled": true,
     "clientKind": "git",
