@@ -33,7 +33,7 @@ interface KeyResolver<AID extends AggregateId> {
 
 interface EventSerializer<AID extends AggregateId, E extends Event<AID>> {
   serialize(event: E): Uint8Array;
-  // biome-ignore lint/suspicious/noExplicitAny:
+  // biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
   deserialize(bytes: Uint8Array, converter: (json: any) => E): E;
 }
 
@@ -42,20 +42,20 @@ interface SnapshotSerializer<
   A extends Aggregate<A, AID>,
 > {
   serialize(aggregate: A): Uint8Array;
-  // biome-ignore lint/suspicious/noExplicitAny:
+  // biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
   deserialize(bytes: Uint8Array, converter: (json: any) => A): A;
 }
 
 export interface Logger {
-  // biome-ignore lint/suspicious/noExplicitAny:
+  // biome-ignore lint/suspicious/noExplicitAny: Logger accepts any content type
   trace?: (...content: any[]) => void;
-  // biome-ignore lint/suspicious/noExplicitAny:
+  // biome-ignore lint/suspicious/noExplicitAny: Logger accepts any content type
   debug: (...content: any[]) => void;
-  // biome-ignore lint/suspicious/noExplicitAny:
+  // biome-ignore lint/suspicious/noExplicitAny: Logger accepts any content type
   info: (...content: any[]) => void;
-  // biome-ignore lint/suspicious/noExplicitAny:
+  // biome-ignore lint/suspicious/noExplicitAny: Logger accepts any content type
   warn: (...content: any[]) => void;
-  // biome-ignore lint/suspicious/noExplicitAny:
+  // biome-ignore lint/suspicious/noExplicitAny: Logger accepts any content type
   error: (...content: any[]) => void;
 }
 

@@ -9,7 +9,7 @@ class UserAccountId implements AggregateId {
   }
 }
 
-// biome-ignore lint/suspicious/noExplicitAny:
+// biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
 function convertJSONToUserAccountId(json: any): UserAccountId {
   return new UserAccountId(json.value);
 }

@@ -1,7 +1,7 @@
 import type { Event } from "../../types";
 import {
-  type UserAccountId,
   convertJSONToUserAccountId,
+  type UserAccountId,
 } from "./user-account-id";
 
 interface UserAccountEvent extends Event<UserAccountId> {}
@@ -31,7 +31,7 @@ class UserAccountRenamed implements UserAccountEvent {
   ) {}
 }
 
-// biome-ignore lint/suspicious/noExplicitAny:
+// biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
 function convertJSONtoUserAccountEvent(json: any): UserAccountEvent {
   const aggregateId = convertJSONToUserAccountId(json.data.aggregateId);
   switch (json.type) {
