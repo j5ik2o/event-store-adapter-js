@@ -6,8 +6,8 @@ import {
   UserAccountRenamed,
 } from "./user-account-event";
 import {
-  type UserAccountId,
   convertJSONToUserAccountId,
+  type UserAccountId,
 } from "./user-account-id";
 
 class UserAccount implements Aggregate<UserAccount, UserAccountId> {
@@ -95,7 +95,7 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
   }
 }
 
-// biome-ignore lint/suspicious/noExplicitAny:
+// biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
 function convertJSONToUserAccount(json: any): UserAccount {
   const id = convertJSONToUserAccountId(json.data.id);
   return new UserAccount(

@@ -13,10 +13,10 @@ import {
   createJournalTable,
   createSnapshotTable,
 } from "./test/dynamodb-utils";
-import { UserAccount, convertJSONToUserAccount } from "./test/user-account";
+import { convertJSONToUserAccount, UserAccount } from "./test/user-account";
 import {
-  type UserAccountEvent,
   convertJSONtoUserAccountEvent,
+  type UserAccountEvent,
 } from "./test/user-account-event";
 import { UserAccountId } from "./test/user-account-id";
 
