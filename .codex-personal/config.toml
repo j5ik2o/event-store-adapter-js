@@ -1,5 +1,5 @@
 model = "gpt-5.4"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "high"
 hide_agent_reasoning = true
 network_access = true
 web_search = "live"
@@ -41,3 +41,6 @@ args = ["-lc", "export HOME=\"$PWD/.serena-home\"; mkdir -p \"$HOME\"; exec uvx 
 [tui]
 status_line = ["current-dir", "git-branch"]
 
+
+[projects."/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/event-store-adapter-js"]
+trust_level = "trusted"
