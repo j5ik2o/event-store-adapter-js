@@ -57,8 +57,8 @@ function convertJSONtoUserAccountEvent(json: any): UserAccountEvent {
 }
 
 export {
-  type UserAccountEvent,
-  UserAccountCreated,
-  UserAccountRenamed,
   convertJSONtoUserAccountEvent,
+  UserAccountCreated,
+  type UserAccountEvent,
+  UserAccountRenamed,
 };

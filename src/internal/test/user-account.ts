@@ -106,4 +106,4 @@ function convertJSONToUserAccount(json: any): UserAccount {
   );
 }
 
-export { UserAccount, convertJSONToUserAccount };
+export { convertJSONToUserAccount, UserAccount };

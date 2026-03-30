@@ -71,11 +71,11 @@ class OptimisticLockError extends Error {
 }
 
 export {
-  type AggregateId,
   type Aggregate,
+  type AggregateId,
   type Event,
-  type KeyResolver,
   type EventSerializer,
-  type SnapshotSerializer,
+  type KeyResolver,
   OptimisticLockError,
+  type SnapshotSerializer,
 };

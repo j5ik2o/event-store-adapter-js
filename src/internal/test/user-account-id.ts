@@ -14,4 +14,4 @@ function convertJSONToUserAccountId(json: any): UserAccountId {
   return new UserAccountId(json.value);
 }
 
-export { UserAccountId, convertJSONToUserAccountId };
+export { convertJSONToUserAccountId, UserAccountId };
