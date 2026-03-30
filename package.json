@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc && rm -f dist/internal/*.test.d.ts && rm -f dist/internal/*.test.js && rm -fr dist/internal/test",
-    "test": "jest --no-cache",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest --no-cache",
     "lint": "biome check src/",
     "fmt": "biome format src/",
     "fix": "biome check --write src/",
