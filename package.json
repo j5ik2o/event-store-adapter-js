@@ -7,9 +7,9 @@
   "scripts": {
     "build": "tsc && rm -f dist/internal/*.test.d.ts && rm -f dist/internal/*.test.js && rm -fr dist/internal/test",
     "test": "jest --no-cache",
-    "lint": "biome check",
-    "fmt": "biome format",
-    "fix": "biome check --write",
+    "lint": "biome check src/",
+    "fmt": "biome format src/",
+    "fix": "biome check --write src/",
     "clean": "rimraf ./dist"
   },
   "repository": {
