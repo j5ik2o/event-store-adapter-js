@@ -2,7 +2,17 @@
   "$schema": "https://biomejs.dev/schemas/2.2.3/schema.json",
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "files": {
-    "includes": ["**/*.ts"]
+    "includes": ["**/*.ts"],
+    "experimentalScannerIgnores": [
+      ".agents/**",
+      ".claude/**",
+      ".codex/**",
+      ".cursor/**",
+      ".gemini/**",
+      ".kiro/**",
+      ".mcp.json",
+      "references/**"
+    ]
   },
   "vcs": {
     "enabled": true,
