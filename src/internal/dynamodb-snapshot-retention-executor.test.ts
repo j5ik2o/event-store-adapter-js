@@ -79,6 +79,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       "#pkey, #skey",
     );
     expect(snapshotKeyQueries[0].input.ScanIndexForward).toBe(true);
+    expect(snapshotKeyQueries[0].input.Limit).toBe(1000);
     expect(snapshotKeyQueries[0].input.FilterExpression).toBeUndefined();
   });
 
@@ -379,31 +380,24 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
   });
 
   test("reports ttl update failures after all chunk requests settle", async () => {
+    const snapshotItems = Array.from({ length: 27 }, (_, index) => {
+      return {
+        pkey: { S: `snapshot-pkey-${index + 1}` },
+        skey: { S: `snapshot-skey-${index + 1}` },
+      };
+    });
     let updateAttemptCount = 0;
     const dynamodbClient = {
       send: jest.fn(async (command: unknown) => {
         if (command instanceof QueryCommand) {
           return {
-            Items: [
-              {
-                pkey: { S: "snapshot-pkey-1" },
-                skey: { S: "snapshot-skey-1" },
-              },
-              {
-                pkey: { S: "snapshot-pkey-2" },
-                skey: { S: "snapshot-skey-2" },
-              },
-              {
-                pkey: { S: "snapshot-pkey-3" },
-                skey: { S: "snapshot-skey-3" },
-              },
-            ],
+            Items: snapshotItems,
           };
         }
         if (command instanceof UpdateItemCommand) {
           updateAttemptCount += 1;
           const pkey = command.input.Key?.pkey?.S;
-          if (pkey === "snapshot-pkey-1" || pkey === "snapshot-pkey-2") {
+          if (pkey === "snapshot-pkey-1" || pkey === "snapshot-pkey-27") {
             throw new Error(`ttl update failed: ${pkey}`);
           }
         }
@@ -416,14 +410,31 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       "snapshot-aid-index",
     );
 
-    await expect(
-      executor.purgeExcessSnapshots(
-        new TestAggregateId("1"),
-        0,
-        moment.duration(1, "hour"),
-      ),
-    ).rejects.toThrow("Failed to update TTL for 2 snapshot items");
-    expect(updateAttemptCount).toBe(3);
+    const retention = executor.purgeExcessSnapshots(
+      new TestAggregateId("1"),
+      0,
+      moment.duration(1, "hour"),
+    );
+
+    await expect(retention).rejects.toThrow(
+      "Failed to update TTL for 2 snapshot items",
+    );
+    try {
+      await retention;
+    } catch (e) {
+      expect(e).toBeInstanceOf(AggregateError);
+      const aggregateError = e as AggregateError;
+      const messages = aggregateError.errors.map((error) => {
+        return error instanceof Error ? error.message : String(error);
+      });
+      expect(messages).toEqual(
+        expect.arrayContaining([
+          "ttl update failed: snapshot-pkey-1",
+          "ttl update failed: snapshot-pkey-27",
+        ]),
+      );
+    }
+    expect(updateAttemptCount).toBe(27);
   });
 
   test("ignores ttl update when snapshot was already deleted", async () => {

@@ -20,6 +20,7 @@ type SnapshotKey = {
 
 const MAX_BATCH_WRITE_ITEM_COUNT = 25;
 const MAX_TTL_UPDATE_CONCURRENCY = 25;
+const EXCESS_SNAPSHOT_QUERY_LIMIT = 1000;
 // Keep retention bounded while allowing short DynamoDB throttle bursts to clear.
 const MAX_UNPROCESSED_ITEM_RETRY_COUNT = 5;
 const UNPROCESSED_ITEM_RETRY_BASE_DELAY_MILLIS = 50;
@@ -55,7 +56,8 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     keepSnapshotCount: number,
     onlyActiveTtl: boolean,
   ): Promise<SnapshotKey[]> {
-    const keys: SnapshotKey[] = [];
+    const excessKeys: SnapshotKey[] = [];
+    const keptKeys: SnapshotKey[] = [];
     let exclusiveStartKey: Record<string, AttributeValue> | undefined;
     do {
       const request = this.createSnapshotKeyQuery(
@@ -67,11 +69,20 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
         new QueryCommand(request),
       );
       if (queryResult.Items !== undefined) {
-        keys.push(...queryResult.Items.map((item) => this.toSnapshotKey(item)));
+        for (const key of queryResult.Items.map((item) =>
+          this.toSnapshotKey(item),
+        )) {
+          keptKeys.push(key);
+          const excessKey =
+            keptKeys.length > keepSnapshotCount ? keptKeys.shift() : undefined;
+          if (excessKey !== undefined) {
+            excessKeys.push(excessKey);
+          }
+        }
       }
       exclusiveStartKey = queryResult.LastEvaluatedKey;
     } while (exclusiveStartKey !== undefined);
-    return keys.slice(0, Math.max(0, keys.length - keepSnapshotCount));
+    return excessKeys;
   }
 
   private createSnapshotKeyQuery(
@@ -112,6 +123,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       ProjectionExpression: "#pkey, #skey",
       ScanIndexForward: true,
       ExclusiveStartKey: exclusiveStartKey,
+      Limit: EXCESS_SNAPSHOT_QUERY_LIMIT,
       ...activeTtlAttributes,
     };
   }
@@ -139,43 +151,61 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       return;
     }
     const ttl = moment().add(deleteTtl).unix().toString();
-    for (
-      let index = 0;
-      index < keys.length;
-      index += MAX_TTL_UPDATE_CONCURRENCY
-    ) {
-      const results = await Promise.allSettled(
-        keys.slice(index, index + MAX_TTL_UPDATE_CONCURRENCY).map((key) => {
-          const request: UpdateItemInput = {
-            TableName: this.snapshotTableName,
-            Key: {
-              pkey: { S: key.pkey },
-              skey: { S: key.skey },
-            },
-            UpdateExpression: "SET #ttl = :ttl",
-            ExpressionAttributeNames: {
-              "#ttl": "ttl",
-            },
-            ExpressionAttributeValues: {
-              ":ttl": { N: ttl },
-            },
-            ConditionExpression: "attribute_exists(pkey)",
-          };
-          return this.sendUpdateTtlRequest(request);
-        }),
+    await this.sendUpdateTtlRequests(keys, ttl);
+  }
+
+  private async sendUpdateTtlRequests(
+    keys: SnapshotKey[],
+    ttl: string,
+  ): Promise<void> {
+    const failures: unknown[] = [];
+    let nextKeyIndex = 0;
+    const workerCount = Math.min(keys.length, MAX_TTL_UPDATE_CONCURRENCY);
+    await Promise.all(
+      Array.from({ length: workerCount }, async () => {
+        while (nextKeyIndex < keys.length) {
+          const key = keys[nextKeyIndex];
+          nextKeyIndex += 1;
+          if (key === undefined) {
+            continue;
+          }
+          try {
+            await this.sendUpdateTtlRequest(
+              this.createUpdateTtlRequest(key, ttl),
+            );
+          } catch (e) {
+            failures.push(e);
+          }
+        }
+      }),
+    );
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        `Failed to update TTL for ${failures.length} snapshot items`,
       );
-      const failures = results.filter(
-        (result): result is PromiseRejectedResult => {
-          return result.status === "rejected";
-        },
-      );
-      if (failures.length > 0) {
-        throw new Error(
-          `Failed to update TTL for ${failures.length} snapshot items`,
-          { cause: failures[0].reason },
-        );
-      }
     }
+  }
+
+  private createUpdateTtlRequest(
+    key: SnapshotKey,
+    ttl: string,
+  ): UpdateItemInput {
+    return {
+      TableName: this.snapshotTableName,
+      Key: {
+        pkey: { S: key.pkey },
+        skey: { S: key.skey },
+      },
+      UpdateExpression: "SET #ttl = :ttl",
+      ExpressionAttributeNames: {
+        "#ttl": "ttl",
+      },
+      ExpressionAttributeValues: {
+        ":ttl": { N: ttl },
+      },
+      ConditionExpression: "attribute_exists(pkey)",
+    };
   }
 
   private async deleteExcessSnapshots(
