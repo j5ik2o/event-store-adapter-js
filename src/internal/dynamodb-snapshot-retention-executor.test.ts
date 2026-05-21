@@ -228,7 +228,11 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     ]);
   });
 
-  test("rejects non-finite keep snapshot count", async () => {
+  test.each([
+    [Number.NaN, "NaN"],
+    [Number.POSITIVE_INFINITY, "Infinity"],
+    [Number.NEGATIVE_INFINITY, "-Infinity"],
+  ])("rejects non-finite keep snapshot count %s", async (keepSnapshotCount, expectedValue) => {
     const sentCommands: unknown[] = [];
     const dynamodbClient = {
       send: jest.fn(async (command: unknown) => {
@@ -259,10 +263,10 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     await expect(
       executor.purgeExcessSnapshots(
         new TestAggregateId("1"),
-        Number.NaN,
+        keepSnapshotCount,
         undefined,
       ),
-    ).rejects.toThrow("keepSnapshotCount must be finite");
+    ).rejects.toThrow(`keepSnapshotCount must be finite, got ${expectedValue}`);
     expect(sentCommands).toHaveLength(0);
   });
 

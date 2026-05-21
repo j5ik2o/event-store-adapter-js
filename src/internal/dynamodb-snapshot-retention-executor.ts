@@ -40,28 +40,30 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     if (keepSnapshotCount === undefined) {
       return;
     }
+    const keepCount = this.normalizeKeepSnapshotCount(keepSnapshotCount);
     if (deleteTtl === undefined) {
-      await this.deleteExcessSnapshots(aggregateId, keepSnapshotCount);
+      await this.deleteExcessSnapshots(aggregateId, keepCount);
       return;
     }
-    await this.updateTtlOfExcessSnapshots(
-      aggregateId,
-      keepSnapshotCount,
-      deleteTtl,
-    );
+    await this.updateTtlOfExcessSnapshots(aggregateId, keepCount, deleteTtl);
+  }
+
+  private normalizeKeepSnapshotCount(keepSnapshotCount: number): number {
+    if (!Number.isFinite(keepSnapshotCount)) {
+      throw new Error(
+        `keepSnapshotCount must be finite, got ${keepSnapshotCount}`,
+      );
+    }
+    return Math.max(0, Math.floor(keepSnapshotCount));
   }
 
   private async getExcessSnapshotKeys(
     aggregateId: AID,
-    keepSnapshotCount: number,
+    keepCount: number,
     onlyActiveTtl: boolean,
   ): Promise<SnapshotKey[]> {
     const excessKeys: SnapshotKey[] = [];
     const keptKeys: SnapshotKey[] = [];
-    if (!Number.isFinite(keepSnapshotCount)) {
-      throw new Error("keepSnapshotCount must be finite");
-    }
-    const keepCount = Math.max(0, Math.floor(keepSnapshotCount));
     let nextKeptKeyIndex = 0;
     let exclusiveStartKey: Record<string, AttributeValue> | undefined;
     do {
