@@ -78,7 +78,142 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     const snapshotKeyQuery = sentCommands.filter((command) => {
       return command instanceof QueryCommand;
     })[1] as QueryCommand;
+    expect(snapshotKeyQuery.input.ScanIndexForward).toBe(true);
     expect(snapshotKeyQuery.input.FilterExpression).toBeUndefined();
+  });
+
+  test("collects excess snapshot keys across query pages", async () => {
+    const sentCommands: unknown[] = [];
+    const dynamodbClient = {
+      send: jest.fn(async (command: unknown) => {
+        sentCommands.push(command);
+        if (command instanceof QueryCommand) {
+          if (command.input.Select === "COUNT") {
+            return { Count: 4 };
+          }
+          if (command.input.ExclusiveStartKey === undefined) {
+            return {
+              Items: [
+                {
+                  pkey: { S: "oldest-pkey-1" },
+                  skey: { S: "oldest-skey-1" },
+                },
+              ],
+              LastEvaluatedKey: {
+                pkey: { S: "cursor-pkey" },
+                skey: { S: "cursor-skey" },
+              },
+            };
+          }
+          return {
+            Items: [
+              {
+                pkey: { S: "oldest-pkey-2" },
+                skey: { S: "oldest-skey-2" },
+              },
+            ],
+          };
+        }
+        return {};
+      }),
+    } as unknown as DynamoDBClient;
+    const executor = new DynamoDBSnapshotRetentionExecutor(
+      dynamodbClient,
+      "snapshot",
+      "snapshot-aid-index",
+    );
+
+    await executor.purgeExcessSnapshots(new TestAggregateId("1"), 1, undefined);
+
+    const deleteCommand = sentCommands.find((command) => {
+      return command instanceof BatchWriteItemCommand;
+    }) as BatchWriteItemCommand;
+    expect(deleteCommand.input.RequestItems?.snapshot).toEqual([
+      {
+        DeleteRequest: {
+          Key: {
+            pkey: { S: "oldest-pkey-1" },
+            skey: { S: "oldest-skey-1" },
+          },
+        },
+      },
+      {
+        DeleteRequest: {
+          Key: {
+            pkey: { S: "oldest-pkey-2" },
+            skey: { S: "oldest-skey-2" },
+          },
+        },
+      },
+    ]);
+    const snapshotKeyQueries = sentCommands.filter((command) => {
+      return (
+        command instanceof QueryCommand && command.input.Select !== "COUNT"
+      );
+    }) as QueryCommand[];
+    expect(snapshotKeyQueries).toHaveLength(2);
+    expect(snapshotKeyQueries[1].input.ExclusiveStartKey).toEqual({
+      pkey: { S: "cursor-pkey" },
+      skey: { S: "cursor-skey" },
+    });
+  });
+
+  test("accumulates snapshot count across query pages", async () => {
+    const sentCommands: unknown[] = [];
+    const dynamodbClient = {
+      send: jest.fn(async (command: unknown) => {
+        sentCommands.push(command);
+        if (command instanceof QueryCommand) {
+          if (command.input.Select === "COUNT") {
+            if (command.input.ExclusiveStartKey === undefined) {
+              return {
+                Count: 2,
+                LastEvaluatedKey: {
+                  pkey: { S: "cursor-pkey" },
+                  skey: { S: "cursor-skey" },
+                },
+              };
+            }
+            return { Count: 2 };
+          }
+          return {
+            Items: [
+              {
+                pkey: { S: "oldest-pkey-1" },
+                skey: { S: "oldest-skey-1" },
+              },
+              {
+                pkey: { S: "oldest-pkey-2" },
+                skey: { S: "oldest-skey-2" },
+              },
+            ],
+          };
+        }
+        return {};
+      }),
+    } as unknown as DynamoDBClient;
+    const executor = new DynamoDBSnapshotRetentionExecutor(
+      dynamodbClient,
+      "snapshot",
+      "snapshot-aid-index",
+    );
+
+    await executor.purgeExcessSnapshots(new TestAggregateId("1"), 1, undefined);
+
+    const countQueries = sentCommands.filter((command) => {
+      return (
+        command instanceof QueryCommand && command.input.Select === "COUNT"
+      );
+    }) as QueryCommand[];
+    expect(countQueries).toHaveLength(2);
+    expect(countQueries[1].input.ExclusiveStartKey).toEqual({
+      pkey: { S: "cursor-pkey" },
+      skey: { S: "cursor-skey" },
+    });
+    const deleteCommand = sentCommands.find((command) => {
+      return command instanceof BatchWriteItemCommand;
+    }) as BatchWriteItemCommand;
+    expect(deleteCommand.input.RequestItems?.snapshot).toHaveLength(2);
   });
 
   test("retries unprocessed snapshot deletes", async () => {

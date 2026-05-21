@@ -1,4 +1,5 @@
 import {
+  type AttributeValue,
   BatchWriteItemCommand,
   type BatchWriteItemCommandOutput,
   type DynamoDBClient,
@@ -46,29 +47,64 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   }
 
   private async getSnapshotCount(aggregateId: AID): Promise<number> {
-    const request: QueryCommandInput = {
-      TableName: this.snapshotTableName,
-      IndexName: this.snapshotAidIndexName,
-      KeyConditionExpression: "#aid = :aid",
-      ExpressionAttributeNames: {
-        "#aid": "aid",
-      },
-      ExpressionAttributeValues: {
-        ":aid": { S: aggregateId.asString() },
-      },
-      Select: "COUNT",
-    };
-    const queryResult = await this.dynamodbClient.send(
-      new QueryCommand(request),
-    );
-    return queryResult.Count ?? 0;
+    let count = 0;
+    let exclusiveStartKey: Record<string, AttributeValue> | undefined;
+    do {
+      const request: QueryCommandInput = {
+        TableName: this.snapshotTableName,
+        IndexName: this.snapshotAidIndexName,
+        KeyConditionExpression: "#aid = :aid",
+        ExpressionAttributeNames: {
+          "#aid": "aid",
+        },
+        ExpressionAttributeValues: {
+          ":aid": { S: aggregateId.asString() },
+        },
+        Select: "COUNT",
+        ExclusiveStartKey: exclusiveStartKey,
+      };
+      const queryResult = await this.dynamodbClient.send(
+        new QueryCommand(request),
+      );
+      count += queryResult.Count ?? 0;
+      exclusiveStartKey = queryResult.LastEvaluatedKey;
+    } while (exclusiveStartKey !== undefined);
+    return count;
   }
 
-  private async getLastSnapshotKeys(
+  private async getOldestSnapshotKeys(
     aggregateId: AID,
     limit: number,
     onlyActiveTtl: boolean,
   ): Promise<SnapshotKey[]> {
+    const result: SnapshotKey[] = [];
+    let exclusiveStartKey: Record<string, AttributeValue> | undefined;
+    do {
+      const request = this.createSnapshotKeyQuery(
+        aggregateId,
+        limit - result.length,
+        onlyActiveTtl,
+        exclusiveStartKey,
+      );
+      const queryResult = await this.dynamodbClient.send(
+        new QueryCommand(request),
+      );
+      if (queryResult.Items !== undefined) {
+        result.push(
+          ...queryResult.Items.map((item) => this.toSnapshotKey(item)),
+        );
+      }
+      exclusiveStartKey = queryResult.LastEvaluatedKey;
+    } while (result.length < limit && exclusiveStartKey !== undefined);
+    return result;
+  }
+
+  private createSnapshotKeyQuery(
+    aggregateId: AID,
+    limit: number,
+    onlyActiveTtl: boolean,
+    exclusiveStartKey: Record<string, AttributeValue> | undefined,
+  ): QueryCommandInput {
     const names = {
       "#aid": "aid",
       "#seq_nr": "seq_nr",
@@ -77,40 +113,40 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       ":aid": { S: aggregateId.asString() },
       ":seq_nr": { N: "0" },
     };
-    const request: QueryCommandInput = {
+    const activeTtlAttributes = onlyActiveTtl
+      ? {
+          FilterExpression: "#ttl = :ttl",
+          ExpressionAttributeNames: {
+            ...names,
+            "#ttl": "ttl",
+          },
+          ExpressionAttributeValues: {
+            ...values,
+            ":ttl": { N: "0" },
+          },
+        }
+      : {
+          ExpressionAttributeNames: names,
+          ExpressionAttributeValues: values,
+        };
+    return {
       TableName: this.snapshotTableName,
       IndexName: this.snapshotAidIndexName,
       KeyConditionExpression: "#aid = :aid AND #seq_nr > :seq_nr",
-      ExpressionAttributeNames: { ...names },
-      ExpressionAttributeValues: { ...values },
-      ScanIndexForward: false,
+      ScanIndexForward: true,
       Limit: limit,
+      ExclusiveStartKey: exclusiveStartKey,
+      ...activeTtlAttributes,
     };
-    if (onlyActiveTtl) {
-      request.FilterExpression = "#ttl = :ttl";
-      request.ExpressionAttributeNames = {
-        ...names,
-        "#ttl": "ttl",
-      };
-      request.ExpressionAttributeValues = {
-        ...values,
-        ":ttl": { N: "0" },
-      };
+  }
+
+  private toSnapshotKey(item: Record<string, AttributeValue>): SnapshotKey {
+    const pkey = item.pkey.S;
+    const skey = item.skey.S;
+    if (pkey === undefined || skey === undefined) {
+      throw new Error("pkey or skey is undefined");
     }
-    const queryResult = await this.dynamodbClient.send(
-      new QueryCommand(request),
-    );
-    if (queryResult.Items === undefined || queryResult.Items.length === 0) {
-      return [];
-    }
-    return queryResult.Items.map((item) => {
-      const pkey = item.pkey.S;
-      const skey = item.skey.S;
-      if (pkey === undefined || skey === undefined) {
-        throw new Error("pkey or skey is undefined");
-      }
-      return { pkey, skey };
-    });
+    return { pkey, skey };
   }
 
   private async updateTtlOfExcessSnapshots(
@@ -125,7 +161,11 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     if (excessCount <= 0) {
       return;
     }
-    const keys = await this.getLastSnapshotKeys(aggregateId, excessCount, true);
+    const keys = await this.getOldestSnapshotKeys(
+      aggregateId,
+      excessCount,
+      true,
+    );
     if (keys.length === 0) {
       return;
     }
@@ -162,7 +202,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     if (excessCount <= 0) {
       return;
     }
-    const keys = await this.getLastSnapshotKeys(
+    const keys = await this.getOldestSnapshotKeys(
       aggregateId,
       excessCount,
       false,
