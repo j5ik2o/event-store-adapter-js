@@ -99,10 +99,11 @@ describe("DynamoDBEventStore", () => {
   });
 
   test.each([
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-    -1,
-  ])("rejects invalid deleteTtlMillis %s", (deleteTtlMillis) => {
+    [Number.NaN, "deleteTtlMillis must be finite"],
+    [Number.POSITIVE_INFINITY, "deleteTtlMillis must be finite"],
+    [-1, "deleteTtlMillis must be non-negative"],
+    [-0, "deleteTtlMillis must be non-negative"],
+  ])("rejects invalid deleteTtlMillis %s", (deleteTtlMillis, message) => {
     expect(() => {
       new DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>({
         client: {} as DynamoDBClient,
@@ -116,7 +117,7 @@ describe("DynamoDBEventStore", () => {
         snapshotConverter: convertJSONToUserAccount,
         deleteTtlMillis,
       });
-    }).toThrow("deleteTtlMillis must be a non-negative finite number");
+    }).toThrow(message);
   });
 
   test(
