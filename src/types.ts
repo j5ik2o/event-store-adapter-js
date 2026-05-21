@@ -33,8 +33,7 @@ interface KeyResolver<AID extends AggregateId> {
 
 interface EventSerializer<AID extends AggregateId, E extends Event<AID>> {
   serialize(event: E): Uint8Array;
-  // biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
-  deserialize(bytes: Uint8Array, converter: (json: any) => E): E;
+  deserialize(bytes: Uint8Array, converter: (json: unknown) => E): E;
 }
 
 interface SnapshotSerializer<
@@ -42,8 +41,7 @@ interface SnapshotSerializer<
   A extends Aggregate<A, AID>,
 > {
   serialize(aggregate: A): Uint8Array;
-  // biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
-  deserialize(bytes: Uint8Array, converter: (json: any) => A): A;
+  deserialize(bytes: Uint8Array, converter: (json: unknown) => A): A;
 }
 
 export interface Logger {

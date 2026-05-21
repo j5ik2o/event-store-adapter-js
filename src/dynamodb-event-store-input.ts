@@ -21,7 +21,9 @@ interface DynamoDBEventStoreInput<
   snapshotAidIndexName: string;
   snapshotActiveTtlIndexName: string;
   shardCount: number;
+  /** Converts the deserialized event JSON payload from unknown into an event. */
   eventConverter: (json: unknown) => E;
+  /** Converts the deserialized snapshot JSON payload from unknown into an aggregate. */
   snapshotConverter: (json: unknown) => A;
   keepSnapshotCount?: number;
   deleteTtlMillis?: number;

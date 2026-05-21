@@ -1,8 +1,29 @@
 import { EventStoreFactory } from "../event-store";
+import type { Aggregate } from "../types";
 import { runEventStoreContractTests } from "./test/event-store-contract";
 import { UserAccount } from "./test/user-account";
 import type { UserAccountEvent } from "./test/user-account-event";
 import { UserAccountId } from "./test/user-account-id";
+
+class SameReferenceAggregate
+  implements Aggregate<SameReferenceAggregate, UserAccountId>
+{
+  public readonly typeName: string = "SameReferenceAggregate";
+  public readonly sequenceNumber: number = 1;
+
+  constructor(
+    public readonly id: UserAccountId,
+    public readonly version: number,
+  ) {}
+
+  withVersion(_version: number): SameReferenceAggregate {
+    return this;
+  }
+
+  updateVersion(_version: (value: number) => number): SameReferenceAggregate {
+    return this;
+  }
+}
 
 afterEach(() => {
   jest.useRealTimers();
@@ -29,8 +50,6 @@ describe("MemoryEventStore input isolation", () => {
       UserAccount,
       UserAccountEvent
     >({
-      // Seed a snapshot under `id` even though the snapshot itself belongs to
-      // `otherId`; this simulates corrupted input state.
       snapshots: new Map([[id, snapshot]]),
     });
 
@@ -43,8 +62,23 @@ describe("MemoryEventStore input isolation", () => {
     expect(latestSnapshotAgain).not.toBe(latestSnapshot);
   });
 
-  test("does not mutate seeded event arrays", async () => {
+  test("rejects snapshot copies that keep the same aggregate reference", () => {
     const id = new UserAccountId("user-account-2");
+    const snapshot = new SameReferenceAggregate(id, 1);
+
+    expect(() =>
+      EventStoreFactory.ofMemory<
+        UserAccountId,
+        SameReferenceAggregate,
+        UserAccountEvent
+      >({
+        snapshots: new Map([[id, snapshot]]),
+      }),
+    ).toThrow("Aggregate.withVersion must return a new instance");
+  });
+
+  test("does not mutate seeded event arrays", async () => {
+    const id = new UserAccountId("user-account-3");
     const [snapshot, created] = UserAccount.create(id, "Alice");
     const seededEvents = [created];
     const eventStore = EventStoreFactory.ofMemory<
@@ -63,14 +97,16 @@ describe("MemoryEventStore input isolation", () => {
   });
 
   test("rejects seeded snapshot aggregate id mismatches", async () => {
-    const id = new UserAccountId("user-account-3");
-    const otherId = new UserAccountId("user-account-4");
+    const id = new UserAccountId("user-account-4");
+    const otherId = new UserAccountId("user-account-5");
     const [snapshot] = UserAccount.create(otherId, "Alice");
     const eventStore = EventStoreFactory.ofMemory<
       UserAccountId,
       UserAccount,
       UserAccountEvent
     >({
+      // Seed a snapshot under `id` even though the snapshot itself belongs to
+      // `otherId`; this simulates corrupted input state.
       snapshots: new Map([[id, snapshot]]),
     });
     const aggregate = new UserAccount(id, "Bob", 1, snapshot.version);

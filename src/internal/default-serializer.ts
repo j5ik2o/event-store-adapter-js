@@ -12,8 +12,7 @@ class JsonEventSerializer<AID extends AggregateId, E extends Event<AID>>
   private encoder = new TextEncoder();
   private decoder = new TextDecoder();
 
-  // biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
-  deserialize(bytes: Uint8Array, converter: (json: any) => E): E {
+  deserialize(bytes: Uint8Array, converter: (json: unknown) => E): E {
     const jsonString = this.decoder.decode(bytes);
     const json = JSON.parse(jsonString);
     return converter(json);
@@ -35,8 +34,7 @@ class JsonSnapshotSerializer<
 {
   private encoder = new TextEncoder();
   private decoder = new TextDecoder();
-  // biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
-  deserialize(bytes: Uint8Array, converter: (json: any) => A): A {
+  deserialize(bytes: Uint8Array, converter: (json: unknown) => A): A {
     const jsonString = this.decoder.decode(bytes);
     const obj = JSON.parse(jsonString);
     return converter(obj);

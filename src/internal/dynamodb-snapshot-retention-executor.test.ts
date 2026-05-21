@@ -279,7 +279,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     [Number.NaN, "deleteTtlMillis must be finite"],
     [Number.POSITIVE_INFINITY, "deleteTtlMillis must be finite"],
     [-1, "deleteTtlMillis must be non-negative"],
-    [-0, "deleteTtlMillis must be non-negative"],
+    [-0, "deleteTtlMillis must be non-negative, got -0"],
   ])("rejects invalid delete ttl millis %s", async (deleteTtlMillis, message) => {
     const dynamodbClient = {
       send: jest.fn(),

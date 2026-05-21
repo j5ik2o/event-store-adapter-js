@@ -96,7 +96,11 @@ class MemoryEventStore<
   }
 
   private copySnapshot(snapshot: A): A {
-    return snapshot.withVersion(snapshot.version);
+    const copiedSnapshot = snapshot.withVersion(snapshot.version);
+    if (copiedSnapshot === snapshot) {
+      throw new Error("Aggregate.withVersion must return a new instance");
+    }
+    return copiedSnapshot;
   }
 }
 
