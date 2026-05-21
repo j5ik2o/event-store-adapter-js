@@ -80,9 +80,7 @@ class DynamoDBEventStore<
     this.eventConverter = input.eventConverter;
     this.snapshotConverter = input.snapshotConverter;
     this.keepSnapshotCount = input.keepSnapshotCount;
-    this.deleteTtlMillis = normalizeDynamoDBDeleteTtlMillis(
-      input.deleteTtlMillis,
-    );
+    this.deleteTtlMillis = this.normalizeDeleteTtlMillis(input.deleteTtlMillis);
     this.keyResolver = input.keyResolver ?? DynamoDBEventStore.keyResolver();
     this.eventSerializer =
       input.eventSerializer ?? DynamoDBEventStore.eventSerializer();
@@ -474,6 +472,22 @@ class DynamoDBEventStore<
   private assertConverter(name: string, converter: unknown): void {
     if (typeof converter !== "function") {
       throw new Error(`${name} must be a function`);
+    }
+    // Runtime signature probing would execute user conversion logic with fake data.
+    // The contract is type-level: converters accept decoded JSON as unknown and return the target type.
+  }
+
+  private normalizeDeleteTtlMillis(
+    deleteTtlMillis: number | undefined,
+  ): number | undefined {
+    try {
+      return normalizeDynamoDBDeleteTtlMillis(deleteTtlMillis);
+    } catch (error) {
+      throw new Error(
+        `Invalid deleteTtlMillis configuration: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 

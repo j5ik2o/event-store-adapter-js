@@ -74,7 +74,9 @@ describe("MemoryEventStore input isolation", () => {
       >({
         snapshots: new Map([[id, snapshot]]),
       }),
-    ).toThrow("Aggregate.withVersion must return a new instance");
+    ).toThrow(
+      "Aggregate.withVersion must return a new instance for aggregate user-account-user-account-2",
+    );
   });
 
   test("does not mutate seeded event arrays", async () => {

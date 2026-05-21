@@ -99,10 +99,22 @@ describe("DynamoDBEventStore", () => {
   });
 
   test.each([
-    [Number.NaN, "deleteTtlMillis must be finite"],
-    [Number.POSITIVE_INFINITY, "deleteTtlMillis must be finite"],
-    [-1, "deleteTtlMillis must be non-negative"],
-    [-0, "deleteTtlMillis must be non-negative, got -0"],
+    [
+      Number.NaN,
+      "Invalid deleteTtlMillis configuration: deleteTtlMillis must be finite, got NaN",
+    ],
+    [
+      Number.POSITIVE_INFINITY,
+      "Invalid deleteTtlMillis configuration: deleteTtlMillis must be finite, got Infinity",
+    ],
+    [
+      -1,
+      "Invalid deleteTtlMillis configuration: deleteTtlMillis must be non-negative, got -1",
+    ],
+    [
+      -0,
+      "Invalid deleteTtlMillis configuration: deleteTtlMillis must be non-negative, got -0",
+    ],
   ])("rejects invalid deleteTtlMillis %s", (deleteTtlMillis, message) => {
     expect(() => {
       new DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>({
