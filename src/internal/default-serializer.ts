@@ -15,7 +15,7 @@ class JsonEventSerializer<AID extends AggregateId, E extends Event<AID>>
   deserialize(bytes: Uint8Array, converter: (json: unknown) => E): E {
     const jsonString = this.decoder.decode(bytes);
     const json = JSON.parse(jsonString);
-    return converter(json);
+    return convertJson("eventConverter", converter, json);
   }
 
   serialize(event: E): Uint8Array {
@@ -37,7 +37,7 @@ class JsonSnapshotSerializer<
   deserialize(bytes: Uint8Array, converter: (json: unknown) => A): A {
     const jsonString = this.decoder.decode(bytes);
     const obj = JSON.parse(jsonString);
-    return converter(obj);
+    return convertJson("snapshotConverter", converter, obj);
   }
 
   serialize(aggregate: A): Uint8Array {
@@ -46,6 +46,22 @@ class JsonSnapshotSerializer<
       data: aggregate,
     });
     return this.encoder.encode(jsonString);
+  }
+}
+
+function convertJson<T>(
+  converterName: string,
+  converter: (json: unknown) => T,
+  json: unknown,
+): T {
+  try {
+    return converter(json);
+  } catch (error) {
+    throw new Error(
+      `${converterName} failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
   }
 }
 

@@ -75,7 +75,7 @@ describe("MemoryEventStore input isolation", () => {
         snapshots: new Map([[id, snapshot]]),
       }),
     ).toThrow(
-      "Aggregate.withVersion must return a new instance for aggregate user-account-user-account-2",
+      "Invalid seeded snapshot for aggregate user-account-user-account-2: Aggregate.withVersion must return a new instance for aggregate user-account-user-account-2",
     );
   });
 

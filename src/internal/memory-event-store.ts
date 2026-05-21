@@ -31,7 +31,7 @@ class MemoryEventStore<
     );
     this.snapshots = new Map(
       Array.from(snapshots).map(([key, value]) => {
-        return [key.asString(), this.copySnapshot(value)];
+        return [key.asString(), this.copySeededSnapshot(key, value)];
       }),
     );
   }
@@ -103,6 +103,18 @@ class MemoryEventStore<
       );
     }
     return copiedSnapshot;
+  }
+
+  private copySeededSnapshot(key: AID, snapshot: A): A {
+    try {
+      return this.copySnapshot(snapshot);
+    } catch (error) {
+      throw new Error(
+        `Invalid seeded snapshot for aggregate ${key.asString()}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 }
 
