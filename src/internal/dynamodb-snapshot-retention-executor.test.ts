@@ -243,10 +243,12 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
               {
                 pkey: { S: "snapshot-pkey-1" },
                 skey: { S: "snapshot-skey-1" },
+                ttl: { N: "0" },
               },
               {
                 pkey: { S: "snapshot-pkey-2" },
                 skey: { S: "snapshot-skey-2" },
+                ttl: { N: "0" },
               },
             ],
           };
@@ -289,10 +291,12 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
               {
                 pkey: { S: "snapshot-pkey-1" },
                 skey: { S: "snapshot-skey-1" },
+                ttl: { N: "0" },
               },
               {
                 pkey: { S: "snapshot-pkey-2" },
                 skey: { S: "snapshot-skey-2" },
+                ttl: { N: "0" },
               },
             ],
           };
@@ -340,10 +344,12 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
               {
                 pkey: { S: "snapshot-pkey-1" },
                 skey: { S: "snapshot-skey-1" },
+                ttl: { N: "0" },
               },
               {
                 pkey: { S: "snapshot-pkey-2" },
                 skey: { S: "snapshot-skey-2" },
+                ttl: { N: "0" },
               },
             ],
           };
@@ -381,7 +387,107 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     const snapshotKeyQuery = sentCommands.filter((command) => {
       return command instanceof QueryCommand;
     })[0] as QueryCommand;
-    expect(snapshotKeyQuery.input.FilterExpression).toBe("#ttl = :ttl");
+    expect(snapshotKeyQuery.input.FilterExpression).toBeUndefined();
+    expect(snapshotKeyQuery.input.ProjectionExpression).toBe(
+      "#pkey, #skey, #ttl",
+    );
+  });
+
+  test("filters active ttl snapshots after key query", async () => {
+    const sentCommands: unknown[] = [];
+    const dynamodbClient = {
+      send: jest.fn(async (command: unknown) => {
+        sentCommands.push(command);
+        if (command instanceof QueryCommand) {
+          return {
+            Items: [
+              {
+                pkey: { S: "active-pkey-1" },
+                skey: { S: "active-skey-1" },
+                ttl: { N: "0" },
+              },
+              {
+                pkey: { S: "deleting-pkey" },
+                skey: { S: "deleting-skey" },
+                ttl: { N: "1779325200" },
+              },
+              {
+                pkey: { S: "active-pkey-2" },
+                skey: { S: "active-skey-2" },
+                ttl: { N: "0" },
+              },
+            ],
+          };
+        }
+        return {};
+      }),
+    } as unknown as DynamoDBClient;
+    const executor = new DynamoDBSnapshotRetentionExecutor(
+      dynamodbClient,
+      "snapshot",
+      "snapshot-aid-index",
+    );
+
+    await executor.purgeExcessSnapshots(
+      new TestAggregateId("1"),
+      1,
+      moment.duration(1, "hour"),
+    );
+
+    const updateCommands = sentCommands.filter((command) => {
+      return command instanceof UpdateItemCommand;
+    }) as UpdateItemCommand[];
+    expect(updateCommands).toHaveLength(1);
+    expect(updateCommands[0].input.Key).toEqual({
+      pkey: { S: "active-pkey-1" },
+      skey: { S: "active-skey-1" },
+    });
+  });
+
+  test("retries retryable ttl update failures", async () => {
+    let updateAttemptCount = 0;
+    const dynamodbClient = {
+      send: jest.fn(async (command: unknown) => {
+        if (command instanceof QueryCommand) {
+          return {
+            Items: [
+              {
+                pkey: { S: "snapshot-pkey-1" },
+                skey: { S: "snapshot-skey-1" },
+                ttl: { N: "0" },
+              },
+              {
+                pkey: { S: "snapshot-pkey-2" },
+                skey: { S: "snapshot-skey-2" },
+                ttl: { N: "0" },
+              },
+            ],
+          };
+        }
+        if (command instanceof UpdateItemCommand) {
+          updateAttemptCount += 1;
+          if (updateAttemptCount === 1) {
+            const error = new Error("throttled");
+            error.name = "ProvisionedThroughputExceededException";
+            throw error;
+          }
+        }
+        return {};
+      }),
+    } as unknown as DynamoDBClient;
+    const executor = new DynamoDBSnapshotRetentionExecutor(
+      dynamodbClient,
+      "snapshot",
+      "snapshot-aid-index",
+    );
+
+    await executor.purgeExcessSnapshots(
+      new TestAggregateId("1"),
+      1,
+      moment.duration(1, "hour"),
+    );
+
+    expect(updateAttemptCount).toBe(2);
   });
 
   test("limits concurrent ttl updates", async () => {
@@ -389,6 +495,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       return {
         pkey: { S: `snapshot-pkey-${index + 1}` },
         skey: { S: `snapshot-skey-${index + 1}` },
+        ttl: { N: "0" },
       };
     });
     let activeUpdateCount = 0;
@@ -432,6 +539,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       return {
         pkey: { S: `snapshot-pkey-${index + 1}` },
         skey: { S: `snapshot-skey-${index + 1}` },
+        ttl: { N: "0" },
       };
     });
     let updateAttemptCount = 0;
@@ -498,6 +606,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
               {
                 pkey: { S: "snapshot-pkey-1" },
                 skey: { S: "snapshot-skey-1" },
+                ttl: { N: "0" },
               },
             ],
           };
@@ -546,10 +655,12 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
               {
                 pkey: { S: "snapshot-pkey-1" },
                 skey: { S: "snapshot-skey-1" },
+                ttl: { N: "0" },
               },
               {
                 pkey: { S: "snapshot-pkey-2" },
                 skey: { S: "snapshot-skey-2" },
+                ttl: { N: "0" },
               },
             ],
           };

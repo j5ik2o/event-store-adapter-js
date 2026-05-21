@@ -16,14 +16,23 @@ import type { AggregateId } from "../types";
 type SnapshotKey = {
   pkey: string;
   skey: string;
+  ttl?: string;
 };
 
 const MAX_BATCH_WRITE_ITEM_COUNT = 25;
 const MAX_TTL_UPDATE_CONCURRENCY = 25;
+const MAX_TTL_UPDATE_RETRY_COUNT = 5;
 const EXCESS_SNAPSHOT_QUERY_LIMIT = 1000;
 // Keep retention bounded while allowing short DynamoDB throttle bursts to clear.
 const MAX_UNPROCESSED_ITEM_RETRY_COUNT = 5;
-const UNPROCESSED_ITEM_RETRY_BASE_DELAY_MILLIS = 50;
+const RETENTION_RETRY_BASE_DELAY_MILLIS = 50;
+const RETRYABLE_DYNAMODB_ERROR_NAMES = new Set([
+  "InternalServerError",
+  "ProvisionedThroughputExceededException",
+  "RequestLimitExceeded",
+  "ServiceUnavailable",
+  "ThrottlingException",
+]);
 
 class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   constructor(
@@ -78,7 +87,9 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       if (queryResult.Items !== undefined) {
         for (const key of queryResult.Items.map((item) =>
           this.toSnapshotKey(item),
-        )) {
+        ).filter((key) => {
+          return !onlyActiveTtl || key.ttl === "0";
+        })) {
           if (keepCount === 0) {
             excessKeys.push(key);
             continue;
@@ -113,31 +124,21 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       ":aid": { S: aggregateId.asString() },
       ":seq_nr": { N: "0" },
     };
-    const activeTtlAttributes = onlyActiveTtl
-      ? {
-          FilterExpression: "#ttl = :ttl",
-          ExpressionAttributeNames: {
-            ...names,
-            "#ttl": "ttl",
-          },
-          ExpressionAttributeValues: {
-            ...values,
-            ":ttl": { N: "0" },
-          },
-        }
-      : {
-          ExpressionAttributeNames: names,
-          ExpressionAttributeValues: values,
-        };
+    const expressionAttributeNames = onlyActiveTtl
+      ? { ...names, "#ttl": "ttl" }
+      : names;
     return {
       TableName: this.snapshotTableName,
       IndexName: this.snapshotAidIndexName,
       KeyConditionExpression: "#aid = :aid AND #seq_nr > :seq_nr",
-      ProjectionExpression: "#pkey, #skey",
+      ProjectionExpression: onlyActiveTtl
+        ? "#pkey, #skey, #ttl"
+        : "#pkey, #skey",
       ScanIndexForward: true,
       ExclusiveStartKey: exclusiveStartKey,
       Limit: EXCESS_SNAPSHOT_QUERY_LIMIT,
-      ...activeTtlAttributes,
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: values,
     };
   }
 
@@ -147,7 +148,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     if (pkey === undefined || skey === undefined) {
       throw new Error("pkey or skey is undefined");
     }
-    return { pkey, skey };
+    return { pkey, skey, ttl: item.ttl?.N };
   }
 
   private async updateTtlOfExcessSnapshots(
@@ -296,8 +297,8 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
 
   private async waitBeforeRetry(retryCount: number): Promise<void> {
     const delayMillis =
-      UNPROCESSED_ITEM_RETRY_BASE_DELAY_MILLIS * 2 ** (retryCount - 1) +
-      Math.floor(Math.random() * UNPROCESSED_ITEM_RETRY_BASE_DELAY_MILLIS);
+      RETENTION_RETRY_BASE_DELAY_MILLIS * 2 ** (retryCount - 1) +
+      Math.floor(Math.random() * RETENTION_RETRY_BASE_DELAY_MILLIS);
     await new Promise((resolve) => setTimeout(resolve, delayMillis));
   }
 
@@ -314,15 +315,43 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   }
 
   private async sendUpdateTtlRequest(request: UpdateItemInput): Promise<void> {
-    try {
-      await this.dynamodbClient.send(new UpdateItemCommand(request));
-    } catch (e) {
-      if (e instanceof ConditionalCheckFailedException) {
-        // The snapshot was already removed, so there is no TTL update left to apply.
-        return;
+    for (
+      let retryCount = 0;
+      retryCount <= MAX_TTL_UPDATE_RETRY_COUNT;
+      retryCount++
+    ) {
+      if (retryCount > 0) {
+        await this.waitBeforeRetry(retryCount);
       }
-      throw e;
+      try {
+        await this.dynamodbClient.send(new UpdateItemCommand(request));
+        return;
+      } catch (e) {
+        if (e instanceof ConditionalCheckFailedException) {
+          // The snapshot was already removed, so there is no TTL update left to apply.
+          return;
+        }
+        if (
+          retryCount < MAX_TTL_UPDATE_RETRY_COUNT &&
+          this.isRetryableDynamoDBError(e)
+        ) {
+          continue;
+        }
+        throw e;
+      }
     }
+  }
+
+  private isRetryableDynamoDBError(e: unknown): boolean {
+    if (typeof e !== "object" || e === null) {
+      return false;
+    }
+    const retryable = (e as { $retryable?: unknown }).$retryable;
+    if (retryable !== undefined) {
+      return true;
+    }
+    const name = (e as { name?: unknown }).name;
+    return typeof name === "string" && RETRYABLE_DYNAMODB_ERROR_NAMES.has(name);
   }
 }
 
