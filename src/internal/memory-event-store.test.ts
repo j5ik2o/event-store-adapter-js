@@ -59,4 +59,23 @@ describe("MemoryEventStore input isolation", () => {
 
     expect(seededEvents).toEqual([created]);
   });
+
+  test("rejects seeded snapshot aggregate id mismatches", async () => {
+    const id = new UserAccountId("user-account-3");
+    const otherId = new UserAccountId("user-account-4");
+    const [snapshot] = UserAccount.create(otherId, "Alice");
+    const eventStore = EventStoreFactory.ofMemory<
+      UserAccountId,
+      UserAccount,
+      UserAccountEvent
+    >({
+      snapshots: new Map([[id, snapshot]]),
+    });
+    const aggregate = new UserAccount(id, "Bob", 1, snapshot.version);
+    const [renamedSnapshot, renamed] = aggregate.rename("Bob");
+
+    await expect(
+      eventStore.persistEvent(renamed, renamedSnapshot.version),
+    ).rejects.toThrow("aggregateId mismatch");
+  });
 });

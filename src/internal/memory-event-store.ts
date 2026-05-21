@@ -43,6 +43,7 @@ class MemoryEventStore<
     if (snapshot === undefined) {
       throw new OptimisticLockError("Optimistic locking failed");
     }
+    assertEventMatchesAggregate(event, snapshot);
     assertExpectedVersion(snapshot.version, version);
     this.appendEvent(aggregateIdString, event);
     const newVersion = snapshot.version + 1;
