@@ -1,4 +1,4 @@
-name: Claude PR Review
+name: PR Agent Review
 
 on:
   pull_request:
@@ -15,10 +15,10 @@ jobs:
     steps:
       - name: PR Agent action step
         uses: the-pr-agent/pr-agent@main
-        with:
+        env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           config.model: "anthropic/claude-opus-4-7"
-          config.fallback_models: '["anthropic/claude-haiku-4-5"]'
+          config.fallback_models: '["anthropic/claude-haiku-4-5-20251001"]'
           ANTHROPIC.KEY: ${{ secrets.ANTHROPIC_KEY }}
           github_action_config.auto_review: "true"
           github_action_config.auto_describe: "true"
