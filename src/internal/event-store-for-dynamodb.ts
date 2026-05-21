@@ -1,4 +1,5 @@
 import {
+  type AttributeValue,
   type DynamoDBClient,
   type Put,
   QueryCommand,
@@ -178,8 +179,8 @@ class EventStoreForDynamoDB<
       await this.createEventAndSnapshot(event, aggregate);
     } else {
       await this.updateEventAndSnapshotOpt(event, aggregate.version, aggregate);
-      await this.purgeExcessSnapshots(event);
     }
+    await this.purgeExcessSnapshots(event);
     this.logger?.debug(
       `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
         aggregate,
@@ -351,7 +352,6 @@ class EventStoreForDynamoDB<
       }
       throw e;
     }
-    await this.purgeExcessSnapshots(event);
     this.logger?.debug("private createEventAndSnapshot(...): finished");
   }
 
@@ -449,21 +449,24 @@ class EventStoreForDynamoDB<
       sequenceNumber,
     );
     const payload = this.snapshotSerializer.serialize(aggregate);
+    const item: Record<string, AttributeValue> = {
+      pkey: { S: pkey },
+      skey: { S: skey },
+      payload: { B: payload },
+      aid: { S: event.aggregateId.asString() },
+      seq_nr: { N: sequenceNumber.toString() },
+      version: { N: version.toString() },
+      ttl: { N: "0" },
+      last_updated_at: {
+        N: event.occurredAt.getUTCMilliseconds().toString(),
+      },
+    };
+    if (sequenceNumber > 0) {
+      item.active_ttl_seq_nr = { N: sequenceNumber.toString() };
+    }
     const result = {
       TableName: this.snapshotTableName,
-      Item: {
-        pkey: { S: pkey },
-        skey: { S: skey },
-        payload: { B: payload },
-        aid: { S: event.aggregateId.asString() },
-        seq_nr: { N: sequenceNumber.toString() },
-        active_ttl_seq_nr: { N: sequenceNumber.toString() },
-        version: { N: version.toString() },
-        ttl: { N: "0" },
-        last_updated_at: {
-          N: event.occurredAt.getUTCMilliseconds().toString(),
-        },
-      },
+      Item: item,
       ConditionExpression:
         "attribute_not_exists(pkey) AND attribute_not_exists(skey)",
     };
@@ -480,6 +483,8 @@ class EventStoreForDynamoDB<
     if (this.keepSnapshotCount === undefined) {
       return undefined;
     }
+    // Redundant snapshots are immutable; version records the primary snapshot
+    // version at the time this copy was written.
     return this.putSnapshot(event, event.sequenceNumber, aggregate, version);
   }
 

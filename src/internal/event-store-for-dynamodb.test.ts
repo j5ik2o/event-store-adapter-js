@@ -186,6 +186,24 @@ describe("EventStoreForDynamoDB", () => {
       expect(result.Items).toHaveLength(1);
       expect(result.Items?.[0].seq_nr).toEqual({ N: "2" });
       expect(result.Items?.[0].active_ttl_seq_nr).toEqual({ N: "2" });
+
+      const latestSnapshotResult = await dynamodbClient.send(
+        new QueryCommand({
+          TableName: SNAPSHOT_TABLE_NAME,
+          IndexName: SNAPSHOTS_AID_INDEX_NAME,
+          KeyConditionExpression: "#aid = :aid AND #seq_nr = :seq_nr",
+          ExpressionAttributeNames: {
+            "#aid": "aid",
+            "#seq_nr": "seq_nr",
+          },
+          ExpressionAttributeValues: {
+            ":aid": { S: id.asString() },
+            ":seq_nr": { N: "0" },
+          },
+        }),
+      );
+      expect(latestSnapshotResult.Items).toHaveLength(1);
+      expect(latestSnapshotResult.Items?.[0].active_ttl_seq_nr).toBeUndefined();
     },
     TIMEOUT,
   );
