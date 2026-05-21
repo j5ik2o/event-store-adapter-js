@@ -26,6 +26,7 @@ import {
   JsonEventSerializer,
   JsonSnapshotSerializer,
 } from "./default-serializer";
+import { normalizeDynamoDBDeleteTtlMillis } from "./dynamodb-delete-ttl-millis";
 import { DynamoDBSnapshotRetentionExecutor } from "./dynamodb-snapshot-retention-executor";
 import {
   assertEventMatchesAggregate,
@@ -74,10 +75,14 @@ class DynamoDBEventStore<
     this.snapshotAidIndexName = input.snapshotAidIndexName;
     this.snapshotActiveTtlIndexName = input.snapshotActiveTtlIndexName;
     this.shardCount = input.shardCount;
+    this.assertConverter("eventConverter", input.eventConverter);
+    this.assertConverter("snapshotConverter", input.snapshotConverter);
     this.eventConverter = input.eventConverter;
     this.snapshotConverter = input.snapshotConverter;
     this.keepSnapshotCount = input.keepSnapshotCount;
-    this.deleteTtlMillis = this.validateDeleteTtlMillis(input.deleteTtlMillis);
+    this.deleteTtlMillis = normalizeDynamoDBDeleteTtlMillis(
+      input.deleteTtlMillis,
+    );
     this.keyResolver = input.keyResolver ?? DynamoDBEventStore.keyResolver();
     this.eventSerializer =
       input.eventSerializer ?? DynamoDBEventStore.eventSerializer();
@@ -466,21 +471,10 @@ class DynamoDBEventStore<
     );
   }
 
-  private validateDeleteTtlMillis(
-    deleteTtlMillis: number | undefined,
-  ): number | undefined {
-    if (deleteTtlMillis === undefined) {
-      return undefined;
+  private assertConverter(name: string, converter: unknown): void {
+    if (typeof converter !== "function") {
+      throw new Error(`${name} must be a function`);
     }
-    if (!Number.isFinite(deleteTtlMillis)) {
-      throw new Error(`deleteTtlMillis must be finite, got ${deleteTtlMillis}`);
-    }
-    if (deleteTtlMillis < 0 || Object.is(deleteTtlMillis, -0)) {
-      throw new Error(
-        `deleteTtlMillis must be non-negative, got ${deleteTtlMillis}`,
-      );
-    }
-    return Math.floor(deleteTtlMillis);
   }
 
   private static keyResolver<AID extends AggregateId>(): KeyResolver<AID> {

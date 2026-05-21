@@ -41,7 +41,7 @@ class MemoryEventStore<
     const aggregateIdString = event.aggregateId.asString();
     const snapshot = this.snapshots.get(aggregateIdString);
     if (snapshot === undefined) {
-      throw new OptimisticLockError("Optimistic locking failed");
+      throw new OptimisticLockError("Snapshot not found for aggregate");
     }
     assertEventMatchesAggregate(event, snapshot);
     assertExpectedVersion(snapshot.version, version);
@@ -60,11 +60,11 @@ class MemoryEventStore<
     let newVersion = 1;
     if (event.isCreated) {
       if (snapshot !== undefined || events.length > 0) {
-        throw new OptimisticLockError("Optimistic locking failed");
+        throw new OptimisticLockError("Aggregate already exists");
       }
     } else {
       if (snapshot === undefined) {
-        throw new OptimisticLockError("Optimistic locking failed");
+        throw new OptimisticLockError("Snapshot not found for aggregate");
       }
       assertExpectedVersion(snapshot.version, aggregate.version);
       newVersion = snapshot.version + 1;

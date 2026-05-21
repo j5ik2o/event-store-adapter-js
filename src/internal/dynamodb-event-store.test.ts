@@ -120,6 +120,30 @@ describe("DynamoDBEventStore", () => {
     }).toThrow(message);
   });
 
+  test.each([
+    ["eventConverter", undefined],
+    ["snapshotConverter", undefined],
+  ])("rejects invalid %s", (converterName, converter) => {
+    const input = {
+      client: {} as DynamoDBClient,
+      journalTableName: JOURNAL_TABLE_NAME,
+      snapshotTableName: SNAPSHOT_TABLE_NAME,
+      journalAidIndexName: JOURNAL_AID_INDEX_NAME,
+      snapshotAidIndexName: SNAPSHOTS_AID_INDEX_NAME,
+      snapshotActiveTtlIndexName: SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
+      shardCount: 32,
+      eventConverter: convertJSONtoUserAccountEvent,
+      snapshotConverter: convertJSONToUserAccount,
+      [converterName]: converter,
+    };
+
+    expect(() => {
+      new DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>(
+        input,
+      );
+    }).toThrow(`${converterName} must be a function`);
+  });
+
   test(
     "persists redundant snapshots when retention is enabled",
     async () => {

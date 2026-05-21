@@ -11,6 +11,7 @@ import {
   type WriteRequest,
 } from "@aws-sdk/client-dynamodb";
 import type { AggregateId } from "../types";
+import { normalizeDynamoDBDeleteTtlMillis } from "./dynamodb-delete-ttl-millis";
 
 type SnapshotKey = {
   pkey: string;
@@ -51,7 +52,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     }
     const keepCount = this.normalizeKeepSnapshotCount(keepSnapshotCount);
     const normalizedDeleteTtlMillis =
-      this.normalizeDeleteTtlMillis(deleteTtlMillis);
+      normalizeDynamoDBDeleteTtlMillis(deleteTtlMillis);
     if (normalizedDeleteTtlMillis === undefined) {
       await this.deleteExcessSnapshots(aggregateId, keepCount);
       return;
@@ -70,23 +71,6 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       );
     }
     return Math.max(0, Math.floor(keepSnapshotCount));
-  }
-
-  private normalizeDeleteTtlMillis(
-    deleteTtlMillis: number | undefined,
-  ): number | undefined {
-    if (deleteTtlMillis === undefined) {
-      return undefined;
-    }
-    if (!Number.isFinite(deleteTtlMillis)) {
-      throw new Error(`deleteTtlMillis must be finite, got ${deleteTtlMillis}`);
-    }
-    if (deleteTtlMillis < 0 || Object.is(deleteTtlMillis, -0)) {
-      throw new Error(
-        `deleteTtlMillis must be non-negative, got ${deleteTtlMillis}`,
-      );
-    }
-    return Math.floor(deleteTtlMillis);
   }
 
   private async getExcessSnapshotKeys(
