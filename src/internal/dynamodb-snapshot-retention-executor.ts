@@ -2,6 +2,7 @@ import {
   type AttributeValue,
   BatchWriteItemCommand,
   type BatchWriteItemCommandOutput,
+  ConditionalCheckFailedException,
   type DynamoDBClient,
   QueryCommand,
   type QueryCommandInput,
@@ -19,6 +20,7 @@ type SnapshotKey = {
 
 const MAX_BATCH_WRITE_ITEM_COUNT = 25;
 const MAX_UNPROCESSED_ITEM_RETRY_COUNT = 3;
+const UNPROCESSED_ITEM_RETRY_BASE_DELAY_MILLIS = 50;
 
 class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   constructor(
@@ -46,43 +48,16 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     );
   }
 
-  private async getSnapshotCount(aggregateId: AID): Promise<number> {
-    let count = 0;
-    let exclusiveStartKey: Record<string, AttributeValue> | undefined;
-    do {
-      const request: QueryCommandInput = {
-        TableName: this.snapshotTableName,
-        IndexName: this.snapshotAidIndexName,
-        KeyConditionExpression: "#aid = :aid",
-        ExpressionAttributeNames: {
-          "#aid": "aid",
-        },
-        ExpressionAttributeValues: {
-          ":aid": { S: aggregateId.asString() },
-        },
-        Select: "COUNT",
-        ExclusiveStartKey: exclusiveStartKey,
-      };
-      const queryResult = await this.dynamodbClient.send(
-        new QueryCommand(request),
-      );
-      count += queryResult.Count ?? 0;
-      exclusiveStartKey = queryResult.LastEvaluatedKey;
-    } while (exclusiveStartKey !== undefined);
-    return count;
-  }
-
-  private async getOldestSnapshotKeys(
+  private async getExcessSnapshotKeys(
     aggregateId: AID,
-    limit: number,
+    keepSnapshotCount: number,
     onlyActiveTtl: boolean,
   ): Promise<SnapshotKey[]> {
-    const result: SnapshotKey[] = [];
+    const keys: SnapshotKey[] = [];
     let exclusiveStartKey: Record<string, AttributeValue> | undefined;
     do {
       const request = this.createSnapshotKeyQuery(
         aggregateId,
-        limit - result.length,
         onlyActiveTtl,
         exclusiveStartKey,
       );
@@ -90,18 +65,15 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
         new QueryCommand(request),
       );
       if (queryResult.Items !== undefined) {
-        result.push(
-          ...queryResult.Items.map((item) => this.toSnapshotKey(item)),
-        );
+        keys.push(...queryResult.Items.map((item) => this.toSnapshotKey(item)));
       }
       exclusiveStartKey = queryResult.LastEvaluatedKey;
-    } while (result.length < limit && exclusiveStartKey !== undefined);
-    return result;
+    } while (exclusiveStartKey !== undefined);
+    return keys.slice(0, Math.max(0, keys.length - keepSnapshotCount));
   }
 
   private createSnapshotKeyQuery(
     aggregateId: AID,
-    limit: number,
     onlyActiveTtl: boolean,
     exclusiveStartKey: Record<string, AttributeValue> | undefined,
   ): QueryCommandInput {
@@ -134,7 +106,6 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       IndexName: this.snapshotAidIndexName,
       KeyConditionExpression: "#aid = :aid AND #seq_nr > :seq_nr",
       ScanIndexForward: true,
-      Limit: limit,
       ExclusiveStartKey: exclusiveStartKey,
       ...activeTtlAttributes,
     };
@@ -154,16 +125,9 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     keepSnapshotCount: number,
     deleteTtl: moment.Duration,
   ): Promise<void> {
-    const excessCount = await this.getExcessSnapshotCount(
+    const keys = await this.getExcessSnapshotKeys(
       aggregateId,
       keepSnapshotCount,
-    );
-    if (excessCount <= 0) {
-      return;
-    }
-    const keys = await this.getOldestSnapshotKeys(
-      aggregateId,
-      excessCount,
       true,
     );
     if (keys.length === 0) {
@@ -185,8 +149,10 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
           ExpressionAttributeValues: {
             ":ttl": { N: ttl },
           },
+          ConditionExpression:
+            "attribute_exists(pkey) AND attribute_exists(skey)",
         };
-        return this.dynamodbClient.send(new UpdateItemCommand(request));
+        return this.sendUpdateTtlRequest(request);
       }),
     );
   }
@@ -195,16 +161,9 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     aggregateId: AID,
     keepSnapshotCount: number,
   ): Promise<void> {
-    const excessCount = await this.getExcessSnapshotCount(
+    const keys = await this.getExcessSnapshotKeys(
       aggregateId,
       keepSnapshotCount,
-    );
-    if (excessCount <= 0) {
-      return;
-    }
-    const keys = await this.getOldestSnapshotKeys(
-      aggregateId,
-      excessCount,
       false,
     );
     if (keys.length === 0) {
@@ -247,6 +206,9 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       retryCount <= MAX_UNPROCESSED_ITEM_RETRY_COUNT;
       retryCount++
     ) {
+      if (retryCount > 0) {
+        await this.waitBeforeRetry(retryCount);
+      }
       const output =
         await this.sendBatchWriteDeleteRequests(unprocessedRequests);
       unprocessedRequests =
@@ -257,6 +219,13 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
         `Failed to delete ${unprocessedRequests.length} snapshot items after ${MAX_UNPROCESSED_ITEM_RETRY_COUNT} retries`,
       );
     }
+  }
+
+  private async waitBeforeRetry(retryCount: number): Promise<void> {
+    const delayMillis =
+      UNPROCESSED_ITEM_RETRY_BASE_DELAY_MILLIS * 2 ** (retryCount - 1) +
+      Math.floor(Math.random() * UNPROCESSED_ITEM_RETRY_BASE_DELAY_MILLIS);
+    await new Promise((resolve) => setTimeout(resolve, delayMillis));
   }
 
   private async sendBatchWriteDeleteRequests(
@@ -271,12 +240,15 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     );
   }
 
-  private async getExcessSnapshotCount(
-    aggregateId: AID,
-    keepSnapshotCount: number,
-  ): Promise<number> {
-    const snapshotCount = await this.getSnapshotCount(aggregateId);
-    return snapshotCount - 1 - keepSnapshotCount;
+  private async sendUpdateTtlRequest(request: UpdateItemInput): Promise<void> {
+    try {
+      await this.dynamodbClient.send(new UpdateItemCommand(request));
+    } catch (e) {
+      if (e instanceof ConditionalCheckFailedException) {
+        return;
+      }
+      throw e;
+    }
   }
 }
 
