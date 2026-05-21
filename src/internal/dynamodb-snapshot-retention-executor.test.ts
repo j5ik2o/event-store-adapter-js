@@ -275,6 +275,32 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     expect(sentCommands).toHaveLength(0);
   });
 
+  test.each([
+    [Number.NaN, "deleteTtlMillis must be finite"],
+    [Number.POSITIVE_INFINITY, "deleteTtlMillis must be finite"],
+    [-1, "deleteTtlMillis must be non-negative"],
+    [-0, "deleteTtlMillis must be non-negative"],
+  ])("rejects invalid delete ttl millis %s", async (deleteTtlMillis, message) => {
+    const dynamodbClient = {
+      send: jest.fn(),
+    } as unknown as DynamoDBClient;
+    const executor = new DynamoDBSnapshotRetentionExecutor(
+      dynamodbClient,
+      "snapshot",
+      "snapshot-aid-index",
+      "snapshot-active-ttl-index",
+    );
+
+    await expect(
+      executor.purgeExcessSnapshots(
+        new TestAggregateId("1"),
+        1,
+        deleteTtlMillis,
+      ),
+    ).rejects.toThrow(message);
+    expect(dynamodbClient.send).not.toHaveBeenCalled();
+  });
+
   test("retries unprocessed snapshot deletes", async () => {
     const sentCommands: unknown[] = [];
     const unprocessedRequest = {

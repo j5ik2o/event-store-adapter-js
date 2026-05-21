@@ -31,7 +31,7 @@ class MemoryEventStore<
     );
     this.snapshots = new Map(
       Array.from(snapshots).map(([key, value]) => {
-        return [key.asString(), value.withVersion(value.version)];
+        return [key.asString(), this.copySnapshot(value)];
       }),
     );
   }
@@ -86,13 +86,17 @@ class MemoryEventStore<
   async getLatestSnapshotById(id: AID): Promise<A | undefined> {
     const aggregateIdString = id.asString();
     const snapshot = this.snapshots.get(aggregateIdString);
-    return snapshot?.withVersion(snapshot.version);
+    return snapshot === undefined ? undefined : this.copySnapshot(snapshot);
   }
 
   private appendEvent(aggregateIdString: string, event: E): void {
     const events = this.events.get(aggregateIdString) ?? [];
     // Keep histories immutable so callers that seeded the store cannot observe internal array mutation.
     this.events.set(aggregateIdString, [...events, event]);
+  }
+
+  private copySnapshot(snapshot: A): A {
+    return snapshot.withVersion(snapshot.version);
   }
 }
 

@@ -29,6 +29,8 @@ describe("MemoryEventStore input isolation", () => {
       UserAccount,
       UserAccountEvent
     >({
+      // Seed a snapshot under `id` even though the snapshot itself belongs to
+      // `otherId`; this simulates corrupted input state.
       snapshots: new Map([[id, snapshot]]),
     });
 
