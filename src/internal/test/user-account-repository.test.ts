@@ -39,6 +39,7 @@ describe("UserAccountRepository", () => {
   const SNAPSHOT_TABLE_NAME = "snapshot";
   const JOURNAL_AID_INDEX_NAME = "journal-aid-index";
   const SNAPSHOTS_AID_INDEX_NAME = "snapshots-aid-index";
+  const SNAPSHOTS_ACTIVE_TTL_INDEX_NAME = "snapshots-active-ttl-index";
 
   function createEventStore(
     dynamodbClient: DynamoDBClient,
@@ -53,6 +54,7 @@ describe("UserAccountRepository", () => {
       SNAPSHOT_TABLE_NAME,
       JOURNAL_AID_INDEX_NAME,
       SNAPSHOTS_AID_INDEX_NAME,
+      SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
       32,
       convertJSONtoUserAccountEvent,
       convertJSONToUserAccount,
@@ -81,6 +83,7 @@ describe("UserAccountRepository", () => {
       dynamodbClient,
       SNAPSHOT_TABLE_NAME,
       SNAPSHOTS_AID_INDEX_NAME,
+      SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
     );
     eventStore = createEventStore(dynamodbClient);
   }, TIMEOUT);

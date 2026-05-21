@@ -1,5 +1,5 @@
 import {
-  BatchWriteItemCommand,
+  type AttributeValue,
   type DynamoDBClient,
   type Put,
   QueryCommand,
@@ -8,11 +8,8 @@ import {
   TransactWriteItemsCommand,
   type TransactWriteItemsInput,
   type Update,
-  UpdateItemCommand,
-  type UpdateItemInput,
-  type WriteRequest,
 } from "@aws-sdk/client-dynamodb";
-import moment from "moment/moment";
+import type moment from "moment/moment";
 import type { EventStoreWithOptions } from "../event-store-with-options";
 import {
   type Aggregate,
@@ -29,6 +26,7 @@ import {
   JsonEventSerializer,
   JsonSnapshotSerializer,
 } from "./default-serializer";
+import { DynamoDBSnapshotRetentionExecutor } from "./dynamodb-snapshot-retention-executor";
 
 class EventStoreForDynamoDB<
   AID extends AggregateId,
@@ -42,6 +40,7 @@ class EventStoreForDynamoDB<
     private snapshotTableName: string,
     private journalAidIndexName: string,
     private snapshotAidIndexName: string,
+    private snapshotActiveTtlIndexName: string,
     private shardCount: number,
     private eventConverter: (json: string) => E,
     private snapshotConverter: (json: string) => A,
@@ -159,7 +158,7 @@ class EventStoreForDynamoDB<
       throw new Error("Cannot persist created event");
     }
     await this.updateEventAndSnapshotOpt(event, version, undefined);
-    await this.tryPurgeExcessSnapshots(event);
+    await this.purgeExcessSnapshots(event);
     this.logger?.debug(
       `persistEvent(${JSON.stringify(event)}, ${version}): finished`,
     );
@@ -180,8 +179,8 @@ class EventStoreForDynamoDB<
       await this.createEventAndSnapshot(event, aggregate);
     } else {
       await this.updateEventAndSnapshotOpt(event, aggregate.version, aggregate);
-      await this.tryPurgeExcessSnapshots(event);
     }
+    await this.purgeExcessSnapshots(event);
     this.logger?.debug(
       `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
         aggregate,
@@ -196,6 +195,7 @@ class EventStoreForDynamoDB<
       this.snapshotTableName,
       this.journalAidIndexName,
       this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
       this.shardCount,
       this.eventConverter,
       this.snapshotConverter,
@@ -217,6 +217,7 @@ class EventStoreForDynamoDB<
       this.snapshotTableName,
       this.journalAidIndexName,
       this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
       this.shardCount,
       this.eventConverter,
       this.snapshotConverter,
@@ -238,6 +239,7 @@ class EventStoreForDynamoDB<
       this.snapshotTableName,
       this.journalAidIndexName,
       this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
       this.shardCount,
       this.eventConverter,
       this.snapshotConverter,
@@ -259,6 +261,7 @@ class EventStoreForDynamoDB<
       this.snapshotTableName,
       this.journalAidIndexName,
       this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
       this.shardCount,
       this.eventConverter,
       this.snapshotConverter,
@@ -280,6 +283,7 @@ class EventStoreForDynamoDB<
       this.snapshotTableName,
       this.journalAidIndexName,
       this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
       this.shardCount,
       this.eventConverter,
       this.snapshotConverter,
@@ -299,6 +303,7 @@ class EventStoreForDynamoDB<
       this.snapshotTableName,
       this.journalAidIndexName,
       this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
       this.shardCount,
       this.eventConverter,
       this.snapshotConverter,
@@ -317,7 +322,8 @@ class EventStoreForDynamoDB<
         aggregate,
       )}): start`,
     );
-    const putSnapshot = this.putSnapshot(event, 0, aggregate);
+    const putSnapshot = this.putSnapshot(event, 0, aggregate, 1);
+    const putRedundantSnapshot = this.putRedundantSnapshot(event, aggregate, 1);
     const putJournal = this.putJournal(event);
     const transactWriteItems = [
       {
@@ -327,6 +333,11 @@ class EventStoreForDynamoDB<
         Put: putJournal,
       },
     ];
+    if (putRedundantSnapshot !== undefined) {
+      transactWriteItems.push({
+        Put: putRedundantSnapshot,
+      });
+    }
     const input: TransactWriteItemsInput = {
       TransactItems: transactWriteItems,
     };
@@ -355,6 +366,10 @@ class EventStoreForDynamoDB<
       )}, ${version}, ${JSON.stringify(aggregate)}): start`,
     );
     const update = this.updateSnapshot(event, 0, version, aggregate);
+    const putRedundantSnapshot =
+      aggregate === undefined
+        ? undefined
+        : this.putRedundantSnapshot(event, aggregate, version + 1);
     const put = this.putJournal(event);
     const transactWriteItems = [
       {
@@ -364,6 +379,11 @@ class EventStoreForDynamoDB<
         Put: put,
       },
     ];
+    if (putRedundantSnapshot !== undefined) {
+      transactWriteItems.push({
+        Put: putRedundantSnapshot,
+      });
+    }
     const input: TransactWriteItemsInput = {
       TransactItems: transactWriteItems,
     };
@@ -409,7 +429,12 @@ class EventStoreForDynamoDB<
     return result;
   }
 
-  private putSnapshot(event: E, sequenceNumber: number, aggregate: A): Put {
+  private putSnapshot(
+    event: E,
+    sequenceNumber: number,
+    aggregate: A,
+    version: number,
+  ): Put {
     this.logger?.debug(
       `private putSnapshot(${JSON.stringify(
         event,
@@ -424,26 +449,43 @@ class EventStoreForDynamoDB<
       sequenceNumber,
     );
     const payload = this.snapshotSerializer.serialize(aggregate);
+    const item: Record<string, AttributeValue> = {
+      pkey: { S: pkey },
+      skey: { S: skey },
+      payload: { B: payload },
+      aid: { S: event.aggregateId.asString() },
+      seq_nr: { N: sequenceNumber.toString() },
+      version: { N: version.toString() },
+      ttl: { N: "0" },
+      last_updated_at: {
+        N: event.occurredAt.getUTCMilliseconds().toString(),
+      },
+    };
+    if (sequenceNumber > 0) {
+      item.active_ttl_seq_nr = { N: sequenceNumber.toString() };
+    }
     const result = {
       TableName: this.snapshotTableName,
-      Item: {
-        pkey: { S: pkey },
-        skey: { S: skey },
-        payload: { B: payload },
-        aid: { S: event.aggregateId.asString() },
-        seq_nr: { N: sequenceNumber.toString() },
-        version: { N: "1" },
-        ttl: { N: "0" },
-        last_updated_at: {
-          N: event.occurredAt.getUTCMilliseconds().toString(),
-        },
-      },
+      Item: item,
       ConditionExpression:
         "attribute_not_exists(pkey) AND attribute_not_exists(skey)",
     };
     this.logger?.debug(`result = ${JSON.stringify(result)}`);
     this.logger?.debug("private putSnapshot(...): finished");
     return result;
+  }
+
+  private putRedundantSnapshot(
+    event: E,
+    aggregate: A,
+    version: number,
+  ): Put | undefined {
+    if (this.keepSnapshotCount === undefined) {
+      return undefined;
+    }
+    // Redundant snapshots are immutable; version records the primary snapshot
+    // version at the time this copy was written.
+    return this.putSnapshot(event, event.sequenceNumber, aggregate, version);
   }
 
   private updateSnapshot(
@@ -516,155 +558,18 @@ class EventStoreForDynamoDB<
     return result;
   }
 
-  private async tryPurgeExcessSnapshots(event: E) {
-    if (this.keepSnapshotCount !== undefined) {
-      if (this.deleteTtl !== undefined) {
-        await this.updateTtlOfExcessSnapshots(event.aggregateId);
-      } else {
-        await this.deleteExcessSnapshots(event.aggregateId);
-      }
-    }
-  }
-
-  private async getSnapshotCount(aggregateId: AID) {
-    const request: QueryCommandInput = {
-      TableName: this.snapshotTableName,
-      IndexName: this.snapshotAidIndexName,
-      KeyConditionExpression: "#aid = :aid",
-      ExpressionAttributeNames: {
-        "#aid": "aid",
-      },
-      ExpressionAttributeValues: {
-        ":aid": { S: aggregateId.asString() },
-      },
-      Select: "COUNT",
-    };
-    const queryResult = await this.dynamodbClient.send(
-      new QueryCommand(request),
+  private async purgeExcessSnapshots(event: E) {
+    const executor = new DynamoDBSnapshotRetentionExecutor<AID>(
+      this.dynamodbClient,
+      this.snapshotTableName,
+      this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
     );
-    return queryResult.Count;
-  }
-
-  private async getLastSnapshotKeys(aggregateId: AID, limit: number) {
-    const names = {
-      "#aid": "aid",
-      "#seq_nr": "seq_nr",
-    };
-    const values = {
-      ":aid": { S: aggregateId.asString() },
-      ":seq_nr": { N: "0" },
-    };
-    const request: QueryCommandInput = {
-      TableName: this.snapshotTableName,
-      IndexName: this.snapshotAidIndexName,
-      KeyConditionExpression: "#aid = :aid AND #seq_nr > :seq_nr",
-      ExpressionAttributeNames: { ...names },
-      ExpressionAttributeValues: { ...values },
-      ScanIndexForward: false,
-      Limit: limit,
-    };
-    if (this.deleteTtl !== undefined) {
-      request.FilterExpression = "#ttl = :ttl";
-      request.ExpressionAttributeNames = {
-        ...names,
-        "#ttl": "ttl",
-      };
-      request.ExpressionAttributeValues = {
-        ...values,
-        ":ttl": { N: "0" },
-      };
-    }
-    const queryResult = await this.dynamodbClient.send(
-      new QueryCommand(request),
+    await executor.purgeExcessSnapshots(
+      event.aggregateId,
+      this.keepSnapshotCount,
+      this.deleteTtl,
     );
-    if (queryResult.Items === undefined || queryResult.Items.length === 0) {
-      return undefined;
-    }
-    return queryResult.Items.map((item) => {
-      const pkey = item.pkey.S;
-      const skey = item.skey.S;
-      if (pkey === undefined || skey === undefined) {
-        throw new Error("pkey or skey is undefined");
-      }
-      return { pkey, skey };
-    });
-  }
-
-  private async updateTtlOfExcessSnapshots(aggregateId: AID) {
-    if (this.keepSnapshotCount !== undefined && this.deleteTtl !== undefined) {
-      let snapshotCount = await this.getSnapshotCount(aggregateId);
-      if (snapshotCount === undefined) {
-        return undefined;
-      }
-      snapshotCount -= 1;
-      const excessCount = snapshotCount - this.keepSnapshotCount;
-      if (excessCount > 0) {
-        const keys = await this.getLastSnapshotKeys(aggregateId, excessCount);
-        if (keys === undefined) {
-          return undefined;
-        }
-        const ttl = moment().add(this.deleteTtl);
-        const result = keys.map((key) => {
-          const request: UpdateItemInput = {
-            TableName: this.snapshotTableName,
-            Key: {
-              pkey: { S: key.pkey },
-              skey: { S: key.skey },
-            },
-            UpdateExpression: "SET #ttl = :ttl",
-            ExpressionAttributeNames: {
-              "#ttl": "ttl",
-            },
-            ExpressionAttributeValues: {
-              ":ttl": { N: ttl.seconds().toString() },
-            },
-          };
-          return this.dynamodbClient
-            .send(new UpdateItemCommand(request))
-            .then((_) => {});
-        });
-        return await Promise.all(result);
-      }
-    }
-    return undefined;
-  }
-
-  private async deleteExcessSnapshots(aggregateId: AID) {
-    if (this.keepSnapshotCount !== undefined && this.deleteTtl !== undefined) {
-      let snapshotCount = await this.getSnapshotCount(aggregateId);
-      if (snapshotCount === undefined) {
-        return undefined;
-      }
-      snapshotCount -= 1;
-      const excessCount = snapshotCount - this.keepSnapshotCount;
-      if (excessCount > 0) {
-        const keys = await this.getLastSnapshotKeys(aggregateId, excessCount);
-        if (keys === undefined) {
-          return undefined;
-        }
-        const request = keys.map((key) => {
-          const request: WriteRequest = {
-            DeleteRequest: {
-              Key: {
-                pkey: { S: key.pkey },
-                skey: { S: key.skey },
-              },
-            },
-          };
-          return request;
-        });
-        return this.dynamodbClient
-          .send(
-            new BatchWriteItemCommand({
-              RequestItems: {
-                [this.snapshotTableName]: request,
-              },
-            }),
-          )
-          .then((_) => {});
-      }
-    }
-    return undefined;
   }
 }
 
