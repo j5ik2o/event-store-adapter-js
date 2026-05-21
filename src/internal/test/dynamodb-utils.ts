@@ -89,6 +89,7 @@ async function createSnapshotTable(
   dynamodbClient: DynamoDBClient,
   tableName: string,
   indexName: string,
+  activeTtlIndexName: string,
 ) {
   const request: CreateTableCommandInput = {
     TableName: tableName,
@@ -107,6 +108,10 @@ async function createSnapshotTable(
       },
       {
         AttributeName: "seq_nr",
+        AttributeType: "N",
+      },
+      {
+        AttributeName: "active_ttl_seq_nr",
         AttributeType: "N",
       },
     ],
@@ -135,6 +140,26 @@ async function createSnapshotTable(
         ],
         Projection: {
           ProjectionType: "ALL",
+        },
+        ProvisionedThroughput: {
+          ReadCapacityUnits: 10,
+          WriteCapacityUnits: 5,
+        },
+      },
+      {
+        IndexName: activeTtlIndexName,
+        KeySchema: [
+          {
+            AttributeName: "aid",
+            KeyType: "HASH",
+          },
+          {
+            AttributeName: "active_ttl_seq_nr",
+            KeyType: "RANGE",
+          },
+        ],
+        Projection: {
+          ProjectionType: "KEYS_ONLY",
         },
         ProvisionedThroughput: {
           ReadCapacityUnits: 10,
