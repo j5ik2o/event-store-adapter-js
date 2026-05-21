@@ -10,7 +10,8 @@ import {
   type Update,
 } from "@aws-sdk/client-dynamodb";
 import type moment from "moment/moment";
-import type { EventStoreWithOptions } from "../event-store-with-options";
+import type { DynamoDBEventStoreInput } from "../dynamodb-event-store-input";
+import type { EventStore } from "../event-store";
 import {
   type Aggregate,
   type AggregateId,
@@ -27,36 +28,52 @@ import {
   JsonSnapshotSerializer,
 } from "./default-serializer";
 import { DynamoDBSnapshotRetentionExecutor } from "./dynamodb-snapshot-retention-executor";
+import {
+  assertEventMatchesAggregate,
+  assertPersistableUpdateEvent,
+} from "./event-store-assertions";
 
-class EventStoreForDynamoDB<
+class DynamoDBEventStore<
   AID extends AggregateId,
   A extends Aggregate<A, AID>,
   E extends Event<AID>,
-> implements EventStoreWithOptions<AID, A, E>
+> implements EventStore<AID, A, E>
 {
-  constructor(
-    private dynamodbClient: DynamoDBClient,
-    private journalTableName: string,
-    private snapshotTableName: string,
-    private journalAidIndexName: string,
-    private snapshotAidIndexName: string,
-    private snapshotActiveTtlIndexName: string,
-    private shardCount: number,
-    private eventConverter: (json: string) => E,
-    private snapshotConverter: (json: string) => A,
-    private keepSnapshotCount: number | undefined = undefined,
-    private deleteTtl: moment.Duration | undefined = undefined,
-    private keyResolver: KeyResolver<AID> = new DefaultKeyResolver(),
-    private eventSerializer: EventSerializer<AID, E> = new JsonEventSerializer<
-      AID,
-      E
-    >(),
-    private snapshotSerializer: SnapshotSerializer<
-      AID,
-      A
-    > = new JsonSnapshotSerializer<AID, A>(),
-    private logger: Logger | undefined = undefined,
-  ) {}
+  private readonly dynamodbClient: DynamoDBClient;
+  private readonly journalTableName: string;
+  private readonly snapshotTableName: string;
+  private readonly journalAidIndexName: string;
+  private readonly snapshotAidIndexName: string;
+  private readonly snapshotActiveTtlIndexName: string;
+  private readonly shardCount: number;
+  private readonly eventConverter: (json: unknown) => E;
+  private readonly snapshotConverter: (json: unknown) => A;
+  private readonly keepSnapshotCount: number | undefined;
+  private readonly deleteTtl: moment.Duration | undefined;
+  private readonly keyResolver: KeyResolver<AID>;
+  private readonly eventSerializer: EventSerializer<AID, E>;
+  private readonly snapshotSerializer: SnapshotSerializer<AID, A>;
+  private readonly logger: Logger | undefined;
+
+  constructor(input: DynamoDBEventStoreInput<AID, A, E>) {
+    this.dynamodbClient = input.client;
+    this.journalTableName = input.journalTableName;
+    this.snapshotTableName = input.snapshotTableName;
+    this.journalAidIndexName = input.journalAidIndexName;
+    this.snapshotAidIndexName = input.snapshotAidIndexName;
+    this.snapshotActiveTtlIndexName = input.snapshotActiveTtlIndexName;
+    this.shardCount = input.shardCount;
+    this.eventConverter = input.eventConverter;
+    this.snapshotConverter = input.snapshotConverter;
+    this.keepSnapshotCount = input.keepSnapshotCount;
+    this.deleteTtl = input.deleteTtl;
+    this.keyResolver = input.keyResolver ?? new DefaultKeyResolver();
+    this.eventSerializer =
+      input.eventSerializer ?? new JsonEventSerializer<AID, E>();
+    this.snapshotSerializer =
+      input.snapshotSerializer ?? new JsonSnapshotSerializer<AID, A>();
+    this.logger = input.logger;
+  }
 
   async getEventsByIdSinceSequenceNumber(
     id: AID,
@@ -154,9 +171,7 @@ class EventStoreForDynamoDB<
     this.logger?.debug(
       `persistEvent(${JSON.stringify(event)}, ${version}): start`,
     );
-    if (event.isCreated) {
-      throw new Error("Cannot persist created event");
-    }
+    assertPersistableUpdateEvent(event);
     await this.updateEventAndSnapshotOpt(event, version, undefined);
     await this.purgeExcessSnapshots(event);
     this.logger?.debug(
@@ -165,11 +180,7 @@ class EventStoreForDynamoDB<
   }
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
-    if (event.aggregateId.asString() !== aggregate.id.asString()) {
-      throw new Error(
-        `aggregateId mismatch: expected ${event.aggregateId.asString()}, got ${aggregate.id.asString()}`,
-      );
-    }
+    assertEventMatchesAggregate(event, aggregate);
     this.logger?.debug(
       `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
         aggregate,
@@ -185,134 +196,6 @@ class EventStoreForDynamoDB<
       `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
         aggregate,
       )}): finished`,
-    );
-  }
-
-  withDeleteTtl(deleteTtl: moment.Duration): EventStoreWithOptions<AID, A, E> {
-    return new EventStoreForDynamoDB(
-      this.dynamodbClient,
-      this.journalTableName,
-      this.snapshotTableName,
-      this.journalAidIndexName,
-      this.snapshotAidIndexName,
-      this.snapshotActiveTtlIndexName,
-      this.shardCount,
-      this.eventConverter,
-      this.snapshotConverter,
-      this.keepSnapshotCount,
-      deleteTtl,
-      this.keyResolver,
-      this.eventSerializer,
-      this.snapshotSerializer,
-      this.logger,
-    );
-  }
-
-  withEventSerializer(
-    eventSerializer: EventSerializer<AID, E>,
-  ): EventStoreWithOptions<AID, A, E> {
-    return new EventStoreForDynamoDB(
-      this.dynamodbClient,
-      this.journalTableName,
-      this.snapshotTableName,
-      this.journalAidIndexName,
-      this.snapshotAidIndexName,
-      this.snapshotActiveTtlIndexName,
-      this.shardCount,
-      this.eventConverter,
-      this.snapshotConverter,
-      this.keepSnapshotCount,
-      this.deleteTtl,
-      this.keyResolver,
-      eventSerializer,
-      this.snapshotSerializer,
-      this.logger,
-    );
-  }
-
-  withKeepSnapshotCount(
-    keepSnapshotCount: number,
-  ): EventStoreWithOptions<AID, A, E> {
-    return new EventStoreForDynamoDB(
-      this.dynamodbClient,
-      this.journalTableName,
-      this.snapshotTableName,
-      this.journalAidIndexName,
-      this.snapshotAidIndexName,
-      this.snapshotActiveTtlIndexName,
-      this.shardCount,
-      this.eventConverter,
-      this.snapshotConverter,
-      keepSnapshotCount,
-      this.deleteTtl,
-      this.keyResolver,
-      this.eventSerializer,
-      this.snapshotSerializer,
-      this.logger,
-    );
-  }
-
-  withKeyResolver(
-    keyResolver: KeyResolver<AID>,
-  ): EventStoreWithOptions<AID, A, E> {
-    return new EventStoreForDynamoDB(
-      this.dynamodbClient,
-      this.journalTableName,
-      this.snapshotTableName,
-      this.journalAidIndexName,
-      this.snapshotAidIndexName,
-      this.snapshotActiveTtlIndexName,
-      this.shardCount,
-      this.eventConverter,
-      this.snapshotConverter,
-      this.keepSnapshotCount,
-      this.deleteTtl,
-      keyResolver,
-      this.eventSerializer,
-      this.snapshotSerializer,
-      this.logger,
-    );
-  }
-
-  withSnapshotSerializer(
-    snapshotSerializer: SnapshotSerializer<AID, A>,
-  ): EventStoreWithOptions<AID, A, E> {
-    return new EventStoreForDynamoDB(
-      this.dynamodbClient,
-      this.journalTableName,
-      this.snapshotTableName,
-      this.journalAidIndexName,
-      this.snapshotAidIndexName,
-      this.snapshotActiveTtlIndexName,
-      this.shardCount,
-      this.eventConverter,
-      this.snapshotConverter,
-      this.keepSnapshotCount,
-      this.deleteTtl,
-      this.keyResolver,
-      this.eventSerializer,
-      snapshotSerializer,
-      this.logger,
-    );
-  }
-
-  withLogger(logger: Logger): EventStoreWithOptions<AID, A, E> {
-    return new EventStoreForDynamoDB(
-      this.dynamodbClient,
-      this.journalTableName,
-      this.snapshotTableName,
-      this.journalAidIndexName,
-      this.snapshotAidIndexName,
-      this.snapshotActiveTtlIndexName,
-      this.shardCount,
-      this.eventConverter,
-      this.snapshotConverter,
-      this.keepSnapshotCount,
-      this.deleteTtl,
-      this.keyResolver,
-      this.eventSerializer,
-      this.snapshotSerializer,
-      logger,
     );
   }
 
@@ -573,4 +456,4 @@ class EventStoreForDynamoDB<
   }
 }
 
-export { EventStoreForDynamoDB };
+export { DynamoDBEventStore };
