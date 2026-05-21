@@ -253,6 +253,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       await this.dynamodbClient.send(new UpdateItemCommand(request));
     } catch (e) {
       if (e instanceof ConditionalCheckFailedException) {
+        // The snapshot was already removed, so there is no TTL update left to apply.
         return;
       }
       throw e;

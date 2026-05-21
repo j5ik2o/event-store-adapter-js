@@ -15,6 +15,12 @@ interface EventStoreOptions<
   A extends Aggregate<A, AID>,
   E extends Event<AID>,
 > {
+  /**
+   * Enables snapshot retention after successful event persistence.
+   *
+   * Retention failures are propagated to the caller even though the event and
+   * latest snapshot may already be persisted.
+   */
   withKeepSnapshotCount(keepSnapshotCount: number): This;
 
   withDeleteTtl(deleteTtl: moment.Duration): This;
