@@ -81,7 +81,9 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   ): QueryCommandInput {
     const names = {
       "#aid": "aid",
+      "#pkey": "pkey",
       "#seq_nr": "seq_nr",
+      "#skey": "skey",
     };
     const values = {
       ":aid": { S: aggregateId.asString() },
@@ -107,6 +109,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       TableName: this.snapshotTableName,
       IndexName: this.snapshotAidIndexName,
       KeyConditionExpression: "#aid = :aid AND #seq_nr > :seq_nr",
+      ProjectionExpression: "#pkey, #skey",
       ScanIndexForward: true,
       ExclusiveStartKey: exclusiveStartKey,
       ...activeTtlAttributes,
@@ -156,8 +159,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
             ExpressionAttributeValues: {
               ":ttl": { N: ttl },
             },
-            ConditionExpression:
-              "attribute_exists(pkey) AND attribute_exists(skey)",
+            ConditionExpression: "attribute_exists(pkey)",
           };
           return this.sendUpdateTtlRequest(request);
         }),

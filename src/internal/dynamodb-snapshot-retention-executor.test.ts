@@ -75,6 +75,9 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     }) as QueryCommand[];
     expect(snapshotKeyQueries).toHaveLength(1);
     expect(snapshotKeyQueries[0].input.Select).toBeUndefined();
+    expect(snapshotKeyQueries[0].input.ProjectionExpression).toBe(
+      "#pkey, #skey",
+    );
     expect(snapshotKeyQueries[0].input.ScanIndexForward).toBe(true);
     expect(snapshotKeyQueries[0].input.FilterExpression).toBeUndefined();
   });
@@ -324,7 +327,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       ExpressionAttributeValues: {
         ":ttl": { N: "1779325200" },
       },
-      ConditionExpression: "attribute_exists(pkey) AND attribute_exists(skey)",
+      ConditionExpression: "attribute_exists(pkey)",
     });
     const snapshotKeyQuery = sentCommands.filter((command) => {
       return command instanceof QueryCommand;
