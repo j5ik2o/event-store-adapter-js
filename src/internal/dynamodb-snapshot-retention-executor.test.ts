@@ -20,8 +20,14 @@ class TestAggregateId implements AggregateId {
 }
 
 describe("DynamoDBSnapshotRetentionExecutor", () => {
+  const originalAggregateError = globalThis.AggregateError;
+
   afterEach(() => {
     jest.useRealTimers();
+    Object.defineProperty(globalThis, "AggregateError", {
+      configurable: true,
+      value: originalAggregateError,
+    });
   });
 
   test("deletes excess snapshots when delete ttl is not configured", async () => {
@@ -216,6 +222,63 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
           Key: {
             pkey: { S: "oldest-pkey-2" },
             skey: { S: "oldest-skey-2" },
+          },
+        },
+      },
+    ]);
+  });
+
+  test("treats non-finite keep snapshot count as zero", async () => {
+    const sentCommands: unknown[] = [];
+    const dynamodbClient = {
+      send: jest.fn(async (command: unknown) => {
+        sentCommands.push(command);
+        if (command instanceof QueryCommand) {
+          return {
+            Items: [
+              {
+                pkey: { S: "snapshot-pkey-1" },
+                skey: { S: "snapshot-skey-1" },
+              },
+              {
+                pkey: { S: "snapshot-pkey-2" },
+                skey: { S: "snapshot-skey-2" },
+              },
+            ],
+          };
+        }
+        return {};
+      }),
+    } as unknown as DynamoDBClient;
+    const executor = new DynamoDBSnapshotRetentionExecutor(
+      dynamodbClient,
+      "snapshot",
+      "snapshot-aid-index",
+    );
+
+    await executor.purgeExcessSnapshots(
+      new TestAggregateId("1"),
+      Number.NaN,
+      undefined,
+    );
+
+    const deleteCommand = sentCommands.find((command) => {
+      return command instanceof BatchWriteItemCommand;
+    }) as BatchWriteItemCommand;
+    expect(deleteCommand.input.RequestItems?.snapshot).toEqual([
+      {
+        DeleteRequest: {
+          Key: {
+            pkey: { S: "snapshot-pkey-1" },
+            skey: { S: "snapshot-skey-1" },
+          },
+        },
+      },
+      {
+        DeleteRequest: {
+          Key: {
+            pkey: { S: "snapshot-pkey-2" },
+            skey: { S: "snapshot-skey-2" },
           },
         },
       },
@@ -438,7 +501,6 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
   });
 
   test("reports ttl update failures when AggregateError is unavailable", async () => {
-    const originalAggregateError = globalThis.AggregateError;
     Object.defineProperty(globalThis, "AggregateError", {
       configurable: true,
       value: undefined,
@@ -467,12 +529,17 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       "snapshot-aid-index",
     );
 
+    const retention = executor.purgeExcessSnapshots(
+      new TestAggregateId("1"),
+      0,
+      moment.duration(1, "hour"),
+    );
+
+    await expect(retention).rejects.toThrow(
+      "Failed to update TTL for 1 snapshot items",
+    );
     try {
-      await executor.purgeExcessSnapshots(
-        new TestAggregateId("1"),
-        0,
-        moment.duration(1, "hour"),
-      );
+      await retention;
     } catch (e) {
       expect(e).toBeInstanceOf(Error);
       expect((e as Error).message).toBe(
@@ -482,11 +549,6 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       expect(errors).toHaveLength(1);
       expect(errors[0]).toBeInstanceOf(Error);
       expect((errors[0] as Error).message).toBe("ttl update failed");
-    } finally {
-      Object.defineProperty(globalThis, "AggregateError", {
-        configurable: true,
-        value: originalAggregateError,
-      });
     }
   });
 

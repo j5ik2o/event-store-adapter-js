@@ -58,7 +58,9 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   ): Promise<SnapshotKey[]> {
     const excessKeys: SnapshotKey[] = [];
     const keptKeys: SnapshotKey[] = [];
-    const keepCount = Math.max(0, keepSnapshotCount);
+    const keepCount = Number.isFinite(keepSnapshotCount)
+      ? Math.max(0, Math.floor(keepSnapshotCount))
+      : 0;
     let nextKeptKeyIndex = 0;
     let exclusiveStartKey: Record<string, AttributeValue> | undefined;
     do {
