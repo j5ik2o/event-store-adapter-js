@@ -1,0 +1,197 @@
+import {
+  BatchWriteItemCommand,
+  type DynamoDBClient,
+  QueryCommand,
+  type QueryCommandInput,
+  UpdateItemCommand,
+  type UpdateItemInput,
+  type WriteRequest,
+} from "@aws-sdk/client-dynamodb";
+import moment from "moment/moment";
+import type { AggregateId } from "../types";
+
+type SnapshotKey = {
+  pkey: string;
+  skey: string;
+};
+
+class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
+  constructor(
+    private dynamodbClient: DynamoDBClient,
+    private snapshotTableName: string,
+    private snapshotAidIndexName: string,
+  ) {}
+
+  async purgeExcessSnapshots(
+    aggregateId: AID,
+    keepSnapshotCount: number | undefined,
+    deleteTtl: moment.Duration | undefined,
+  ): Promise<void> {
+    if (keepSnapshotCount === undefined) {
+      return;
+    }
+    if (deleteTtl === undefined) {
+      await this.deleteExcessSnapshots(aggregateId, keepSnapshotCount);
+      return;
+    }
+    await this.updateTtlOfExcessSnapshots(
+      aggregateId,
+      keepSnapshotCount,
+      deleteTtl,
+    );
+  }
+
+  private async getSnapshotCount(aggregateId: AID): Promise<number> {
+    const request: QueryCommandInput = {
+      TableName: this.snapshotTableName,
+      IndexName: this.snapshotAidIndexName,
+      KeyConditionExpression: "#aid = :aid",
+      ExpressionAttributeNames: {
+        "#aid": "aid",
+      },
+      ExpressionAttributeValues: {
+        ":aid": { S: aggregateId.asString() },
+      },
+      Select: "COUNT",
+    };
+    const queryResult = await this.dynamodbClient.send(
+      new QueryCommand(request),
+    );
+    return queryResult.Count ?? 0;
+  }
+
+  private async getLastSnapshotKeys(
+    aggregateId: AID,
+    limit: number,
+    onlyActiveTtl: boolean,
+  ): Promise<SnapshotKey[]> {
+    const names = {
+      "#aid": "aid",
+      "#seq_nr": "seq_nr",
+    };
+    const values = {
+      ":aid": { S: aggregateId.asString() },
+      ":seq_nr": { N: "0" },
+    };
+    const request: QueryCommandInput = {
+      TableName: this.snapshotTableName,
+      IndexName: this.snapshotAidIndexName,
+      KeyConditionExpression: "#aid = :aid AND #seq_nr > :seq_nr",
+      ExpressionAttributeNames: { ...names },
+      ExpressionAttributeValues: { ...values },
+      ScanIndexForward: false,
+      Limit: limit,
+    };
+    if (onlyActiveTtl) {
+      request.FilterExpression = "#ttl = :ttl";
+      request.ExpressionAttributeNames = {
+        ...names,
+        "#ttl": "ttl",
+      };
+      request.ExpressionAttributeValues = {
+        ...values,
+        ":ttl": { N: "0" },
+      };
+    }
+    const queryResult = await this.dynamodbClient.send(
+      new QueryCommand(request),
+    );
+    if (queryResult.Items === undefined || queryResult.Items.length === 0) {
+      return [];
+    }
+    return queryResult.Items.map((item) => {
+      const pkey = item.pkey.S;
+      const skey = item.skey.S;
+      if (pkey === undefined || skey === undefined) {
+        throw new Error("pkey or skey is undefined");
+      }
+      return { pkey, skey };
+    });
+  }
+
+  private async updateTtlOfExcessSnapshots(
+    aggregateId: AID,
+    keepSnapshotCount: number,
+    deleteTtl: moment.Duration,
+  ): Promise<void> {
+    const excessCount = await this.getExcessSnapshotCount(
+      aggregateId,
+      keepSnapshotCount,
+    );
+    if (excessCount <= 0) {
+      return;
+    }
+    const keys = await this.getLastSnapshotKeys(aggregateId, excessCount, true);
+    if (keys.length === 0) {
+      return;
+    }
+    const ttl = moment().add(deleteTtl).unix().toString();
+    await Promise.all(
+      keys.map((key) => {
+        const request: UpdateItemInput = {
+          TableName: this.snapshotTableName,
+          Key: {
+            pkey: { S: key.pkey },
+            skey: { S: key.skey },
+          },
+          UpdateExpression: "SET #ttl = :ttl",
+          ExpressionAttributeNames: {
+            "#ttl": "ttl",
+          },
+          ExpressionAttributeValues: {
+            ":ttl": { N: ttl },
+          },
+        };
+        return this.dynamodbClient.send(new UpdateItemCommand(request));
+      }),
+    );
+  }
+
+  private async deleteExcessSnapshots(
+    aggregateId: AID,
+    keepSnapshotCount: number,
+  ): Promise<void> {
+    const excessCount = await this.getExcessSnapshotCount(
+      aggregateId,
+      keepSnapshotCount,
+    );
+    if (excessCount <= 0) {
+      return;
+    }
+    const keys = await this.getLastSnapshotKeys(
+      aggregateId,
+      excessCount,
+      false,
+    );
+    if (keys.length === 0) {
+      return;
+    }
+    const requests: WriteRequest[] = keys.map((key) => {
+      return {
+        DeleteRequest: {
+          Key: {
+            pkey: { S: key.pkey },
+            skey: { S: key.skey },
+          },
+        },
+      };
+    });
+    await this.dynamodbClient.send(
+      new BatchWriteItemCommand({
+        RequestItems: {
+          [this.snapshotTableName]: requests,
+        },
+      }),
+    );
+  }
+
+  private async getExcessSnapshotCount(
+    aggregateId: AID,
+    keepSnapshotCount: number,
+  ): Promise<number> {
+    const snapshotCount = await this.getSnapshotCount(aggregateId);
+    return snapshotCount - 1 - keepSnapshotCount;
+  }
+}
+
+export { DynamoDBSnapshotRetentionExecutor };
