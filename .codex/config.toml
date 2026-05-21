@@ -14,14 +14,5 @@ description = "PR reviewer focused on correctness, security, and missing tests."
 config_file = "agents/worker.toml"
 description = "Implementation-focused agent for small targeted fixes."
 
-[[hooks.PostToolUse]]
-matcher = "^(apply_patch|Edit|Write)$"
-
-[[hooks.PostToolUse.hooks]]
-type = "command"
-command = '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.agents/hooks/run_rust_checks_after_edit.py" --agent codex'
-timeout = 1800
-statusMessage = "Rust 変更後の fmt / dylint / clippy を確認中"
-
 [projects."/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs"]
 trust_level = "trusted"
