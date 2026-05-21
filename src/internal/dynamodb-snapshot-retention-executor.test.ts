@@ -378,6 +378,54 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     expect(maxActiveUpdateCount).toBe(25);
   });
 
+  test("reports ttl update failures after all chunk requests settle", async () => {
+    let updateAttemptCount = 0;
+    const dynamodbClient = {
+      send: jest.fn(async (command: unknown) => {
+        if (command instanceof QueryCommand) {
+          return {
+            Items: [
+              {
+                pkey: { S: "snapshot-pkey-1" },
+                skey: { S: "snapshot-skey-1" },
+              },
+              {
+                pkey: { S: "snapshot-pkey-2" },
+                skey: { S: "snapshot-skey-2" },
+              },
+              {
+                pkey: { S: "snapshot-pkey-3" },
+                skey: { S: "snapshot-skey-3" },
+              },
+            ],
+          };
+        }
+        if (command instanceof UpdateItemCommand) {
+          updateAttemptCount += 1;
+          const pkey = command.input.Key?.pkey?.S;
+          if (pkey === "snapshot-pkey-1" || pkey === "snapshot-pkey-2") {
+            throw new Error(`ttl update failed: ${pkey}`);
+          }
+        }
+        return {};
+      }),
+    } as unknown as DynamoDBClient;
+    const executor = new DynamoDBSnapshotRetentionExecutor(
+      dynamodbClient,
+      "snapshot",
+      "snapshot-aid-index",
+    );
+
+    await expect(
+      executor.purgeExcessSnapshots(
+        new TestAggregateId("1"),
+        0,
+        moment.duration(1, "hour"),
+      ),
+    ).rejects.toThrow("Failed to update TTL for 2 snapshot items");
+    expect(updateAttemptCount).toBe(3);
+  });
+
   test("ignores ttl update when snapshot was already deleted", async () => {
     const dynamodbClient = {
       send: jest.fn(async (command: unknown) => {

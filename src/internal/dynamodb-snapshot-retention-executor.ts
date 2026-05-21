@@ -144,7 +144,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       index < keys.length;
       index += MAX_TTL_UPDATE_CONCURRENCY
     ) {
-      await Promise.all(
+      const results = await Promise.allSettled(
         keys.slice(index, index + MAX_TTL_UPDATE_CONCURRENCY).map((key) => {
           const request: UpdateItemInput = {
             TableName: this.snapshotTableName,
@@ -164,6 +164,17 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
           return this.sendUpdateTtlRequest(request);
         }),
       );
+      const failures = results.filter(
+        (result): result is PromiseRejectedResult => {
+          return result.status === "rejected";
+        },
+      );
+      if (failures.length > 0) {
+        throw new Error(
+          `Failed to update TTL for ${failures.length} snapshot items`,
+          { cause: failures[0].reason },
+        );
+      }
     }
   }
 
