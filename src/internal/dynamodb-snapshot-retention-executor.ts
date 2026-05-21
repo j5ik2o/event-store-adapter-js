@@ -19,7 +19,9 @@ type SnapshotKey = {
 };
 
 const MAX_BATCH_WRITE_ITEM_COUNT = 25;
-const MAX_UNPROCESSED_ITEM_RETRY_COUNT = 3;
+const MAX_TTL_UPDATE_CONCURRENCY = 25;
+// Keep retention bounded while allowing short DynamoDB throttle bursts to clear.
+const MAX_UNPROCESSED_ITEM_RETRY_COUNT = 5;
 const UNPROCESSED_ITEM_RETRY_BASE_DELAY_MILLIS = 50;
 
 class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
@@ -134,27 +136,33 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       return;
     }
     const ttl = moment().add(deleteTtl).unix().toString();
-    await Promise.all(
-      keys.map((key) => {
-        const request: UpdateItemInput = {
-          TableName: this.snapshotTableName,
-          Key: {
-            pkey: { S: key.pkey },
-            skey: { S: key.skey },
-          },
-          UpdateExpression: "SET #ttl = :ttl",
-          ExpressionAttributeNames: {
-            "#ttl": "ttl",
-          },
-          ExpressionAttributeValues: {
-            ":ttl": { N: ttl },
-          },
-          ConditionExpression:
-            "attribute_exists(pkey) AND attribute_exists(skey)",
-        };
-        return this.sendUpdateTtlRequest(request);
-      }),
-    );
+    for (
+      let index = 0;
+      index < keys.length;
+      index += MAX_TTL_UPDATE_CONCURRENCY
+    ) {
+      await Promise.all(
+        keys.slice(index, index + MAX_TTL_UPDATE_CONCURRENCY).map((key) => {
+          const request: UpdateItemInput = {
+            TableName: this.snapshotTableName,
+            Key: {
+              pkey: { S: key.pkey },
+              skey: { S: key.skey },
+            },
+            UpdateExpression: "SET #ttl = :ttl",
+            ExpressionAttributeNames: {
+              "#ttl": "ttl",
+            },
+            ExpressionAttributeValues: {
+              ":ttl": { N: ttl },
+            },
+            ConditionExpression:
+              "attribute_exists(pkey) AND attribute_exists(skey)",
+          };
+          return this.sendUpdateTtlRequest(request);
+        }),
+      );
+    }
   }
 
   private async deleteExcessSnapshots(

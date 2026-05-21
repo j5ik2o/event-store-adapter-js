@@ -332,6 +332,49 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     expect(snapshotKeyQuery.input.FilterExpression).toBe("#ttl = :ttl");
   });
 
+  test("limits concurrent ttl updates", async () => {
+    const snapshotItems = Array.from({ length: 27 }, (_, index) => {
+      return {
+        pkey: { S: `snapshot-pkey-${index + 1}` },
+        skey: { S: `snapshot-skey-${index + 1}` },
+      };
+    });
+    let activeUpdateCount = 0;
+    let maxActiveUpdateCount = 0;
+    const dynamodbClient = {
+      send: jest.fn(async (command: unknown) => {
+        if (command instanceof QueryCommand) {
+          return {
+            Items: snapshotItems,
+          };
+        }
+        if (command instanceof UpdateItemCommand) {
+          activeUpdateCount += 1;
+          maxActiveUpdateCount = Math.max(
+            maxActiveUpdateCount,
+            activeUpdateCount,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          activeUpdateCount -= 1;
+        }
+        return {};
+      }),
+    } as unknown as DynamoDBClient;
+    const executor = new DynamoDBSnapshotRetentionExecutor(
+      dynamodbClient,
+      "snapshot",
+      "snapshot-aid-index",
+    );
+
+    await executor.purgeExcessSnapshots(
+      new TestAggregateId("1"),
+      1,
+      moment.duration(1, "hour"),
+    );
+
+    expect(maxActiveUpdateCount).toBe(25);
+  });
+
   test("ignores ttl update when snapshot was already deleted", async () => {
     const dynamodbClient = {
       send: jest.fn(async (command: unknown) => {

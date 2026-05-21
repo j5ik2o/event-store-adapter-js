@@ -156,7 +156,7 @@ class EventStoreForDynamoDB<
       throw new Error("Cannot persist created event");
     }
     await this.updateEventAndSnapshotOpt(event, version, undefined);
-    await this.tryPurgeExcessSnapshots(event);
+    await this.purgeExcessSnapshots(event);
     this.logger?.debug(
       `persistEvent(${JSON.stringify(event)}, ${version}): finished`,
     );
@@ -177,7 +177,7 @@ class EventStoreForDynamoDB<
       await this.createEventAndSnapshot(event, aggregate);
     } else {
       await this.updateEventAndSnapshotOpt(event, aggregate.version, aggregate);
-      await this.tryPurgeExcessSnapshots(event);
+      await this.purgeExcessSnapshots(event);
     }
     this.logger?.debug(
       `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
@@ -513,7 +513,7 @@ class EventStoreForDynamoDB<
     return result;
   }
 
-  private async tryPurgeExcessSnapshots(event: E) {
+  private async purgeExcessSnapshots(event: E) {
     const executor = new DynamoDBSnapshotRetentionExecutor<AID>(
       this.dynamodbClient,
       this.snapshotTableName,
