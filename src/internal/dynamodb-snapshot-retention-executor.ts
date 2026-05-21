@@ -1,5 +1,6 @@
 import {
   BatchWriteItemCommand,
+  type BatchWriteItemCommandOutput,
   type DynamoDBClient,
   QueryCommand,
   type QueryCommandInput,
@@ -14,6 +15,9 @@ type SnapshotKey = {
   pkey: string;
   skey: string;
 };
+
+const MAX_BATCH_WRITE_ITEM_COUNT = 25;
+const MAX_UNPROCESSED_ITEM_RETRY_COUNT = 3;
 
 class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   constructor(
@@ -176,7 +180,49 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
         },
       };
     });
-    await this.dynamodbClient.send(
+    await this.batchWriteDeleteRequests(requests);
+  }
+
+  private async batchWriteDeleteRequests(
+    requests: WriteRequest[],
+  ): Promise<void> {
+    for (
+      let index = 0;
+      index < requests.length;
+      index += MAX_BATCH_WRITE_ITEM_COUNT
+    ) {
+      await this.batchWriteDeleteRequestChunk(
+        requests.slice(index, index + MAX_BATCH_WRITE_ITEM_COUNT),
+      );
+    }
+  }
+
+  private async batchWriteDeleteRequestChunk(
+    requests: WriteRequest[],
+  ): Promise<void> {
+    let unprocessedRequests = requests;
+    for (
+      let retryCount = 0;
+      unprocessedRequests.length > 0 &&
+      retryCount <= MAX_UNPROCESSED_ITEM_RETRY_COUNT;
+      retryCount++
+    ) {
+      const output =
+        await this.sendBatchWriteDeleteRequests(unprocessedRequests);
+      unprocessedRequests =
+        output.UnprocessedItems?.[this.snapshotTableName] ?? [];
+    }
+    if (unprocessedRequests.length > 0) {
+      throw new Error(
+        `Failed to delete ${unprocessedRequests.length} snapshot items after ${MAX_UNPROCESSED_ITEM_RETRY_COUNT} retries`,
+      );
+    }
+  }
+
+  private async sendBatchWriteDeleteRequests(
+    requests: WriteRequest[],
+  ): Promise<BatchWriteItemCommandOutput> {
+    return await this.dynamodbClient.send(
       new BatchWriteItemCommand({
         RequestItems: {
           [this.snapshotTableName]: requests,
