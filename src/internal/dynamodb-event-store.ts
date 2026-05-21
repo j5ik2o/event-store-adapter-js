@@ -9,7 +9,6 @@ import {
   type TransactWriteItemsInput,
   type Update,
 } from "@aws-sdk/client-dynamodb";
-import type moment from "moment/moment";
 import type { DynamoDBEventStoreInput } from "../dynamodb-event-store-input";
 import type { EventStore } from "../event-store";
 import {
@@ -49,7 +48,7 @@ class DynamoDBEventStore<
   private readonly eventConverter: (json: unknown) => E;
   private readonly snapshotConverter: (json: unknown) => A;
   private readonly keepSnapshotCount: number | undefined;
-  private readonly deleteTtl: moment.Duration | undefined;
+  private readonly deleteTtlMillis: number | undefined;
   private readonly keyResolver: KeyResolver<AID>;
   private readonly eventSerializer: EventSerializer<AID, E>;
   private readonly snapshotSerializer: SnapshotSerializer<AID, A>;
@@ -66,7 +65,7 @@ class DynamoDBEventStore<
     this.eventConverter = input.eventConverter;
     this.snapshotConverter = input.snapshotConverter;
     this.keepSnapshotCount = input.keepSnapshotCount;
-    this.deleteTtl = input.deleteTtl;
+    this.deleteTtlMillis = this.validateDeleteTtlMillis(input.deleteTtlMillis);
     this.keyResolver = input.keyResolver ?? new DefaultKeyResolver();
     this.eventSerializer =
       input.eventSerializer ?? new JsonEventSerializer<AID, E>();
@@ -451,8 +450,22 @@ class DynamoDBEventStore<
     await executor.purgeExcessSnapshots(
       event.aggregateId,
       this.keepSnapshotCount,
-      this.deleteTtl,
+      this.deleteTtlMillis,
     );
+  }
+
+  private validateDeleteTtlMillis(
+    deleteTtlMillis: number | undefined,
+  ): number | undefined {
+    if (deleteTtlMillis === undefined) {
+      return undefined;
+    }
+    if (!Number.isFinite(deleteTtlMillis) || deleteTtlMillis < 0) {
+      throw new Error(
+        `deleteTtlMillis must be a non-negative finite number, got ${deleteTtlMillis}`,
+      );
+    }
+    return Math.floor(deleteTtlMillis);
   }
 }
 

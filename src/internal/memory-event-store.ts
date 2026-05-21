@@ -31,7 +31,7 @@ class MemoryEventStore<
     );
     this.snapshots = new Map(
       Array.from(snapshots).map(([key, value]) => {
-        return [key.asString(), value];
+        return [key.asString(), value.withVersion(value.version)];
       }),
     );
   }
@@ -44,8 +44,7 @@ class MemoryEventStore<
       throw new OptimisticLockError("Optimistic locking failed");
     }
     assertExpectedVersion(snapshot.version, version);
-    const events = this.events.get(aggregateIdString) ?? [];
-    this.events.set(aggregateIdString, [...events, event]);
+    this.appendEvent(aggregateIdString, event);
     const newVersion = snapshot.version + 1;
     const newSnapshot = snapshot.withVersion(newVersion);
     this.snapshots.set(aggregateIdString, newSnapshot);
@@ -69,7 +68,7 @@ class MemoryEventStore<
       assertExpectedVersion(snapshot.version, aggregate.version);
       newVersion = snapshot.version + 1;
     }
-    this.events.set(aggregateIdString, [...events, event]);
+    this.appendEvent(aggregateIdString, event);
     const newSnapshot = aggregate.withVersion(newVersion);
     this.snapshots.set(aggregateIdString, newSnapshot);
   }
@@ -85,7 +84,14 @@ class MemoryEventStore<
 
   async getLatestSnapshotById(id: AID): Promise<A | undefined> {
     const aggregateIdString = id.asString();
-    return this.snapshots.get(aggregateIdString);
+    const snapshot = this.snapshots.get(aggregateIdString);
+    return snapshot?.withVersion(snapshot.version);
+  }
+
+  private appendEvent(aggregateIdString: string, event: E): void {
+    const events = this.events.get(aggregateIdString) ?? [];
+    // Keep histories immutable so callers that seeded the store cannot observe internal array mutation.
+    this.events.set(aggregateIdString, [...events, event]);
   }
 }
 

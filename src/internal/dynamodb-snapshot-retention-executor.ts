@@ -10,7 +10,6 @@ import {
   type UpdateItemInput,
   type WriteRequest,
 } from "@aws-sdk/client-dynamodb";
-import moment from "moment/moment";
 import type { AggregateId } from "../types";
 
 type SnapshotKey = {
@@ -45,17 +44,21 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   async purgeExcessSnapshots(
     aggregateId: AID,
     keepSnapshotCount: number | undefined,
-    deleteTtl: moment.Duration | undefined,
+    deleteTtlMillis: number | undefined,
   ): Promise<void> {
     if (keepSnapshotCount === undefined) {
       return;
     }
     const keepCount = this.normalizeKeepSnapshotCount(keepSnapshotCount);
-    if (deleteTtl === undefined) {
+    if (deleteTtlMillis === undefined) {
       await this.deleteExcessSnapshots(aggregateId, keepCount);
       return;
     }
-    await this.updateTtlOfExcessSnapshots(aggregateId, keepCount, deleteTtl);
+    await this.updateTtlOfExcessSnapshots(
+      aggregateId,
+      keepCount,
+      deleteTtlMillis,
+    );
   }
 
   private normalizeKeepSnapshotCount(keepSnapshotCount: number): number {
@@ -159,7 +162,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   private async updateTtlOfExcessSnapshots(
     aggregateId: AID,
     keepSnapshotCount: number,
-    deleteTtl: moment.Duration,
+    deleteTtlMillis: number,
   ): Promise<void> {
     const keys = await this.getExcessSnapshotKeys(
       aggregateId,
@@ -169,7 +172,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     if (keys.length === 0) {
       return;
     }
-    const ttl = moment().add(deleteTtl).unix().toString();
+    const ttl = Math.floor((Date.now() + deleteTtlMillis) / 1000).toString();
     await this.sendUpdateTtlRequests(keys, ttl);
   }
 

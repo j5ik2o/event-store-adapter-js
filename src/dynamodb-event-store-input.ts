@@ -1,5 +1,4 @@
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import type moment from "moment";
 import type {
   Aggregate,
   AggregateId,
@@ -25,7 +24,7 @@ interface DynamoDBEventStoreInput<
   eventConverter: (json: unknown) => E;
   snapshotConverter: (json: unknown) => A;
   keepSnapshotCount?: number;
-  deleteTtl?: moment.Duration;
+  deleteTtlMillis?: number;
   keyResolver?: KeyResolver<AID>;
   eventSerializer?: EventSerializer<AID, E>;
   snapshotSerializer?: SnapshotSerializer<AID, A>;

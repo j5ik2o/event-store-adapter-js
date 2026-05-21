@@ -134,9 +134,34 @@ function runEventStoreContractTests(config: {
           aggregate.version,
         );
 
+        let thrown: unknown;
+        try {
+          await eventStore.persistEventAndSnapshot(
+            created,
+            mismatchedAggregate,
+          );
+        } catch (e) {
+          thrown = e;
+        }
+
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).not.toBeInstanceOf(OptimisticLockError);
+        expect((thrown as Error).message).toContain("aggregateId mismatch");
+      },
+      config.timeout,
+    );
+
+    test(
+      "rejects updates for unknown aggregates as optimistic lock errors",
+      async () => {
+        const eventStore = await config.createEventStore();
+        const id = new UserAccountId(ulid());
+        const [userAccount1] = UserAccount.create(id, "Alice");
+        const [userAccount2, renamed] = userAccount1.rename("Bob");
+
         await expect(
-          eventStore.persistEventAndSnapshot(created, mismatchedAggregate),
-        ).rejects.not.toBeInstanceOf(OptimisticLockError);
+          eventStore.persistEvent(renamed, userAccount2.version),
+        ).rejects.toThrow(OptimisticLockError);
       },
       config.timeout,
     );
