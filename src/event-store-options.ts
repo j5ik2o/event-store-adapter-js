@@ -20,6 +20,9 @@ interface EventStoreOptions<
    *
    * Retention failures are propagated to the caller even though the event and
    * latest snapshot may already be persisted.
+   *
+   * Non-finite or negative counts are treated as zero, so all redundant
+   * snapshots become retention targets.
    */
   withKeepSnapshotCount(keepSnapshotCount: number): This;
 
