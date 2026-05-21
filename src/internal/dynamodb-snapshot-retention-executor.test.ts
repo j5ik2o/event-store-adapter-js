@@ -53,6 +53,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
+      "snapshot-active-ttl-index",
     );
 
     await executor.purgeExcessSnapshots(new TestAggregateId("1"), 1, undefined);
@@ -129,6 +130,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
+      "snapshot-active-ttl-index",
     );
 
     await executor.purgeExcessSnapshots(new TestAggregateId("1"), 1, undefined);
@@ -196,6 +198,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
+      "snapshot-active-ttl-index",
     );
 
     await executor.purgeExcessSnapshots(new TestAggregateId("1"), 1, undefined);
@@ -260,6 +263,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
+      "snapshot-active-ttl-index",
     );
 
     await expect(
@@ -318,6 +322,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
+      "snapshot-active-ttl-index",
     );
 
     await executor.purgeExcessSnapshots(new TestAggregateId("1"), 1, undefined);
@@ -361,6 +366,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
+      "snapshot-active-ttl-index",
     );
 
     await executor.purgeExcessSnapshots(
@@ -387,13 +393,15 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     const snapshotKeyQuery = sentCommands.filter((command) => {
       return command instanceof QueryCommand;
     })[0] as QueryCommand;
-    expect(snapshotKeyQuery.input.FilterExpression).toBeUndefined();
-    expect(snapshotKeyQuery.input.ProjectionExpression).toBe(
-      "#pkey, #skey, #ttl",
+    expect(snapshotKeyQuery.input.IndexName).toBe("snapshot-active-ttl-index");
+    expect(snapshotKeyQuery.input.KeyConditionExpression).toBe(
+      "#aid = :aid AND #active_ttl_seq_nr > :seq_nr",
     );
+    expect(snapshotKeyQuery.input.FilterExpression).toBeUndefined();
+    expect(snapshotKeyQuery.input.ProjectionExpression).toBe("#pkey, #skey");
   });
 
-  test("filters active ttl snapshots after key query", async () => {
+  test("queries active ttl snapshot index", async () => {
     const sentCommands: unknown[] = [];
     const dynamodbClient = {
       send: jest.fn(async (command: unknown) => {
@@ -404,17 +412,10 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
               {
                 pkey: { S: "active-pkey-1" },
                 skey: { S: "active-skey-1" },
-                ttl: { N: "0" },
-              },
-              {
-                pkey: { S: "deleting-pkey" },
-                skey: { S: "deleting-skey" },
-                ttl: { N: "1779325200" },
               },
               {
                 pkey: { S: "active-pkey-2" },
                 skey: { S: "active-skey-2" },
-                ttl: { N: "0" },
               },
             ],
           };
@@ -426,6 +427,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
+      "snapshot-active-ttl-index",
     );
 
     await executor.purgeExcessSnapshots(
@@ -438,10 +440,18 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       return command instanceof UpdateItemCommand;
     }) as UpdateItemCommand[];
     expect(updateCommands).toHaveLength(1);
+    const snapshotKeyQuery = sentCommands.filter((command) => {
+      return command instanceof QueryCommand;
+    })[0] as QueryCommand;
+    expect(snapshotKeyQuery.input.IndexName).toBe("snapshot-active-ttl-index");
+    expect(snapshotKeyQuery.input.FilterExpression).toBeUndefined();
     expect(updateCommands[0].input.Key).toEqual({
       pkey: { S: "active-pkey-1" },
       skey: { S: "active-skey-1" },
     });
+    expect(updateCommands[0].input.UpdateExpression).toBe(
+      "SET #ttl = :ttl REMOVE #active_ttl_seq_nr",
+    );
   });
 
   test("retries retryable ttl update failures", async () => {
@@ -479,6 +489,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
+      "snapshot-active-ttl-index",
     );
 
     await executor.purgeExcessSnapshots(
@@ -488,6 +499,55 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     );
 
     expect(updateAttemptCount).toBe(2);
+  });
+
+  test("does not retry non-throttling retryable ttl update failures", async () => {
+    let updateAttemptCount = 0;
+    const dynamodbClient = {
+      send: jest.fn(async (command: unknown) => {
+        if (command instanceof QueryCommand) {
+          return {
+            Items: [
+              {
+                pkey: { S: "snapshot-pkey-1" },
+                skey: { S: "snapshot-skey-1" },
+              },
+              {
+                pkey: { S: "snapshot-pkey-2" },
+                skey: { S: "snapshot-skey-2" },
+              },
+            ],
+          };
+        }
+        if (command instanceof UpdateItemCommand) {
+          updateAttemptCount += 1;
+          const error = new Error("not throttling");
+          (
+            error as Error & { $retryable: { throttling: boolean } }
+          ).$retryable = {
+            throttling: false,
+          };
+          throw error;
+        }
+        return {};
+      }),
+    } as unknown as DynamoDBClient;
+    const executor = new DynamoDBSnapshotRetentionExecutor(
+      dynamodbClient,
+      "snapshot",
+      "snapshot-aid-index",
+      "snapshot-active-ttl-index",
+    );
+
+    await expect(
+      executor.purgeExcessSnapshots(
+        new TestAggregateId("1"),
+        1,
+        moment.duration(1, "hour"),
+      ),
+    ).rejects.toThrow("Failed to update TTL for 1 snapshot items");
+
+    expect(updateAttemptCount).toBe(1);
   });
 
   test("limits concurrent ttl updates", async () => {
@@ -523,6 +583,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
+      "snapshot-active-ttl-index",
     );
 
     await executor.purgeExcessSnapshots(
@@ -564,6 +625,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
+      "snapshot-active-ttl-index",
     );
 
     const retention = executor.purgeExcessSnapshots(
@@ -621,6 +683,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
+      "snapshot-active-ttl-index",
     );
 
     const retention = executor.purgeExcessSnapshots(
@@ -678,6 +741,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
+      "snapshot-active-ttl-index",
     );
 
     await expect(

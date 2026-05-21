@@ -16,11 +16,11 @@ import type { AggregateId } from "../types";
 type SnapshotKey = {
   pkey: string;
   skey: string;
-  ttl?: string;
 };
 
 const MAX_BATCH_WRITE_ITEM_COUNT = 25;
 const MAX_TTL_UPDATE_CONCURRENCY = 25;
+// Match BatchWrite retry budget for consistent retention behavior.
 const MAX_TTL_UPDATE_RETRY_COUNT = 5;
 const EXCESS_SNAPSHOT_QUERY_LIMIT = 1000;
 // Keep retention bounded while allowing short DynamoDB throttle bursts to clear.
@@ -39,6 +39,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     private dynamodbClient: DynamoDBClient,
     private snapshotTableName: string,
     private snapshotAidIndexName: string,
+    private snapshotActiveTtlIndexName: string,
   ) {}
 
   async purgeExcessSnapshots(
@@ -87,9 +88,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       if (queryResult.Items !== undefined) {
         for (const key of queryResult.Items.map((item) =>
           this.toSnapshotKey(item),
-        ).filter((key) => {
-          return !onlyActiveTtl || key.ttl === "0";
-        })) {
+        )) {
           if (keepCount === 0) {
             excessKeys.push(key);
             continue;
@@ -114,30 +113,36 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     onlyActiveTtl: boolean,
     exclusiveStartKey: Record<string, AttributeValue> | undefined,
   ): QueryCommandInput {
-    const names = {
-      "#aid": "aid",
-      "#pkey": "pkey",
-      "#seq_nr": "seq_nr",
-      "#skey": "skey",
-    };
+    const names: Record<string, string> = onlyActiveTtl
+      ? {
+          "#active_ttl_seq_nr": "active_ttl_seq_nr",
+          "#aid": "aid",
+          "#pkey": "pkey",
+          "#skey": "skey",
+        }
+      : {
+          "#aid": "aid",
+          "#pkey": "pkey",
+          "#seq_nr": "seq_nr",
+          "#skey": "skey",
+        };
     const values = {
       ":aid": { S: aggregateId.asString() },
       ":seq_nr": { N: "0" },
     };
-    const expressionAttributeNames = onlyActiveTtl
-      ? { ...names, "#ttl": "ttl" }
-      : names;
     return {
       TableName: this.snapshotTableName,
-      IndexName: this.snapshotAidIndexName,
-      KeyConditionExpression: "#aid = :aid AND #seq_nr > :seq_nr",
-      ProjectionExpression: onlyActiveTtl
-        ? "#pkey, #skey, #ttl"
-        : "#pkey, #skey",
+      IndexName: onlyActiveTtl
+        ? this.snapshotActiveTtlIndexName
+        : this.snapshotAidIndexName,
+      KeyConditionExpression: onlyActiveTtl
+        ? "#aid = :aid AND #active_ttl_seq_nr > :seq_nr"
+        : "#aid = :aid AND #seq_nr > :seq_nr",
+      ProjectionExpression: "#pkey, #skey",
       ScanIndexForward: true,
       ExclusiveStartKey: exclusiveStartKey,
       Limit: EXCESS_SNAPSHOT_QUERY_LIMIT,
-      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
     };
   }
@@ -148,7 +153,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     if (pkey === undefined || skey === undefined) {
       throw new Error("pkey or skey is undefined");
     }
-    return { pkey, skey, ttl: item.ttl?.N };
+    return { pkey, skey };
   }
 
   private async updateTtlOfExcessSnapshots(
@@ -220,13 +225,14 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
         pkey: { S: key.pkey },
         skey: { S: key.skey },
       },
-      UpdateExpression: "SET #ttl = :ttl",
       ExpressionAttributeNames: {
+        "#active_ttl_seq_nr": "active_ttl_seq_nr",
         "#ttl": "ttl",
       },
       ExpressionAttributeValues: {
         ":ttl": { N: ttl },
       },
+      UpdateExpression: "SET #ttl = :ttl REMOVE #active_ttl_seq_nr",
       ConditionExpression: "attribute_exists(pkey)",
     };
   }
@@ -347,8 +353,9 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       return false;
     }
     const retryable = (e as { $retryable?: unknown }).$retryable;
-    if (retryable !== undefined) {
-      return true;
+    if (typeof retryable === "object" && retryable !== null) {
+      const throttling = (retryable as { throttling?: unknown }).throttling;
+      return throttling !== false;
     }
     const name = (e as { name?: unknown }).name;
     return typeof name === "string" && RETRYABLE_DYNAMODB_ERROR_NAMES.has(name);

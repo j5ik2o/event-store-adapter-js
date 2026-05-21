@@ -71,6 +71,7 @@ const eventStore = EventStoreFactory.ofDynamoDB<
     SNAPSHOT_TABLE_NAME,
     JOURNAL_AID_INDEX_NAME,
     SNAPSHOTS_AID_INDEX_NAME,
+    SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
     32,
     convertJSONtoUserAccountEvent,
     convertJSONToUserAccount,
@@ -116,4 +117,3 @@ MIT License. See [LICENSE](LICENSE) for details.
 ## Links
 
 - [Common Documents](https://github.com/j5ik2o/event-store-adapter)
-

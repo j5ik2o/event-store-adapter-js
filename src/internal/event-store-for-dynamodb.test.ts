@@ -1,5 +1,5 @@
 import { describe } from "node:test";
-import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { type DynamoDBClient, QueryCommand } from "@aws-sdk/client-dynamodb";
 import {
   GenericContainer,
   type StartedTestContainer,
@@ -32,6 +32,7 @@ describe("EventStoreForDynamoDB", () => {
 
   let container: TestContainer;
   let startedContainer: StartedTestContainer;
+  let dynamodbClient: DynamoDBClient;
   let eventStore: EventStoreForDynamoDB<
     UserAccountId,
     UserAccount,
@@ -42,6 +43,7 @@ describe("EventStoreForDynamoDB", () => {
   const SNAPSHOT_TABLE_NAME = "snapshot";
   const JOURNAL_AID_INDEX_NAME = "journal-aid-index";
   const SNAPSHOTS_AID_INDEX_NAME = "snapshots-aid-index";
+  const SNAPSHOTS_ACTIVE_TTL_INDEX_NAME = "snapshots-active-ttl-index";
 
   function createEventStore(
     dynamodbClient: DynamoDBClient,
@@ -56,6 +58,7 @@ describe("EventStoreForDynamoDB", () => {
       SNAPSHOT_TABLE_NAME,
       JOURNAL_AID_INDEX_NAME,
       SNAPSHOTS_AID_INDEX_NAME,
+      SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
       32,
       convertJSONtoUserAccountEvent,
       convertJSONToUserAccount,
@@ -74,7 +77,7 @@ describe("EventStoreForDynamoDB", () => {
       .withWaitStrategy(Wait.forLogMessage("Ready."))
       .withExposedPorts(4566);
     startedContainer = await container.start();
-    const dynamodbClient = createDynamoDBClient(startedContainer);
+    dynamodbClient = createDynamoDBClient(startedContainer);
     await createJournalTable(
       dynamodbClient,
       JOURNAL_TABLE_NAME,
@@ -84,6 +87,7 @@ describe("EventStoreForDynamoDB", () => {
       dynamodbClient,
       SNAPSHOT_TABLE_NAME,
       SNAPSHOTS_AID_INDEX_NAME,
+      SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
     );
     eventStore = createEventStore(dynamodbClient);
   }, TIMEOUT);
@@ -145,6 +149,43 @@ describe("EventStoreForDynamoDB", () => {
       expect(userAccount3.name).toEqual("Bob");
       expect(userAccount3.sequenceNumber).toEqual(2);
       expect(userAccount3.version).toEqual(2);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "persists redundant snapshots when retention is enabled",
+    async () => {
+      const retainedEventStore = eventStore.withKeepSnapshotCount(
+        1,
+      ) as EventStoreForDynamoDB<UserAccountId, UserAccount, UserAccountEvent>;
+      const id = new UserAccountId(ulid());
+      const [userAccount1, created] = UserAccount.create(id, "Alice");
+
+      await retainedEventStore.persistEventAndSnapshot(created, userAccount1);
+
+      const [userAccount2, renamed] = userAccount1.rename("Bob");
+      await retainedEventStore.persistEventAndSnapshot(renamed, userAccount2);
+
+      const result = await dynamodbClient.send(
+        new QueryCommand({
+          TableName: SNAPSHOT_TABLE_NAME,
+          IndexName: SNAPSHOTS_AID_INDEX_NAME,
+          KeyConditionExpression: "#aid = :aid AND #seq_nr > :seq_nr",
+          ExpressionAttributeNames: {
+            "#aid": "aid",
+            "#seq_nr": "seq_nr",
+          },
+          ExpressionAttributeValues: {
+            ":aid": { S: id.asString() },
+            ":seq_nr": { N: "0" },
+          },
+        }),
+      );
+
+      expect(result.Items).toHaveLength(1);
+      expect(result.Items?.[0].seq_nr).toEqual({ N: "2" });
+      expect(result.Items?.[0].active_ttl_seq_nr).toEqual({ N: "2" });
     },
     TIMEOUT,
   );

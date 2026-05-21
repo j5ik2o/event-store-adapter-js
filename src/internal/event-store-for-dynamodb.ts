@@ -39,6 +39,7 @@ class EventStoreForDynamoDB<
     private snapshotTableName: string,
     private journalAidIndexName: string,
     private snapshotAidIndexName: string,
+    private snapshotActiveTtlIndexName: string,
     private shardCount: number,
     private eventConverter: (json: string) => E,
     private snapshotConverter: (json: string) => A,
@@ -193,6 +194,7 @@ class EventStoreForDynamoDB<
       this.snapshotTableName,
       this.journalAidIndexName,
       this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
       this.shardCount,
       this.eventConverter,
       this.snapshotConverter,
@@ -214,6 +216,7 @@ class EventStoreForDynamoDB<
       this.snapshotTableName,
       this.journalAidIndexName,
       this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
       this.shardCount,
       this.eventConverter,
       this.snapshotConverter,
@@ -235,6 +238,7 @@ class EventStoreForDynamoDB<
       this.snapshotTableName,
       this.journalAidIndexName,
       this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
       this.shardCount,
       this.eventConverter,
       this.snapshotConverter,
@@ -256,6 +260,7 @@ class EventStoreForDynamoDB<
       this.snapshotTableName,
       this.journalAidIndexName,
       this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
       this.shardCount,
       this.eventConverter,
       this.snapshotConverter,
@@ -277,6 +282,7 @@ class EventStoreForDynamoDB<
       this.snapshotTableName,
       this.journalAidIndexName,
       this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
       this.shardCount,
       this.eventConverter,
       this.snapshotConverter,
@@ -296,6 +302,7 @@ class EventStoreForDynamoDB<
       this.snapshotTableName,
       this.journalAidIndexName,
       this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
       this.shardCount,
       this.eventConverter,
       this.snapshotConverter,
@@ -314,7 +321,8 @@ class EventStoreForDynamoDB<
         aggregate,
       )}): start`,
     );
-    const putSnapshot = this.putSnapshot(event, 0, aggregate);
+    const putSnapshot = this.putSnapshot(event, 0, aggregate, 1);
+    const putRedundantSnapshot = this.putRedundantSnapshot(event, aggregate, 1);
     const putJournal = this.putJournal(event);
     const transactWriteItems = [
       {
@@ -324,6 +332,11 @@ class EventStoreForDynamoDB<
         Put: putJournal,
       },
     ];
+    if (putRedundantSnapshot !== undefined) {
+      transactWriteItems.push({
+        Put: putRedundantSnapshot,
+      });
+    }
     const input: TransactWriteItemsInput = {
       TransactItems: transactWriteItems,
     };
@@ -338,6 +351,7 @@ class EventStoreForDynamoDB<
       }
       throw e;
     }
+    await this.purgeExcessSnapshots(event);
     this.logger?.debug("private createEventAndSnapshot(...): finished");
   }
 
@@ -352,6 +366,10 @@ class EventStoreForDynamoDB<
       )}, ${version}, ${JSON.stringify(aggregate)}): start`,
     );
     const update = this.updateSnapshot(event, 0, version, aggregate);
+    const putRedundantSnapshot =
+      aggregate === undefined
+        ? undefined
+        : this.putRedundantSnapshot(event, aggregate, version + 1);
     const put = this.putJournal(event);
     const transactWriteItems = [
       {
@@ -361,6 +379,11 @@ class EventStoreForDynamoDB<
         Put: put,
       },
     ];
+    if (putRedundantSnapshot !== undefined) {
+      transactWriteItems.push({
+        Put: putRedundantSnapshot,
+      });
+    }
     const input: TransactWriteItemsInput = {
       TransactItems: transactWriteItems,
     };
@@ -406,7 +429,12 @@ class EventStoreForDynamoDB<
     return result;
   }
 
-  private putSnapshot(event: E, sequenceNumber: number, aggregate: A): Put {
+  private putSnapshot(
+    event: E,
+    sequenceNumber: number,
+    aggregate: A,
+    version: number,
+  ): Put {
     this.logger?.debug(
       `private putSnapshot(${JSON.stringify(
         event,
@@ -429,7 +457,8 @@ class EventStoreForDynamoDB<
         payload: { B: payload },
         aid: { S: event.aggregateId.asString() },
         seq_nr: { N: sequenceNumber.toString() },
-        version: { N: "1" },
+        active_ttl_seq_nr: { N: sequenceNumber.toString() },
+        version: { N: version.toString() },
         ttl: { N: "0" },
         last_updated_at: {
           N: event.occurredAt.getUTCMilliseconds().toString(),
@@ -441,6 +470,17 @@ class EventStoreForDynamoDB<
     this.logger?.debug(`result = ${JSON.stringify(result)}`);
     this.logger?.debug("private putSnapshot(...): finished");
     return result;
+  }
+
+  private putRedundantSnapshot(
+    event: E,
+    aggregate: A,
+    version: number,
+  ): Put | undefined {
+    if (this.keepSnapshotCount === undefined) {
+      return undefined;
+    }
+    return this.putSnapshot(event, event.sequenceNumber, aggregate, version);
   }
 
   private updateSnapshot(
@@ -518,6 +558,7 @@ class EventStoreForDynamoDB<
       this.dynamodbClient,
       this.snapshotTableName,
       this.snapshotAidIndexName,
+      this.snapshotActiveTtlIndexName,
     );
     await executor.purgeExcessSnapshots(
       event.aggregateId,
