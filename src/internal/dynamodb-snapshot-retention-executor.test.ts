@@ -228,7 +228,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     ]);
   });
 
-  test("treats non-finite keep snapshot count as zero", async () => {
+  test("rejects non-finite keep snapshot count", async () => {
     const sentCommands: unknown[] = [];
     const dynamodbClient = {
       send: jest.fn(async (command: unknown) => {
@@ -256,33 +256,14 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       "snapshot-aid-index",
     );
 
-    await executor.purgeExcessSnapshots(
-      new TestAggregateId("1"),
-      Number.NaN,
-      undefined,
-    );
-
-    const deleteCommand = sentCommands.find((command) => {
-      return command instanceof BatchWriteItemCommand;
-    }) as BatchWriteItemCommand;
-    expect(deleteCommand.input.RequestItems?.snapshot).toEqual([
-      {
-        DeleteRequest: {
-          Key: {
-            pkey: { S: "snapshot-pkey-1" },
-            skey: { S: "snapshot-skey-1" },
-          },
-        },
-      },
-      {
-        DeleteRequest: {
-          Key: {
-            pkey: { S: "snapshot-pkey-2" },
-            skey: { S: "snapshot-skey-2" },
-          },
-        },
-      },
-    ]);
+    await expect(
+      executor.purgeExcessSnapshots(
+        new TestAggregateId("1"),
+        Number.NaN,
+        undefined,
+      ),
+    ).rejects.toThrow("keepSnapshotCount must be finite");
+    expect(sentCommands).toHaveLength(0);
   });
 
   test("retries unprocessed snapshot deletes", async () => {
