@@ -32,12 +32,24 @@ import {
   assertPersistableUpdateEvent,
 } from "./event-store-assertions";
 
+interface DefaultSnapshotAggregate
+  extends Aggregate<DefaultSnapshotAggregate, AggregateId> {}
+
 class DynamoDBEventStore<
   AID extends AggregateId,
   A extends Aggregate<A, AID>,
   E extends Event<AID>,
 > implements EventStore<AID, A, E>
 {
+  private static readonly SHARED_KEY_RESOLVER =
+    new DefaultKeyResolver<AggregateId>();
+  private static readonly SHARED_EVENT_SERIALIZER = new JsonEventSerializer<
+    AggregateId,
+    Event<AggregateId>
+  >();
+  private static readonly SHARED_SNAPSHOT_SERIALIZER =
+    new JsonSnapshotSerializer<AggregateId, DefaultSnapshotAggregate>();
+
   private readonly dynamodbClient: DynamoDBClient;
   private readonly journalTableName: string;
   private readonly snapshotTableName: string;
@@ -66,11 +78,11 @@ class DynamoDBEventStore<
     this.snapshotConverter = input.snapshotConverter;
     this.keepSnapshotCount = input.keepSnapshotCount;
     this.deleteTtlMillis = this.validateDeleteTtlMillis(input.deleteTtlMillis);
-    this.keyResolver = input.keyResolver ?? new DefaultKeyResolver();
+    this.keyResolver = input.keyResolver ?? DynamoDBEventStore.keyResolver();
     this.eventSerializer =
-      input.eventSerializer ?? new JsonEventSerializer<AID, E>();
+      input.eventSerializer ?? DynamoDBEventStore.eventSerializer();
     this.snapshotSerializer =
-      input.snapshotSerializer ?? new JsonSnapshotSerializer<AID, A>();
+      input.snapshotSerializer ?? DynamoDBEventStore.snapshotSerializer();
     this.logger = input.logger;
   }
 
@@ -469,6 +481,30 @@ class DynamoDBEventStore<
       );
     }
     return Math.floor(deleteTtlMillis);
+  }
+
+  private static keyResolver<AID extends AggregateId>(): KeyResolver<AID> {
+    return DynamoDBEventStore.SHARED_KEY_RESOLVER as KeyResolver<AID>;
+  }
+
+  private static eventSerializer<
+    AID extends AggregateId,
+    E extends Event<AID>,
+  >(): EventSerializer<AID, E> {
+    return DynamoDBEventStore.SHARED_EVENT_SERIALIZER as unknown as EventSerializer<
+      AID,
+      E
+    >;
+  }
+
+  private static snapshotSerializer<
+    AID extends AggregateId,
+    A extends Aggregate<A, AID>,
+  >(): SnapshotSerializer<AID, A> {
+    return DynamoDBEventStore.SHARED_SNAPSHOT_SERIALIZER as unknown as SnapshotSerializer<
+      AID,
+      A
+    >;
   }
 }
 
