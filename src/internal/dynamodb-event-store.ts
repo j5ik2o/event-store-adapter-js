@@ -68,6 +68,8 @@ class DynamoDBEventStore<
   private readonly logger: Logger | undefined;
 
   constructor(input: DynamoDBEventStoreInput<AID, A, E>) {
+    this.assertConverter("eventConverter", input.eventConverter);
+    this.assertConverter("snapshotConverter", input.snapshotConverter);
     this.dynamodbClient = input.client;
     this.journalTableName = input.journalTableName;
     this.snapshotTableName = input.snapshotTableName;
@@ -75,8 +77,6 @@ class DynamoDBEventStore<
     this.snapshotAidIndexName = input.snapshotAidIndexName;
     this.snapshotActiveTtlIndexName = input.snapshotActiveTtlIndexName;
     this.shardCount = input.shardCount;
-    this.assertConverter("eventConverter", input.eventConverter);
-    this.assertConverter("snapshotConverter", input.snapshotConverter);
     this.eventConverter = input.eventConverter;
     this.snapshotConverter = input.snapshotConverter;
     this.keepSnapshotCount = input.keepSnapshotCount;
