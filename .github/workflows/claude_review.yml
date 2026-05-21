@@ -2,27 +2,24 @@ name: Claude PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize]
-
+    types: [opened, synchronize, ready_for_review]
+  issue_comment:
 jobs:
   review:
+    if: ${{ github.event.sender.type != 'Bot' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      issues: write
       pull-requests: write
-      id-token: write
-      actions: read
+      contents: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - name: PR Agent action step
+        uses: the-pr-agent/pr-agent@main
         with:
-          fetch-depth: 1
-
-      - name: Review pull request
-        uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          track_progress: true
-          prompt: "/review REPO: ${{ github.repository }} PR NUMBER: ${{ github.event.pull_request.number }}"
-          claude_args: |
-            --model claude-opus-4-7 --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          config.model: "anthropic/claude-opus-4-7"
+          config.fallback_models: '["anthropic/claude-haiku-4-5"]'
+          ANTHROPIC.KEY: ${{ secrets.ANTHROPIC_KEY }}
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "true"
+          github_action_config.auto_improve: "true"
