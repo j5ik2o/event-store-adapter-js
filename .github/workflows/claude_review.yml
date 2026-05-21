@@ -33,8 +33,28 @@ jobs:
             - セキュリティ上の懸念
             - パフォーマンスやリソース使用
             - fraktor-rs の既存設計、AGENTS.md、.agents/rules との整合性
+            
+            レビューは必ずPull Request Review として実施してください。具体的には以下の手順で行ってください：
 
-            具体的な問題がある場合は、可能な限りインラインコメントで指摘してください。
+            1. `gh api` コマンドを使用して、指摘場所（path, lineを指定）にreviewsをPOSTする。
+            2. `gh pr review` コマンドの `--comment` で数行のサマリー文章を送信する（`--approve` や `--request-changes` は使わず `--comment` を使ってください）
+
+            単なるIssue Commentではなく、必ずPull Request Review APIを使用してレビューを実施してください。
+
+            Pull Request Review APIのサンプルコードは以下の通りです。
+            ```
+            gh api \
+              --method POST \
+              --header "Accept: application/vnd.github+json" \
+              /repos/${OWNER}/${REPO}/pulls/${PR_NUMBER}/reviews \
+              --field event="COMMENT" \
+              --field comments[0][path]="main.go" \
+              --field comments[0][line]=10 \
+              --field comments[0][body]="```suggestion
+            func improvedFunction() {
+                return \"better implementation\"
+            }
+            ```
 
           claude_args: |
             --model claude-opus-4-7 --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
