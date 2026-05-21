@@ -19,7 +19,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           config.model: "anthropic/claude-opus-4-7"
           config.fallback_models: '["anthropic/claude-haiku-4-5-20251001"]'
-          ANTHROPIC.KEY: ${{ secrets.ANTHROPIC_KEY }}
+          ANTHROPIC.KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           github_action_config.auto_review: "true"
           github_action_config.auto_describe: "true"
           github_action_config.auto_improve: "true"
