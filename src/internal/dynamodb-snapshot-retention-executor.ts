@@ -58,6 +58,8 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   ): Promise<SnapshotKey[]> {
     const excessKeys: SnapshotKey[] = [];
     const keptKeys: SnapshotKey[] = [];
+    const keepCount = Math.max(0, keepSnapshotCount);
+    let nextKeptKeyIndex = 0;
     let exclusiveStartKey: Record<string, AttributeValue> | undefined;
     do {
       const request = this.createSnapshotKeyQuery(
@@ -72,12 +74,18 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
         for (const key of queryResult.Items.map((item) =>
           this.toSnapshotKey(item),
         )) {
-          keptKeys.push(key);
-          const excessKey =
-            keptKeys.length > keepSnapshotCount ? keptKeys.shift() : undefined;
-          if (excessKey !== undefined) {
-            excessKeys.push(excessKey);
+          if (keepCount === 0) {
+            excessKeys.push(key);
+            continue;
           }
+          if (keptKeys.length < keepCount) {
+            keptKeys.push(key);
+            continue;
+          }
+          const excessKey = keptKeys[nextKeptKeyIndex];
+          keptKeys[nextKeptKeyIndex] = key;
+          nextKeptKeyIndex = (nextKeptKeyIndex + 1) % keepCount;
+          excessKeys.push(excessKey);
         }
       }
       exclusiveStartKey = queryResult.LastEvaluatedKey;
@@ -166,9 +174,6 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
         while (nextKeyIndex < keys.length) {
           const key = keys[nextKeyIndex];
           nextKeyIndex += 1;
-          if (key === undefined) {
-            continue;
-          }
           try {
             await this.sendUpdateTtlRequest(
               this.createUpdateTtlRequest(key, ttl),
@@ -180,11 +185,23 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       }),
     );
     if (failures.length > 0) {
-      throw new AggregateError(
-        failures,
+      throw this.createSnapshotRetentionError(
         `Failed to update TTL for ${failures.length} snapshot items`,
+        failures,
       );
     }
+  }
+
+  private createSnapshotRetentionError(
+    message: string,
+    failures: unknown[],
+  ): Error {
+    if (typeof AggregateError === "function") {
+      return new AggregateError(failures, message);
+    }
+    const error = new Error(message) as Error & { errors: unknown[] };
+    error.errors = failures;
+    return error;
   }
 
   private createUpdateTtlRequest(

@@ -437,6 +437,59 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     expect(updateAttemptCount).toBe(27);
   });
 
+  test("reports ttl update failures when AggregateError is unavailable", async () => {
+    const originalAggregateError = globalThis.AggregateError;
+    Object.defineProperty(globalThis, "AggregateError", {
+      configurable: true,
+      value: undefined,
+    });
+    const dynamodbClient = {
+      send: jest.fn(async (command: unknown) => {
+        if (command instanceof QueryCommand) {
+          return {
+            Items: [
+              {
+                pkey: { S: "snapshot-pkey-1" },
+                skey: { S: "snapshot-skey-1" },
+              },
+            ],
+          };
+        }
+        if (command instanceof UpdateItemCommand) {
+          throw new Error("ttl update failed");
+        }
+        return {};
+      }),
+    } as unknown as DynamoDBClient;
+    const executor = new DynamoDBSnapshotRetentionExecutor(
+      dynamodbClient,
+      "snapshot",
+      "snapshot-aid-index",
+    );
+
+    try {
+      await executor.purgeExcessSnapshots(
+        new TestAggregateId("1"),
+        0,
+        moment.duration(1, "hour"),
+      );
+    } catch (e) {
+      expect(e).toBeInstanceOf(Error);
+      expect((e as Error).message).toBe(
+        "Failed to update TTL for 1 snapshot items",
+      );
+      const errors = (e as Error & { errors: unknown[] }).errors;
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toBeInstanceOf(Error);
+      expect((errors[0] as Error).message).toBe("ttl update failed");
+    } finally {
+      Object.defineProperty(globalThis, "AggregateError", {
+        configurable: true,
+        value: originalAggregateError,
+      });
+    }
+  });
+
   test("ignores ttl update when snapshot was already deleted", async () => {
     const dynamodbClient = {
       send: jest.fn(async (command: unknown) => {
