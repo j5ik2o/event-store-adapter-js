@@ -54,7 +54,7 @@ class MemoryEventStore<
     );
   }
 
-  async persistEvent(event: E, version: number): Promise<void> {
+  async persistEvent(event: E, expectedVersion: number): Promise<void> {
     assertPersistableUpdateEvent(event);
     const aggregateIdString = event.aggregateId.asString();
     const snapshot = this.snapshots.get(aggregateIdString);
@@ -62,7 +62,7 @@ class MemoryEventStore<
       throw new OptimisticLockError("Snapshot not found for aggregate");
     }
     assertEventMatchesAggregate(event, snapshot);
-    assertExpectedVersion(snapshot.version, version);
+    assertExpectedVersion(snapshot.version, expectedVersion);
     this.appendEvent(aggregateIdString, event);
     const newVersion = snapshot.version + 1;
     const newSnapshot = snapshot.withVersion(newVersion);

@@ -87,6 +87,7 @@ class DynamoDBEventStore<
     this.snapshotAidIndexName = input.snapshotAidIndexName;
     this.snapshotActiveTtlIndexName = input.snapshotActiveTtlIndexName;
     this.shardCount = input.shardCount;
+    // Converter execution is not probed with fake JSON; runtime failures are wrapped when real payloads are decoded.
     this.eventConverter = (json) =>
       convertJson("eventConverter", input.eventConverter, json);
     this.snapshotConverter = (json) =>
@@ -193,15 +194,15 @@ class DynamoDBEventStore<
     return result.withVersion(Number(version));
   }
 
-  async persistEvent(event: E, version: number): Promise<void> {
+  async persistEvent(event: E, expectedVersion: number): Promise<void> {
     this.logger?.debug(
-      `persistEvent(${JSON.stringify(event)}, ${version}): start`,
+      `persistEvent(${JSON.stringify(event)}, ${expectedVersion}): start`,
     );
     assertPersistableUpdateEvent(event);
-    await this.updateEventAndSnapshotOpt(event, version, undefined);
+    await this.updateEventAndSnapshotOpt(event, expectedVersion, undefined);
     await this.purgeExcessSnapshots(event);
     this.logger?.debug(
-      `persistEvent(${JSON.stringify(event)}, ${version}): finished`,
+      `persistEvent(${JSON.stringify(event)}, ${expectedVersion}): finished`,
     );
   }
 
@@ -266,19 +267,19 @@ class DynamoDBEventStore<
 
   private async updateEventAndSnapshotOpt(
     event: E,
-    version: number,
+    expectedVersion: number,
     aggregate: A | undefined,
   ): Promise<void> {
     this.logger?.debug(
       `private updateEventAndSnapshotOpt(${JSON.stringify(
         event,
-      )}, ${version}, ${JSON.stringify(aggregate)}): start`,
+      )}, ${expectedVersion}, ${JSON.stringify(aggregate)}): start`,
     );
-    const update = this.updateSnapshot(event, 0, version, aggregate);
+    const update = this.updateSnapshot(event, 0, expectedVersion, aggregate);
     const putRedundantSnapshot =
       aggregate === undefined
         ? undefined
-        : this.putRedundantSnapshot(event, aggregate, version + 1);
+        : this.putRedundantSnapshot(event, aggregate, expectedVersion + 1);
     const put = this.putJournal(event);
     const transactWriteItems = [
       {

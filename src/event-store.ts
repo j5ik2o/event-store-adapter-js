@@ -9,7 +9,7 @@ interface EventStore<
   A extends Aggregate<A, AID>,
   E extends Event<AID>,
 > {
-  persistEvent(event: E, version: number): Promise<void>;
+  persistEvent(event: E, expectedVersion: number): Promise<void>;
   persistEventAndSnapshot(event: E, aggregate: A): Promise<void>;
   getEventsByIdSinceSequenceNumber(
     id: AID,
