@@ -485,7 +485,10 @@ class DynamoDBEventStore<
 
   private assertConverter(name: string, converter: unknown): void {
     if (typeof converter !== "function") {
-      throw new Error(`${name} must be a function`);
+      throw new DynamoDBEventStoreConfigurationError(
+        name,
+        new Error(`${name} must be a function`),
+      );
     }
   }
 

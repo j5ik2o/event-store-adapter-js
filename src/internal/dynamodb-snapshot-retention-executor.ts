@@ -181,12 +181,14 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   }
 
   private toDeleteTtlEpochSeconds(deleteTtlMillis: number): string {
-    const ttlEpochMillis = Date.now() + deleteTtlMillis;
-    if (!Number.isSafeInteger(ttlEpochMillis)) {
+    const nowMillis = Date.now();
+    const maxSafeDeleteTtlMillis = Number.MAX_SAFE_INTEGER - nowMillis;
+    if (deleteTtlMillis > maxSafeDeleteTtlMillis) {
       throw new Error(
         "TTL calculation overflow: Date.now() + deleteTtlMillis exceeds safe integer range",
       );
     }
+    const ttlEpochMillis = nowMillis + deleteTtlMillis;
     // DynamoDB TTL is epoch seconds; round up so millisecond TTLs do not expire earlier than requested.
     return Math.ceil(ttlEpochMillis / MILLIS_PER_SECOND).toString();
   }

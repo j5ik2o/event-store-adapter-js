@@ -59,7 +59,9 @@ class MemoryEventStore<
     const aggregateIdString = event.aggregateId.asString();
     const snapshot = this.snapshots.get(aggregateIdString);
     if (snapshot === undefined) {
-      throw new OptimisticLockError("Snapshot not found for aggregate");
+      throw new OptimisticLockError(
+        `Aggregate does not exist: ${aggregateIdString}`,
+      );
     }
     if (snapshot.id.asString() !== event.aggregateId.asString()) {
       throw new Error(
@@ -87,7 +89,9 @@ class MemoryEventStore<
       }
     } else {
       if (snapshot === undefined) {
-        throw new OptimisticLockError("Snapshot not found for aggregate");
+        throw new OptimisticLockError(
+          `Aggregate does not exist: ${aggregateIdString}`,
+        );
       }
       assertExpectedVersion(snapshot.version, aggregate.version);
       newVersion = snapshot.version + 1;
