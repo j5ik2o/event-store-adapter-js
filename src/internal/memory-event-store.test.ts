@@ -42,6 +42,27 @@ runEventStoreContractTests({
 });
 
 describe("MemoryEventStore input isolation", () => {
+  test("uses seeded events and snapshots", async () => {
+    const id = new UserAccountId("user-account-0");
+    const [userAccount1, created] = UserAccount.create(id, "Alice");
+    const [userAccount2, renamed] = userAccount1.rename("Bob");
+    const eventStore = EventStoreFactory.ofMemory<
+      UserAccountId,
+      UserAccount,
+      UserAccountEvent
+    >({
+      events: new Map([[id, [created, renamed]]]),
+      snapshots: new Map([[id, userAccount2.withVersion(2)]]),
+    });
+
+    const latestSnapshot = await eventStore.getLatestSnapshotById(id);
+    const events = await eventStore.getEventsByIdSinceSequenceNumber(id, 2);
+
+    expect(latestSnapshot?.name).toEqual("Bob");
+    expect(latestSnapshot?.version).toEqual(2);
+    expect(events).toEqual([renamed]);
+  });
+
   test("does not expose seeded snapshot references", async () => {
     const id = new UserAccountId("user-account-1");
     const [snapshot] = UserAccount.create(id, "Alice");
