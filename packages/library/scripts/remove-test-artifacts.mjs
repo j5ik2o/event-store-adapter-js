@@ -9,7 +9,7 @@ const collectTestArtifacts = async (directory) => {
     if (error.code === "ENOENT") {
       return [];
     }
-    throw error;
+    throw new Error(`Failed to read directory ${directory}: ${error.message}`);
   });
   const nestedArtifacts = await Promise.all(
     entries.map(async (entry) => {
