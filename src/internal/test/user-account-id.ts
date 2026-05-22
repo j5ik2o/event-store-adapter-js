@@ -1,8 +1,16 @@
-import type { AggregateId } from "../../types";
+import {
+  type AggregateId,
+  type AggregateIdValue,
+  createAggregateIdValue,
+} from "../../types";
 
 class UserAccountId implements AggregateId {
   public readonly typeName = "user-account";
-  constructor(public readonly value: string) {}
+  public readonly value: AggregateIdValue;
+
+  constructor(value: string) {
+    this.value = createAggregateIdValue(value);
+  }
 
   asString(): string {
     return `${this.typeName}-${this.value}`;

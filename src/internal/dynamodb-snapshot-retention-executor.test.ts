@@ -5,13 +5,20 @@ import {
   QueryCommand,
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
-import type { AggregateId } from "../types";
+import {
+  type AggregateId,
+  type AggregateIdValue,
+  createAggregateIdValue,
+} from "../types";
 import { DynamoDBSnapshotRetentionExecutor } from "./dynamodb-snapshot-retention-executor";
 
 class TestAggregateId implements AggregateId {
   readonly typeName = "test";
+  readonly value: AggregateIdValue;
 
-  constructor(readonly value: string) {}
+  constructor(value: string) {
+    this.value = createAggregateIdValue(value);
+  }
 
   asString(): string {
     return `${this.typeName}-${this.value}`;

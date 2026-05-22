@@ -1,6 +1,8 @@
+import type { AggregateIdValue } from "./aggregate-id-value";
+
 interface AggregateId {
   typeName: string;
-  value: string;
+  value: AggregateIdValue;
   asString: () => string;
 }
 

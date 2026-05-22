@@ -1,5 +1,9 @@
 export type { Aggregate } from "./aggregate";
 export type { AggregateId } from "./aggregate-id";
+export {
+  type AggregateIdValue,
+  createAggregateIdValue,
+} from "./aggregate-id-value";
 export type { Event } from "./event";
 export type { EventSerializer } from "./event-serializer";
 export type { KeyResolver } from "./key-resolver";
