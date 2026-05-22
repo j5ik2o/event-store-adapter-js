@@ -35,7 +35,7 @@ function parseEventPayload(json: unknown): {
   type: string;
   data: {
     id: string;
-    aggregateId: unknown;
+    aggregateId: { value: string };
     name: string;
     sequenceNumber: number;
     occurredAt: string;
@@ -59,7 +59,7 @@ function parseEventPayload(json: unknown): {
 
 function isEventData(json: unknown): json is {
   id: string;
-  aggregateId: unknown;
+  aggregateId: { value: string };
   name: string;
   sequenceNumber: number;
   occurredAt: string;
@@ -77,6 +77,7 @@ function isEventData(json: unknown): json is {
     json.aggregateId.value.length > 0 &&
     "name" in json &&
     typeof json.name === "string" &&
+    json.name.length > 0 &&
     "sequenceNumber" in json &&
     typeof json.sequenceNumber === "number" &&
     "occurredAt" in json &&

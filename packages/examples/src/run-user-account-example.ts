@@ -19,8 +19,8 @@ async function runUserAccountExample(
   await userAccountRepository.saveWithSnapshot(created, createdAccount);
   console.log(`[${backendName}] created user account: Alice`);
 
-  const [, renamed] = createdAccount.rename("Bob");
-  await userAccountRepository.save(renamed, createdAccount.version);
+  const [renamedAccount, renamed] = createdAccount.rename("Bob");
+  await userAccountRepository.save(renamed, renamedAccount.version);
   console.log(`[${backendName}] renamed user account: Bob`);
 
   const replayedAccount = await userAccountRepository.findById(id);
@@ -54,7 +54,9 @@ async function assertOptimisticLockError(
     }
     throw error;
   }
-  throw new Error(`[${backendName}] expected OptimisticLockError`);
+  throw new Error(
+    `[${backendName}] expected OptimisticLockError but none was thrown`,
+  );
 }
 
 export { runUserAccountExample };

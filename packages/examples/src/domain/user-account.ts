@@ -32,9 +32,10 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
   }
 
   rename(name: string): [UserAccount, UserAccountEvent] {
+    const renamedName = requireUserAccountName(name);
     const renamed = new UserAccount(
       this.id,
-      name,
+      renamedName,
       this.sequenceNumber + 1,
       this.version,
     );
@@ -43,7 +44,7 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
       new UserAccountRenamed(
         ulid(),
         this.id,
-        name,
+        renamedName,
         renamed.sequenceNumber,
         new Date(),
       ),
@@ -54,13 +55,14 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
     id: UserAccountId,
     name: string,
   ): [UserAccount, UserAccountEvent] {
-    const created = new UserAccount(id, name, 1, 1);
+    const createdName = requireUserAccountName(name);
+    const created = new UserAccount(id, createdName, 1, 1);
     return [
       created,
       new UserAccountCreated(
         ulid(),
         id,
-        name,
+        createdName,
         created.sequenceNumber,
         new Date(),
       ),
@@ -116,6 +118,9 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
         version,
       );
     }
+    if (event instanceof UserAccountCreated) {
+      return this;
+    }
     return this;
   }
 }
@@ -132,7 +137,7 @@ function convertJSONToUserAccount(json: unknown): UserAccount {
 
 function parseSnapshotPayload(json: unknown): {
   data: {
-    id: unknown;
+    id: { value: string };
     name: string;
     sequenceNumber: number;
     version: number;
@@ -152,7 +157,7 @@ function parseSnapshotPayload(json: unknown): {
 }
 
 function isSnapshotData(json: unknown): json is {
-  id: unknown;
+  id: { value: string };
   name: string;
   sequenceNumber: number;
   version: number;
@@ -168,11 +173,19 @@ function isSnapshotData(json: unknown): json is {
     json.id.value.length > 0 &&
     "name" in json &&
     typeof json.name === "string" &&
+    json.name.length > 0 &&
     "sequenceNumber" in json &&
     typeof json.sequenceNumber === "number" &&
     "version" in json &&
     typeof json.version === "number"
   );
+}
+
+function requireUserAccountName(name: string): string {
+  if (name.length === 0) {
+    throw new Error("UserAccount name must not be empty");
+  }
+  return name;
 }
 
 export { convertJSONToUserAccount, UserAccount };

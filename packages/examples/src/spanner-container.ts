@@ -1,4 +1,4 @@
-import { type Database, Spanner } from "@google-cloud/spanner";
+import { type Database, type Instance, Spanner } from "@google-cloud/spanner";
 import {
   GenericContainer,
   type StartedTestContainer,
@@ -32,7 +32,11 @@ async function startSpannerContainer(input: {
     });
   } catch (error) {
     // createSpannerDatabase closes its Spanner client and restores env on failure.
-    await startedContainer.stop();
+    try {
+      await startedContainer.stop();
+    } catch (stopError) {
+      console.warn("Failed to stop Spanner emulator container", stopError);
+    }
     throw error;
   }
   return {
@@ -71,6 +75,7 @@ async function createSpannerDatabase(input: {
   process.env.GCLOUD_PROJECT = DEFAULT_PROJECT_ID;
   process.env.METADATA_SERVER_DETECTION = "none";
   const spanner = new Spanner({ projectId: DEFAULT_PROJECT_ID });
+  let createdInstance: Instance | undefined;
   const restoreEmulatorHost = () => {
     restoreEnvValue("SPANNER_EMULATOR_HOST", previousEmulatorHost);
     restoreEnvValue("GOOGLE_CLOUD_PROJECT", previousGoogleCloudProject);
@@ -89,6 +94,7 @@ async function createSpannerDatabase(input: {
         displayName: "Example Instance",
       },
     );
+    createdInstance = instance;
     await instanceOperation.promise();
     const [database, databaseOperation] = await instance.createDatabase(
       input.databaseId,
@@ -106,6 +112,13 @@ async function createSpannerDatabase(input: {
       restoreEmulatorHost,
     };
   } catch (error) {
+    if (createdInstance !== undefined) {
+      try {
+        await createdInstance.delete();
+      } catch (deleteError) {
+        console.warn("Failed to delete Spanner emulator instance", deleteError);
+      }
+    }
     // Close the client created in this function before the caller stops the container.
     spanner.close();
     restoreEmulatorHost();

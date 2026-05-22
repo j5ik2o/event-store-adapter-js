@@ -46,8 +46,8 @@ function createDynamoDBClient(
     )}`,
     // LocalStack accepts dummy credentials; do not copy these to production.
     credentials: {
-      accessKeyId: "x",
-      secretAccessKey: "x",
+      accessKeyId: "localstack-only-access-key",
+      secretAccessKey: "localstack-only-secret-key",
     },
   });
 }
