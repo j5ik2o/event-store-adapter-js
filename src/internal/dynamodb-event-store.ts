@@ -34,9 +34,6 @@ import {
 } from "./event-store-assertions";
 import { convertJson } from "./json-converter";
 
-interface DefaultSnapshotAggregate
-  extends Aggregate<DefaultSnapshotAggregate, AggregateId> {}
-
 class DynamoDBEventStoreConfigurationError extends Error {
   constructor(fieldName: string, cause: unknown) {
     const message = cause instanceof Error ? cause.message : String(cause);
@@ -53,12 +50,8 @@ class DynamoDBEventStore<
 > implements EventStore<AID, A, E>
 {
   private static sharedKeyResolver: DefaultKeyResolver<AggregateId> | undefined;
-  private static sharedEventSerializer:
-    | JsonEventSerializer<AggregateId, Event<AggregateId>>
-    | undefined;
-  private static sharedSnapshotSerializer:
-    | JsonSnapshotSerializer<AggregateId, DefaultSnapshotAggregate>
-    | undefined;
+  private static sharedEventSerializer: JsonEventSerializer | undefined;
+  private static sharedSnapshotSerializer: JsonSnapshotSerializer | undefined;
 
   private readonly dynamodbClient: DynamoDBClient;
   private readonly journalTableName: string;
@@ -510,14 +503,8 @@ class DynamoDBEventStore<
     E extends Event<AID>,
   >(): EventSerializer<AID, E> {
     // JsonEventSerializer has no aggregate-specific mutable state; the cast narrows a stateless shared instance.
-    DynamoDBEventStore.sharedEventSerializer ??= new JsonEventSerializer<
-      AggregateId,
-      Event<AggregateId>
-    >();
-    return DynamoDBEventStore.sharedEventSerializer as unknown as EventSerializer<
-      AID,
-      E
-    >;
+    DynamoDBEventStore.sharedEventSerializer ??= new JsonEventSerializer();
+    return DynamoDBEventStore.sharedEventSerializer;
   }
 
   private static snapshotSerializer<
@@ -525,14 +512,9 @@ class DynamoDBEventStore<
     A extends Aggregate<A, AID>,
   >(): SnapshotSerializer<AID, A> {
     // JsonSnapshotSerializer has no aggregate-specific mutable state; the cast narrows a stateless shared instance.
-    DynamoDBEventStore.sharedSnapshotSerializer ??= new JsonSnapshotSerializer<
-      AggregateId,
-      DefaultSnapshotAggregate
-    >();
-    return DynamoDBEventStore.sharedSnapshotSerializer as unknown as SnapshotSerializer<
-      AID,
-      A
-    >;
+    DynamoDBEventStore.sharedSnapshotSerializer ??=
+      new JsonSnapshotSerializer();
+    return DynamoDBEventStore.sharedSnapshotSerializer;
   }
 }
 
