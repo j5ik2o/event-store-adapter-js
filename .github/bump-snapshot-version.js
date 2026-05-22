@@ -1,7 +1,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const packageJsonPath = path.join(__dirname, "..", "package.json");
+const packageJsonPath = path.join(
+  __dirname,
+  "..",
+  "packages",
+  "library",
+  "package.json",
+);
 if (!fs.existsSync(packageJsonPath)) {
   throw new Error(`Missing ${packageJsonPath}`);
 }

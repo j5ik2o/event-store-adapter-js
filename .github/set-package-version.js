@@ -6,7 +6,13 @@ if (!nextVersion) {
   throw new Error("Usage: node .github/set-package-version.js <version>");
 }
 
-const packageJsonPath = path.join(__dirname, "..", "package.json");
+const packageJsonPath = path.join(
+  __dirname,
+  "..",
+  "packages",
+  "library",
+  "package.json",
+);
 if (!fs.existsSync(packageJsonPath)) {
   throw new Error(`Missing ${packageJsonPath}`);
 }

@@ -6,7 +6,11 @@ settings:
 
 importers:
 
-  .:
+  .: {}
+
+  packages/examples: {}
+
+  packages/library:
     dependencies:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.413.0
@@ -66,6 +70,8 @@ importers:
       typescript:
         specifier: ^6.0.0
         version: 6.0.3
+
+  packages/tests: {}
 
 packages:
 
@@ -3177,10 +3183,10 @@ snapshots:
       '@babel/generator': 7.29.1
       '@babel/helper-compilation-targets': 7.28.6
       '@babel/helper-module-transforms': 7.28.6(@babel/core@7.27.7)
-      '@babel/helpers': 7.27.6
+      '@babel/helpers': 7.29.2
       '@babel/parser': 7.29.3
       '@babel/template': 7.28.6
-      '@babel/traverse': 7.27.7
+      '@babel/traverse': 7.29.0
       '@babel/types': 7.29.0
       convert-source-map: 2.0.0
       debug: 4.4.3
@@ -4502,7 +4508,7 @@ snapshots:
   buffer@4.9.2:
     dependencies:
       base64-js: 1.5.1
-      ieee754: 1.1.13
+      ieee754: 1.2.1
       isarray: 1.0.0
 
   buffer@5.7.1:

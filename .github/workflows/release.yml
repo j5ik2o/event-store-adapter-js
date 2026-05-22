@@ -22,7 +22,7 @@ jobs:
           cache: 'pnpm'
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
-      - run: pnpm -r run build
-      - run: pnpm publish --access public --no-git-checks
+      - run: pnpm run build
+      - run: pnpm --filter event-store-adapter-js publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

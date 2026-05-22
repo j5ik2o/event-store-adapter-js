@@ -19,7 +19,7 @@ jobs:
         cache: 'pnpm'
     - run: corepack enable
     - run: pnpm install --frozen-lockfile
-    - run: pnpm -r run lint
+    - run: pnpm run lint
   test:
     runs-on: ubuntu-latest
     needs: lint
@@ -43,12 +43,12 @@ jobs:
         cache: 'pnpm'
     - run: corepack enable
     - run: pnpm install --frozen-lockfile
-    - run: pnpm -r run build
-    - run: pnpm -r run coverage --runInBand
+    - run: pnpm run build
+    - run: pnpm --filter event-store-adapter-js run coverage --runInBand
     - name: Upload coverage to Codecov
       if: success()
       uses: codecov/codecov-action@v6
       with:
-        files: ./coverage/lcov.info
+        files: ./packages/library/coverage/lcov.info
         use_oidc: true
         fail_ci_if_error: true
