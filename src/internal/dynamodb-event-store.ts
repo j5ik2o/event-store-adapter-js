@@ -47,20 +47,6 @@ function createDefaultKeyResolver<AID extends AggregateId>(): KeyResolver<AID> {
   return new DefaultKeyResolver<AID>();
 }
 
-function createDefaultEventSerializer<
-  AID extends AggregateId,
-  E extends Event<AID>,
->(): EventSerializer<AID, E> {
-  return new JsonEventSerializer();
-}
-
-function createDefaultSnapshotSerializer<
-  AID extends AggregateId,
-  A extends Aggregate<A, AID>,
->(): SnapshotSerializer<AID, A> {
-  return new JsonSnapshotSerializer();
-}
-
 class DynamoDBEventStore<
   AID extends AggregateId,
   A extends Aggregate<A, AID>,
@@ -98,10 +84,9 @@ class DynamoDBEventStore<
     this.keepSnapshotCount = input.keepSnapshotCount;
     this.deleteTtlMillis = this.normalizeDeleteTtlMillis(input.deleteTtlMillis);
     this.keyResolver = input.keyResolver ?? createDefaultKeyResolver<AID>();
-    this.eventSerializer =
-      input.eventSerializer ?? createDefaultEventSerializer<AID, E>();
+    this.eventSerializer = input.eventSerializer ?? new JsonEventSerializer();
     this.snapshotSerializer =
-      input.snapshotSerializer ?? createDefaultSnapshotSerializer<AID, A>();
+      input.snapshotSerializer ?? new JsonSnapshotSerializer();
     this.logger = input.logger;
   }
 
@@ -501,6 +486,9 @@ class DynamoDBEventStore<
     try {
       return normalizeDynamoDBDeleteTtlMillis(deleteTtlMillis);
     } catch (error) {
+      if (error instanceof DynamoDBEventStoreConfigurationError) {
+        throw error;
+      }
       const cause = error instanceof Error ? error : new Error(String(error));
       throw new DynamoDBEventStoreConfigurationError("deleteTtlMillis", cause);
     }
