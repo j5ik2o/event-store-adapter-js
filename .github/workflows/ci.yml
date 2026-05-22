@@ -46,7 +46,7 @@ jobs:
     - run: pnpm run build
     - run: pnpm --filter event-store-adapter-js run coverage --runInBand
     - name: Verify coverage file exists
-      run: test -f ./packages/library/coverage/lcov.info
+      run: test -f "${GITHUB_WORKSPACE}/packages/library/coverage/lcov.info"
     - name: Upload coverage to Codecov
       if: success()
       uses: codecov/codecov-action@v6
