@@ -25,6 +25,7 @@ async function runUserAccountExample(
 
   const replayedAccount = await userAccountRepository.findById(id);
   assert(replayedAccount !== undefined);
+  assert.equal(replayedAccount.id.asString(), id.asString());
   assert.equal(replayedAccount.name, "Bob");
   assert.equal(replayedAccount.version, 2);
   assert.equal(replayedAccount.sequenceNumber, 2);

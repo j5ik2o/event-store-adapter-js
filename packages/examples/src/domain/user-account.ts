@@ -175,8 +175,12 @@ function isSnapshotData(json: unknown): json is UserAccountSnapshotData {
     json.name.length > 0 &&
     "sequenceNumber" in json &&
     typeof json.sequenceNumber === "number" &&
+    Number.isSafeInteger(json.sequenceNumber) &&
+    json.sequenceNumber > 0 &&
     "version" in json &&
-    typeof json.version === "number"
+    typeof json.version === "number" &&
+    Number.isSafeInteger(json.version) &&
+    json.version > 0
   );
 }
 
