@@ -1,11 +1,10 @@
 import { createShardId, type ShardId } from "../shard-id";
-import type { SpannerShardSelector } from "../spanner-shard-selector";
-import type { AggregateId } from "../types";
+import type { AggregateId, ShardCount, ShardSelector } from "../types";
 
-class DefaultSpannerShardSelector<AID extends AggregateId>
-  implements SpannerShardSelector<AID>
+class DefaultShardSelector<AID extends AggregateId>
+  implements ShardSelector<AID>
 {
-  selectShardId(aggregateId: AID, shardCount: number): ShardId {
+  selectShardId(aggregateId: AID, shardCount: ShardCount): ShardId {
     if (aggregateId === undefined || aggregateId === null) {
       throw new Error(`aggregateId is undefined or null: ${aggregateId}`);
     }
@@ -27,11 +26,11 @@ class DefaultSpannerShardSelector<AID extends AggregateId>
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
       hash = (hash << 5) - hash + char;
-      // Match DefaultKeyResolver's signed 32-bit coercion without the opaque hash & hash idiom.
+      // Keep the legacy DefaultKeyResolver result, using an explicit 32-bit mask instead of the opaque hash & hash idiom.
       hash = hash & 0xffffffff;
     }
     return hash >>> 0;
   }
 }
 
-export { DefaultSpannerShardSelector };
+export { DefaultShardSelector };

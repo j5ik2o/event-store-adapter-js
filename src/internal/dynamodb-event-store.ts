@@ -14,18 +14,21 @@ import type { EventStore } from "../event-store";
 import {
   type Aggregate,
   type AggregateId,
+  createShardCount,
   type Event,
   type EventSerializer,
-  type KeyResolver,
   type Logger,
   OptimisticLockError,
+  type ShardCount,
+  type ShardSelector,
   type SnapshotSerializer,
 } from "../types";
-import { DefaultKeyResolver } from "./default-key-resolver";
 import {
   JsonEventSerializer,
   JsonSnapshotSerializer,
 } from "./default-serializer";
+import { DefaultShardSelector } from "./default-shard-selector";
+import { DynamoDBAggregateKey } from "./dynamodb-aggregate-key";
 import { normalizeDynamoDBDeleteTtlMillis } from "./dynamodb-delete-ttl-millis";
 import { DynamoDBSnapshotRetentionExecutor } from "./dynamodb-snapshot-retention-executor";
 import {
@@ -43,8 +46,10 @@ class DynamoDBEventStoreConfigurationError extends Error {
   }
 }
 
-function createDefaultKeyResolver<AID extends AggregateId>(): KeyResolver<AID> {
-  return new DefaultKeyResolver<AID>();
+function createDefaultShardSelector<
+  AID extends AggregateId,
+>(): ShardSelector<AID> {
+  return new DefaultShardSelector();
 }
 
 class DynamoDBEventStore<
@@ -59,12 +64,12 @@ class DynamoDBEventStore<
   private readonly journalAidIndexName: string;
   private readonly snapshotAidIndexName: string;
   private readonly snapshotActiveTtlIndexName: string;
-  private readonly shardCount: number;
+  private readonly shardCount: ShardCount;
   private readonly eventConverter: (json: unknown) => E;
   private readonly snapshotConverter: (json: unknown) => A;
   private readonly keepSnapshotCount: number | undefined;
   private readonly deleteTtlMillis: number | undefined;
-  private readonly keyResolver: KeyResolver<AID>;
+  private readonly shardSelector: ShardSelector<AID>;
   private readonly eventSerializer: EventSerializer<AID, E>;
   private readonly snapshotSerializer: SnapshotSerializer<AID, A>;
   private readonly logger: Logger | undefined;
@@ -78,12 +83,13 @@ class DynamoDBEventStore<
     this.journalAidIndexName = input.journalAidIndexName;
     this.snapshotAidIndexName = input.snapshotAidIndexName;
     this.snapshotActiveTtlIndexName = input.snapshotActiveTtlIndexName;
-    this.shardCount = input.shardCount;
+    this.shardCount = this.parseShardCount(input.shardCount);
     this.eventConverter = input.eventConverter;
     this.snapshotConverter = input.snapshotConverter;
     this.keepSnapshotCount = input.keepSnapshotCount;
     this.deleteTtlMillis = this.normalizeDeleteTtlMillis(input.deleteTtlMillis);
-    this.keyResolver = input.keyResolver ?? createDefaultKeyResolver<AID>();
+    this.shardSelector =
+      input.shardSelector ?? createDefaultShardSelector<AID>();
     this.eventSerializer = input.eventSerializer ?? new JsonEventSerializer();
     this.snapshotSerializer =
       input.snapshotSerializer ?? new JsonSnapshotSerializer();
@@ -302,20 +308,18 @@ class DynamoDBEventStore<
 
   private putJournal(event: E): Put {
     this.logger?.debug(`private putSnapshot(${JSON.stringify(event)}): start`);
-    const pkey = this.keyResolver.resolvePartitionKey(
-      event.aggregateId,
-      this.shardCount,
-    );
-    const skey = this.keyResolver.resolveSortKey(
+    const key = DynamoDBAggregateKey.create(
       event.aggregateId,
       event.sequenceNumber,
+      this.shardSelector,
+      this.shardCount,
     );
     const payload = this.eventSerializer.serialize(event);
     const result = {
       TableName: this.journalTableName,
       Item: {
-        pkey: { S: pkey },
-        skey: { S: skey },
+        pkey: { S: key.partitionKeyValue },
+        skey: { S: key.sortKeyValue },
         aid: { S: event.aggregateId.asString() },
         seq_nr: { N: event.sequenceNumber.toString() },
         payload: { B: payload },
@@ -339,18 +343,16 @@ class DynamoDBEventStore<
         event,
       )}, ${sequenceNumber}, ${JSON.stringify(aggregate)}): start`,
     );
-    const pkey = this.keyResolver.resolvePartitionKey(
-      event.aggregateId,
-      this.shardCount,
-    );
-    const skey = this.keyResolver.resolveSortKey(
+    const key = DynamoDBAggregateKey.create(
       event.aggregateId,
       sequenceNumber,
+      this.shardSelector,
+      this.shardCount,
     );
     const payload = this.snapshotSerializer.serialize(aggregate);
     const item: Record<string, AttributeValue> = {
-      pkey: { S: pkey },
-      skey: { S: skey },
+      pkey: { S: key.partitionKeyValue },
+      skey: { S: key.sortKeyValue },
       payload: { B: payload },
       aid: { S: event.aggregateId.asString() },
       seq_nr: { N: sequenceNumber.toString() },
@@ -398,17 +400,15 @@ class DynamoDBEventStore<
         event,
       )}, sequenceNumber = ${sequenceNumber}, version = ${version}, aggregate = ${JSON.stringify(aggregate)}): start`,
     );
-    const pkey = this.keyResolver.resolvePartitionKey(
-      event.aggregateId,
-      this.shardCount,
-    );
-    const skey = this.keyResolver.resolveSortKey(
+    const key = DynamoDBAggregateKey.create(
       event.aggregateId,
       sequenceNumber,
+      this.shardSelector,
+      this.shardCount,
     );
     const keys = {
-      pkey: { S: pkey },
-      skey: { S: skey },
+      pkey: { S: key.partitionKeyValue },
+      skey: { S: key.sortKeyValue },
     };
     const names = {
       "#version": "version",
@@ -477,6 +477,14 @@ class DynamoDBEventStore<
         name,
         new Error("must be a function"),
       );
+    }
+  }
+
+  private parseShardCount(shardCount: number): ShardCount {
+    try {
+      return createShardCount(shardCount);
+    } catch (cause) {
+      throw new DynamoDBEventStoreConfigurationError("shardCount", cause);
     }
   }
 

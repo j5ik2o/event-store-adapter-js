@@ -5,21 +5,23 @@ import {
 } from "@google-cloud/spanner";
 import type { EventStore } from "../event-store";
 import type { SpannerEventStoreInput } from "../spanner-event-store-input";
-import type { SpannerShardSelector } from "../spanner-shard-selector";
 import {
   type Aggregate,
   type AggregateId,
+  createShardCount,
   type Event,
   type EventSerializer,
   type Logger,
   OptimisticLockError,
+  type ShardCount,
+  type ShardSelector,
   type SnapshotSerializer,
 } from "../types";
 import {
   JsonEventSerializer,
   JsonSnapshotSerializer,
 } from "./default-serializer";
-import { DefaultSpannerShardSelector } from "./default-spanner-shard-selector";
+import { DefaultShardSelector } from "./default-shard-selector";
 import {
   assertEventMatchesAggregate,
   assertExpectedVersion,
@@ -52,8 +54,8 @@ class SpannerEventStoreConfigurationError extends Error {
 
 function createDefaultShardSelector<
   AID extends AggregateId,
->(): SpannerShardSelector<AID> {
-  return new DefaultSpannerShardSelector<AID>();
+>(): ShardSelector<AID> {
+  return new DefaultShardSelector();
 }
 
 class SpannerEventStore<
@@ -67,11 +69,11 @@ class SpannerEventStore<
   private readonly snapshotTableName: string;
   private readonly quotedJournalTableName: string;
   private readonly quotedSnapshotTableName: string;
-  private readonly shardCount: number;
+  private readonly shardCount: ShardCount;
   private readonly eventConverter: (json: unknown) => E;
   private readonly snapshotConverter: (json: unknown) => A;
   private readonly keepSnapshotCount: number | undefined;
-  private readonly shardSelector: SpannerShardSelector<AID>;
+  private readonly shardSelector: ShardSelector<AID>;
   private readonly eventSerializer: EventSerializer<AID, E>;
   private readonly snapshotSerializer: SnapshotSerializer<AID, A>;
   private readonly logger: Logger | undefined;
@@ -79,7 +81,7 @@ class SpannerEventStore<
   constructor(input: SpannerEventStoreInput<AID, A, E>) {
     this.assertConverter("eventConverter", input.eventConverter);
     this.assertConverter("snapshotConverter", input.snapshotConverter);
-    this.assertShardCount(input.shardCount);
+    const shardCount = this.parseShardCount(input.shardCount);
     this.database = input.database;
     this.journalTableName = this.assertTableName(
       "journalTableName",
@@ -91,7 +93,7 @@ class SpannerEventStore<
     );
     this.quotedJournalTableName = this.quoteTableName(this.journalTableName);
     this.quotedSnapshotTableName = this.quoteTableName(this.snapshotTableName);
-    this.shardCount = input.shardCount;
+    this.shardCount = shardCount;
     this.eventConverter = input.eventConverter;
     this.snapshotConverter = input.snapshotConverter;
     this.keepSnapshotCount =
@@ -553,11 +555,13 @@ class SpannerEventStore<
     }
   }
 
-  private assertShardCount(shardCount: number): void {
-    if (!Number.isSafeInteger(shardCount) || shardCount <= 0) {
+  private parseShardCount(shardCount: number): ShardCount {
+    try {
+      return createShardCount(shardCount);
+    } catch (cause) {
       throw new SpannerEventStoreConfigurationError(
         "shardCount",
-        new Error(`must be a positive safe integer, got ${String(shardCount)}`),
+        cause as Error,
       );
     }
   }

@@ -4,8 +4,8 @@ import type {
   AggregateId,
   Event,
   EventSerializer,
-  KeyResolver,
   Logger,
+  ShardSelector,
   SnapshotSerializer,
 } from "./types";
 
@@ -27,7 +27,7 @@ interface DynamoDBEventStoreInput<
   snapshotConverter: (json: unknown) => A;
   keepSnapshotCount?: number;
   deleteTtlMillis?: number;
-  keyResolver?: KeyResolver<AID>;
+  shardSelector?: ShardSelector<AID>;
   eventSerializer?: EventSerializer<AID, E>;
   snapshotSerializer?: SnapshotSerializer<AID, A>;
   logger?: Logger;

@@ -8,19 +8,17 @@ import {
 import { ulid } from "ulid";
 import { EventStoreFactory } from "../event-store";
 import { createShardId } from "../shard-id";
-import type { SpannerShardSelector } from "../spanner-shard-selector";
 import {
   type EventSerializer,
   type Logger,
   OptimisticLockError,
+  type ShardSelector,
   type SnapshotSerializer,
 } from "../types";
-import { DefaultKeyResolver } from "./default-key-resolver";
 import {
   JsonEventSerializer,
   JsonSnapshotSerializer,
 } from "./default-serializer";
-import { DefaultSpannerShardSelector } from "./default-spanner-shard-selector";
 import { SpannerEventStore } from "./spanner-event-store";
 import { runEventStoreContractTests } from "./test/event-store-contract";
 import { createSpannerDatabase } from "./test/spanner-utils";
@@ -403,7 +401,7 @@ class FakeSpannerTransaction {
 type FakeEventStoreOptions = {
   eventSerializer?: EventSerializer<UserAccountId, UserAccountEvent>;
   logger?: Logger;
-  shardSelector?: SpannerShardSelector<UserAccountId>;
+  shardSelector?: ShardSelector<UserAccountId>;
   snapshotSerializer?: SnapshotSerializer<UserAccountId, UserAccount>;
 };
 
@@ -489,50 +487,6 @@ describe("ShardId", () => {
     expect(() => createShardId(1.5)).toThrow("shardId must be");
     expect(() => createShardId(Number.POSITIVE_INFINITY)).toThrow(
       "shardId must be",
-    );
-  });
-});
-
-describe("DefaultSpannerShardSelector", () => {
-  test("selects the same shard as the existing hash distribution", () => {
-    const shardCount = 32;
-    const selector = new DefaultSpannerShardSelector<UserAccountId>();
-    const keyResolver = new DefaultKeyResolver<UserAccountId>();
-
-    for (const id of [
-      new UserAccountId(ulid()),
-      new UserAccountId("01HZX3D9Z2C4J9V3K9WQ6T8Y7A"),
-      new UserAccountId("user-account-with-a-long-stable-id-000000000001"),
-    ]) {
-      const dynamodbPartitionKey = keyResolver.resolvePartitionKey(
-        id,
-        shardCount,
-      );
-      const expectedShardId = Number(dynamodbPartitionKey.split("-").at(-1));
-
-      expect(selector.selectShardId(id, shardCount)).toBe(
-        createShardId(expectedShardId),
-      );
-    }
-  });
-
-  test("rejects invalid inputs before selecting a shard", () => {
-    const selector = new DefaultSpannerShardSelector<UserAccountId>();
-    const id = new UserAccountId(ulid());
-    const invalidId = {
-      typeName: "user-account",
-      value: id.value,
-      asString: () => undefined,
-    } as unknown as UserAccountId;
-
-    expect(() =>
-      selector.selectShardId(undefined as unknown as UserAccountId, 32),
-    ).toThrow("aggregateId is undefined or null");
-    expect(() => selector.selectShardId(id, 0)).toThrow(
-      "shardCount must be a positive safe integer",
-    );
-    expect(() => selector.selectShardId(invalidId, 32)).toThrow(
-      "str is not a string",
     );
   });
 });
@@ -693,7 +647,7 @@ describe("SpannerEventStore", () => {
       warn: jest.fn(),
       error: jest.fn(),
     };
-    const shardSelector: SpannerShardSelector<UserAccountId> = {
+    const shardSelector: ShardSelector<UserAccountId> = {
       selectShardId: jest.fn(() => createShardId(0)),
     };
     const eventStore = createFakeEventStore(

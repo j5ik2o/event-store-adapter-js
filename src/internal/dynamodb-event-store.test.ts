@@ -6,6 +6,8 @@ import {
   Wait,
 } from "testcontainers";
 import { ulid } from "ulid";
+import { createShardId } from "../shard-id";
+import type { ShardSelector } from "../types";
 import { DynamoDBEventStore } from "./dynamodb-event-store";
 import {
   createDynamoDBClient,
@@ -43,6 +45,10 @@ describe("DynamoDBEventStore", () => {
   function createEventStore(
     dynamodbClient: DynamoDBClient,
     keepSnapshotCount?: number,
+    options: {
+      shardCount?: number;
+      shardSelector?: ShardSelector<UserAccountId>;
+    } = {},
   ): DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent> {
     return new DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>(
       {
@@ -56,6 +62,7 @@ describe("DynamoDBEventStore", () => {
         eventConverter: convertJSONtoUserAccountEvent,
         snapshotConverter: convertJSONToUserAccount,
         keepSnapshotCount,
+        ...options,
       },
     );
   }
@@ -155,6 +162,55 @@ describe("DynamoDBEventStore", () => {
       );
     }).toThrow("must be a function");
   });
+
+  test.each([
+    0,
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ])("rejects invalid shardCount %s", (shardCount) => {
+    expect(() => {
+      createEventStore(dynamodbClient, undefined, {
+        shardCount,
+      });
+    }).toThrow("Invalid shardCount configuration");
+  });
+
+  test(
+    "uses custom shard selector for DynamoDB keys",
+    async () => {
+      const shardSelector: ShardSelector<UserAccountId> = {
+        selectShardId: jest.fn(() => createShardId(7)),
+      };
+      const eventStore = createEventStore(dynamodbClient, undefined, {
+        shardSelector,
+      });
+      const id = new UserAccountId(ulid());
+      const [userAccount1, created] = UserAccount.create(id, "Alice");
+
+      await eventStore.persistEventAndSnapshot(created, userAccount1);
+
+      const result = await dynamodbClient.send(
+        new QueryCommand({
+          TableName: JOURNAL_TABLE_NAME,
+          KeyConditionExpression: "#pkey = :pkey AND #skey = :skey",
+          ExpressionAttributeNames: {
+            "#pkey": "pkey",
+            "#skey": "skey",
+          },
+          ExpressionAttributeValues: {
+            ":pkey": { S: "user-account-7" },
+            ":skey": { S: `${id.asString()}-1` },
+          },
+        }),
+      );
+      expect(result.Items).toHaveLength(1);
+      expect(result.Items?.[0].pkey).toEqual({ S: "user-account-7" });
+      expect(shardSelector.selectShardId).toHaveBeenCalledWith(id, 32);
+    },
+    TIMEOUT,
+  );
 
   test(
     "persists redundant snapshots when retention is enabled",

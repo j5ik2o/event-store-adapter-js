@@ -2,8 +2,8 @@
 
 - [x] 1.1 `@google-cloud/spanner` を runtime dependencies に追加し、lockfile を更新する。
 - [x] 1.2 validation 付きの public `ShardId` value object と `createShardId(...)` を追加する。
-- [x] 1.3 `ShardId` を返す public `SpannerShardSelector` interface を追加する。
-- [x] 1.4 既存の hash distribution 方針を使う internal `DefaultSpannerShardSelector` を追加する。
+- [x] 1.3 `ShardId` を返す public `ShardSelector` interface を追加する。
+- [x] 1.4 既存の hash distribution 方針を使う internal `DefaultShardSelector` を追加する。
 - [x] 1.5 caller-managed `Database`、table names、shard count、converters、optional serializers、optional shard selector、optional retention、optional logger を持つ `SpannerEventStoreInput` を追加する。
 - [x] 1.6 新しい public Spanner input、shard selector、shard ID types を `src/index.ts` から export する。
 - [x] 1.7 既存の DynamoDB / memory factory behavior を変えずに `EventStoreFactory.ofSpanner(...)` を追加する。

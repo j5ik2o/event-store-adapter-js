@@ -1,5 +1,6 @@
+import type { ShardCount } from "../shard-count";
 import type { ShardId } from "../shard-id";
-import type { SpannerShardSelector } from "../spanner-shard-selector";
+import type { ShardSelector } from "../shard-selector";
 import type { AggregateId } from "../types";
 
 class SpannerAggregateKey<AID extends AggregateId> {
@@ -10,8 +11,8 @@ class SpannerAggregateKey<AID extends AggregateId> {
 
   static create<AID extends AggregateId>(
     aggregateId: AID,
-    shardSelector: SpannerShardSelector<AID>,
-    shardCount: number,
+    shardSelector: ShardSelector<AID>,
+    shardCount: ShardCount,
   ): SpannerAggregateKey<AID> {
     return new SpannerAggregateKey(
       shardSelector.selectShardId(aggregateId, shardCount),
