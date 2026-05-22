@@ -73,6 +73,7 @@ function isEventData(json: unknown): json is UserAccountEventData {
     json !== null &&
     "id" in json &&
     typeof json.id === "string" &&
+    json.id.length > 0 &&
     "aggregateId" in json &&
     typeof json.aggregateId === "object" &&
     json.aggregateId !== null &&

@@ -96,6 +96,9 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
     if (!(firstEvent instanceof UserAccountCreated)) {
       throw new Error("UserAccount history must start with UserAccountCreated");
     }
+    if (firstEvent.sequenceNumber !== 1) {
+      throw new Error("UserAccount history must start with sequence number 1");
+    }
     const initial = new UserAccount(
       firstEvent.aggregateId,
       firstEvent.name,
