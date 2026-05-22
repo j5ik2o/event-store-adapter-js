@@ -91,13 +91,13 @@ adapter は SQL boundary でのみ `aggregateId.asString()` と `ShardId` を Sp
 
 ### shardCount は public input では primitive のままにする
 
-`SpannerEventStoreInput.shardCount` は `DynamoDBEventStoreInput` と合わせて `number` のままにする。adapter は使用前に positive integer として normalize する。
+`SpannerEventStoreInput.shardCount` は `DynamoDBEventStoreInput` と合わせて `number` のままにする。adapter は使用前に positive integer として validate し、invalid value は configuration error として reject する。
 
 代替案として public `ShardCount` VO を導入する案もあるが、Spanner だけ DynamoDB より厳しい API になり、必要性が実証される前に API friction が増える。
 
 ### 楽観ロックには read-write transaction を使う
 
-Spanner write は read-write transaction 内で行う。adapter は最新 snapshot row を読み、`version` を比較し、journal row を insert し、最新 snapshot row を update または insert して atomic に commit する。
+Spanner write は read-write transaction 内で行う。adapter は最新 snapshot row を読み、`version` を比較し、journal row を insert し、最新 snapshot row を update または insert する。`persistEventAndSnapshot(...)` で `keepSnapshotCount` が指定されている場合は、保持用 snapshot copy も同じ transaction に含めて atomic に commit する。
 
 version mismatch、update 対象 aggregate の欠落、duplicate created event、duplicate journal insert は `OptimisticLockError` に変換する。Spanner の `ALREADY_EXISTS` は `OptimisticLockError` に変換する。`ABORTED` は Spanner client の transaction retry mechanism に任せ、最終的に残った unrecovered error は再分類しない。
 

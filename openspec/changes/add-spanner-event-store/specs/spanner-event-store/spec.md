@@ -47,12 +47,13 @@ Spanner adapter は configured serializer が生成した bytes として event 
 - **THEN** adapter は configured serializer と converter を使って deserialize する
 
 ### Requirement: Persist created event and latest snapshot atomically
-Spanner adapter は created event と latest snapshot を1つの read-write transaction で atomic に保存しなければならない。
+Spanner adapter は created event、latest snapshot、configured retained snapshot copy を1つの read-write transaction で atomic に保存しなければならない。
 
 #### Scenario: Created aggregate
 - **WHEN** `persistEventAndSnapshot(...)` が created event と matching aggregate で呼び出される
 - **THEN** adapter は journal row を1件 insert する
 - **THEN** adapter は `sequence_number = 0` かつ `version = 1` の latest snapshot row を insert する
+- **THEN** `keepSnapshotCount` が configured の場合、adapter は同じ transaction で `sequence_number = event.sequenceNumber` の retained snapshot row を insert する
 
 ### Requirement: Persist update event atomically
 Spanner adapter は update event を保存し、latest snapshot version を1つの read-write transaction で atomic に進めなければならない。
@@ -63,12 +64,13 @@ Spanner adapter は update event を保存し、latest snapshot version を1つ�
 - **THEN** adapter は latest snapshot payload を置き換えずに latest snapshot version を increment する
 
 ### Requirement: Persist update event with snapshot atomically
-Spanner adapter は snapshot が提供された場合、update event を保存し、latest snapshot payload を1つの read-write transaction で atomic に置き換えなければならない。
+Spanner adapter は snapshot が提供された場合、update event、latest snapshot payload、configured retained snapshot copy を1つの read-write transaction で atomic に保存しなければならない。
 
 #### Scenario: Update with snapshot
 - **WHEN** `persistEventAndSnapshot(...)` が update event と matching aggregate で呼び出される
 - **THEN** adapter は journal row を1件 insert する
 - **THEN** adapter は `sequence_number = 0` の latest snapshot row を new payload と incremented version で update する
+- **THEN** `keepSnapshotCount` が configured の場合、adapter は同じ transaction で `sequence_number = event.sequenceNumber` の retained snapshot row を insert する
 
 ### Requirement: Optimistic locking
 Spanner adapter は既存の optimistic locking semantics を維持しなければならない。
