@@ -44,6 +44,7 @@ function createDynamoDBClient(
     endpoint: `http://localhost:${startedContainer.getMappedPort(
       DYNAMODB_PORT,
     )}`,
+    // LocalStack accepts dummy credentials; do not copy these to production.
     credentials: {
       accessKeyId: "x",
       secretAccessKey: "x",

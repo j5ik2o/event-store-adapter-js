@@ -26,7 +26,11 @@ class UserAccountRepository {
   async findById(id: UserAccountId): Promise<UserAccount | undefined> {
     const snapshot = await this.eventStore.getLatestSnapshotById(id);
     if (snapshot === undefined) {
-      return undefined;
+      const events = await this.eventStore.getEventsByIdSinceSequenceNumber(
+        id,
+        1,
+      );
+      return UserAccount.replayFromEvents(events);
     }
     const events = await this.eventStore.getEventsByIdSinceSequenceNumber(
       id,

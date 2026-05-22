@@ -77,6 +77,25 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
     );
   }
 
+  static replayFromEvents(
+    events: readonly UserAccountEvent[],
+  ): UserAccount | undefined {
+    const [firstEvent, ...remainingEvents] = events;
+    if (firstEvent === undefined) {
+      return undefined;
+    }
+    if (!(firstEvent instanceof UserAccountCreated)) {
+      throw new Error("UserAccount history must start with UserAccountCreated");
+    }
+    const initial = new UserAccount(
+      firstEvent.aggregateId,
+      firstEvent.name,
+      firstEvent.sequenceNumber,
+      1,
+    );
+    return UserAccount.replay(remainingEvents, initial);
+  }
+
   private applyEvent(event: UserAccountEvent): UserAccount {
     if (event instanceof UserAccountRenamed) {
       return new UserAccount(
