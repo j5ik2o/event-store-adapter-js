@@ -19,8 +19,8 @@ async function runUserAccountExample(
   await userAccountRepository.saveWithSnapshot(created, createdAccount);
   console.log(`[${backendName}] created user account: Alice`);
 
-  const [renamedAccount, renamed] = createdAccount.rename("Bob");
-  await userAccountRepository.save(renamed, renamedAccount.version);
+  const [, renamed] = createdAccount.rename("Bob");
+  await userAccountRepository.save(renamed, createdAccount.version);
   console.log(`[${backendName}] renamed user account: Bob`);
 
   const replayedAccount = await userAccountRepository.findById(id);

@@ -85,7 +85,8 @@ function isEventData(json: unknown): json is UserAccountEventData {
     "sequenceNumber" in json &&
     typeof json.sequenceNumber === "number" &&
     "occurredAt" in json &&
-    typeof json.occurredAt === "string"
+    typeof json.occurredAt === "string" &&
+    !Number.isNaN(Date.parse(json.occurredAt))
   );
 }
 
