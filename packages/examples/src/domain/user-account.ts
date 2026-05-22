@@ -72,7 +72,7 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
     snapshot: UserAccount,
   ): UserAccount {
     return events.reduce(
-      (account, event) => account.applyEvent(event),
+      (account, event) => account.applySnapshotEvent(event),
       snapshot,
     );
   }
@@ -93,16 +93,27 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
       firstEvent.sequenceNumber,
       1,
     );
-    return UserAccount.replay(remainingEvents, initial);
+    return remainingEvents.reduce(
+      (account, event) => account.applyStoredEvent(event),
+      initial,
+    );
   }
 
-  private applyEvent(event: UserAccountEvent): UserAccount {
+  private applySnapshotEvent(event: UserAccountEvent): UserAccount {
+    return this.applyEvent(event, this.version);
+  }
+
+  private applyStoredEvent(event: UserAccountEvent): UserAccount {
+    return this.applyEvent(event, this.version + 1);
+  }
+
+  private applyEvent(event: UserAccountEvent, version: number): UserAccount {
     if (event instanceof UserAccountRenamed) {
       return new UserAccount(
         this.id,
         event.name,
         event.sequenceNumber,
-        this.version,
+        version,
       );
     }
     return this;
