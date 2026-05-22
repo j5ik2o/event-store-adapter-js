@@ -35,8 +35,10 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
     - run: npm install
+    - run: npm run build
     - run: npm run coverage -- --runInBand
     - name: Upload coverage to Codecov
+      if: success()
       uses: codecov/codecov-action@v6
       with:
         files: ./coverage/lcov.info
