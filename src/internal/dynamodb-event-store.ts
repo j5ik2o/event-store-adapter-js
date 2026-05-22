@@ -485,7 +485,7 @@ class DynamoDBEventStore<
     if (typeof converter !== "function") {
       throw new DynamoDBEventStoreConfigurationError(
         name,
-        new Error(`${name} must be a function`),
+        new Error("must be a function"),
       );
     }
   }

@@ -153,7 +153,7 @@ describe("DynamoDBEventStore", () => {
       new DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>(
         input,
       );
-    }).toThrow(`${converterName} must be a function`);
+    }).toThrow("must be a function");
   });
 
   test(
