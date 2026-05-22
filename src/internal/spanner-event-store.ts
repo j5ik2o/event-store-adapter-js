@@ -480,11 +480,14 @@ class SpannerEventStore<
     }
     if (typeof value === "object" && value !== null && "value" in value) {
       const wrappedValue = (value as { value: unknown }).value;
-      if (
-        typeof wrappedValue === "number" ||
-        typeof wrappedValue === "string"
-      ) {
+      if (typeof wrappedValue === "string") {
         return this.parseSafeInteger(fieldName, wrappedValue);
+      }
+      if (typeof wrappedValue === "number") {
+        if (!Number.isSafeInteger(wrappedValue)) {
+          throw new Error(`${fieldName} is not a safe integer`);
+        }
+        return wrappedValue;
       }
     }
     throw new Error(`${fieldName} is not a number`);

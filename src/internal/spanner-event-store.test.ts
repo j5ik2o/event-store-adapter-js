@@ -71,6 +71,7 @@ type FakeSpannerDatabaseOptions = {
     | "string"
     | "wrapped"
     | "wrapped-number"
+    | "wrapped-unsafe"
     | "wrapped-invalid"
     | "invalid"
     | "nan"
@@ -358,6 +359,8 @@ class FakeSpannerDatabase {
         return { value: version.toString() };
       case "wrapped-number":
         return { value: version };
+      case "wrapped-unsafe":
+        return { value: Number.MAX_SAFE_INTEGER + 1 };
       case "wrapped-invalid":
         return { value: { version } };
       case "invalid":
@@ -765,6 +768,11 @@ describe("SpannerEventStore", () => {
     [
       "unsafe numeric snapshot version",
       { snapshotVersionFormat: "unsafe" },
+      "version is not a safe integer",
+    ],
+    [
+      "unsafe wrapped numeric snapshot version",
+      { snapshotVersionFormat: "wrapped-unsafe" },
       "version is not a safe integer",
     ],
     [
