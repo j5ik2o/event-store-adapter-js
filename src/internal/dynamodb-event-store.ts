@@ -481,15 +481,11 @@ class DynamoDBEventStore<
   }
 
   private parseShardCount(shardCount: number): ShardCount {
-    if (!Number.isSafeInteger(shardCount) || shardCount <= 0) {
-      throw new DynamoDBEventStoreConfigurationError(
-        "shardCount",
-        new Error(
-          `shardCount must be a positive safe integer, got ${shardCount}`,
-        ),
-      );
+    try {
+      return createShardCount(shardCount);
+    } catch (cause) {
+      throw new DynamoDBEventStoreConfigurationError("shardCount", cause);
     }
-    return createShardCount(shardCount);
   }
 
   private normalizeDeleteTtlMillis(
