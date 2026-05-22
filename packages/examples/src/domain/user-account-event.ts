@@ -3,6 +3,7 @@ import { convertJSONToUserAccountId } from "./user-account-id";
 import { UserAccountRenamed } from "./user-account-renamed";
 
 type UserAccountEvent = UserAccountCreated | UserAccountRenamed;
+type UserAccountEventType = "UserAccountCreated" | "UserAccountRenamed";
 
 function convertJSONToUserAccountEvent(json: unknown): UserAccountEvent {
   const payload = parseEventPayload(json);
@@ -26,13 +27,15 @@ function convertJSONToUserAccountEvent(json: unknown): UserAccountEvent {
         payload.data.sequenceNumber,
         occurredAt,
       );
-    default:
-      throw new Error(`Unknown UserAccountEvent type: ${payload.type}`);
+    default: {
+      const exhaustiveCheck: never = payload.type;
+      throw new Error(`Unknown UserAccountEvent type: ${exhaustiveCheck}`);
+    }
   }
 }
 
 function parseEventPayload(json: unknown): {
-  type: string;
+  type: UserAccountEventType;
   data: {
     id: string;
     aggregateId: { value: string };
@@ -45,7 +48,7 @@ function parseEventPayload(json: unknown): {
     typeof json !== "object" ||
     json === null ||
     !("type" in json) ||
-    typeof json.type !== "string" ||
+    !isUserAccountEventType(json.type) ||
     !("data" in json) ||
     !isEventData(json.data)
   ) {
@@ -55,6 +58,10 @@ function parseEventPayload(json: unknown): {
     type: json.type,
     data: json.data,
   };
+}
+
+function isUserAccountEventType(json: unknown): json is UserAccountEventType {
+  return json === "UserAccountCreated" || json === "UserAccountRenamed";
 }
 
 function isEventData(json: unknown): json is {

@@ -121,7 +121,8 @@ class UserAccount implements Aggregate<UserAccount, UserAccountId> {
     if (event instanceof UserAccountCreated) {
       return this;
     }
-    return this;
+    const exhaustiveCheck: never = event;
+    throw new Error(`Unexpected event type: ${exhaustiveCheck}`);
   }
 }
 

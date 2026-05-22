@@ -119,9 +119,9 @@ async function createSpannerDatabase(input: {
         console.warn("Failed to delete Spanner emulator instance", deleteError);
       }
     }
+    restoreEmulatorHost();
     // Close the client created in this function before the caller stops the container.
     spanner.close();
-    restoreEmulatorHost();
     throw error;
   }
 }
