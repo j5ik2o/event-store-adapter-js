@@ -91,8 +91,7 @@ function isEventData(json: unknown): json is UserAccountEventData {
     json.sequenceNumber > 0 &&
     "occurredAt" in json &&
     typeof json.occurredAt === "string" &&
-    ISO_UTC_DATE_TIME_PATTERN.test(json.occurredAt) &&
-    !Number.isNaN(Date.parse(json.occurredAt))
+    ISO_UTC_DATE_TIME_PATTERN.test(json.occurredAt)
   );
 }
 

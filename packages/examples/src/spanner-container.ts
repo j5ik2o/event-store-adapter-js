@@ -76,6 +76,7 @@ async function createSpannerDatabase(input: {
   process.env.METADATA_SERVER_DETECTION = "none";
   const spanner = new Spanner({ projectId: DEFAULT_PROJECT_ID });
   let createdInstance: Instance | undefined;
+  let createdDatabase: Database | undefined;
   const restoreEmulatorHost = () => {
     restoreEnvValue("SPANNER_EMULATOR_HOST", previousEmulatorHost);
     restoreEnvValue("GOOGLE_CLOUD_PROJECT", previousGoogleCloudProject);
@@ -105,6 +106,7 @@ async function createSpannerDatabase(input: {
         ),
       },
     );
+    createdDatabase = database;
     await databaseOperation.promise();
     return {
       spanner,
@@ -112,6 +114,13 @@ async function createSpannerDatabase(input: {
       restoreEmulatorHost,
     };
   } catch (error) {
+    if (createdDatabase !== undefined) {
+      try {
+        await createdDatabase.close();
+      } catch (closeError) {
+        console.warn("Failed to close Spanner emulator database", closeError);
+      }
+    }
     if (createdInstance !== undefined) {
       try {
         await createdInstance.delete();
