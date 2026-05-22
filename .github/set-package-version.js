@@ -6,7 +6,17 @@ if (!nextVersion) {
 }
 
 const packageJsonPath = "package.json";
-const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+if (!fs.existsSync(packageJsonPath)) {
+  throw new Error(`Missing ${packageJsonPath}`);
+}
+
+let packageJson;
+try {
+  packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+} catch (error) {
+  throw new Error(`Failed to read ${packageJsonPath}: ${error.message}`);
+}
+
 packageJson.version = nextVersion;
 fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
 console.log(nextVersion);
