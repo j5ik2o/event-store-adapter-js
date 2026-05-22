@@ -126,7 +126,7 @@ Spanner adapter は `sequence_number = 0` の snapshot row から latest snapsho
 - **THEN** adapter は `undefined` を返す
 
 ### Requirement: Retained snapshot copies
-Spanner adapter は `keepSnapshotCount` が configured の場合、retained snapshot copies を任意で書き込まなければならない。
+Spanner adapter は `keepSnapshotCount` が configured の場合、retained snapshot copy を書き込まなければならない。
 
 #### Scenario: Retained snapshot write
 - **WHEN** `persistEventAndSnapshot(...)` が snapshot を書き込み、`keepSnapshotCount` が configured である

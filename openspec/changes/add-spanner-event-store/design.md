@@ -111,7 +111,7 @@ version mismatch、update 対象 aggregate の欠落、duplicate created event�
 
 ### Snapshot retention は hard delete のみにする
 
-`keepSnapshotCount` が指定されている場合、adapter は aggregate ごとに最新の保持用 snapshot copy を残し、それより古い保持用 snapshot copy を hard delete する。初期の `SpannerEventStoreInput` には `deleteTtlMillis` option を追加しない。
+`keepSnapshotCount` が指定されている場合、adapter は aggregate ごとに最新の保持用 snapshot copy を `keepSnapshotCount` 件まで残し、それより古い保持用 snapshot copy を hard delete する。初期の `SpannerEventStoreInput` には `deleteTtlMillis` option を追加しない。
 
 代替案として Spanner row deletion policy や scheduled cleanup で DynamoDB TTL を模倣する案もあるが、初期 adapter には不要な運用モデルを追加してしまう。
 
