@@ -427,7 +427,7 @@ class SpannerEventStore<
   private async runWriteTransaction(
     operation: (transaction: Transaction) => Promise<void>,
   ): Promise<void> {
-    // runTransactionAsync owns rollback/retry lifecycle for callback failures.
+    // runTransactionAsync owns rollback/retry lifecycle; async callbacks still commit explicitly.
     await this.database.runTransactionAsync(
       async (transaction: Transaction) => {
         await operation(transaction);
@@ -480,7 +480,7 @@ class SpannerEventStore<
       return this.parseSafeInteger(fieldName, value);
     }
     if (typeof value === "object" && value !== null && "value" in value) {
-      const wrappedValue = (value as { value: unknown }).value;
+      const wrappedValue = (value as Record<string, unknown>).value;
       if (typeof wrappedValue === "number") {
         if (!Number.isSafeInteger(wrappedValue)) {
           throw new Error(`${fieldName} is not a safe integer`);
