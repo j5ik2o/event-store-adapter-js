@@ -49,9 +49,21 @@ type FakeSnapshotRow = {
   payload: Uint8Array;
 };
 
+type FakeSpannerDatabaseOptions = {
+  alreadyExistsAsPlainObject?: boolean;
+  failRunTransactionWith?: unknown;
+  forceLatestSnapshotUpdateMiss?: boolean;
+  missingSnapshotPayloadField?: boolean;
+  retainedSequenceNumberFormat?: "number" | "string" | "wrapped";
+  snapshotPayloadFormat?: "bytes" | "base64" | "invalid";
+  snapshotVersionFormat?: "number" | "string" | "wrapped" | "invalid";
+};
+
 class FakeSpannerDatabase {
   private readonly journalRows = new Map<string, FakeJournalRow>();
   private readonly snapshotRows = new Map<string, FakeSnapshotRow>();
+
+  constructor(private readonly options: FakeSpannerDatabaseOptions = {}) {}
 
   asDatabase(): Database {
     return this as unknown as Database;
@@ -79,6 +91,9 @@ class FakeSpannerDatabase {
   async runTransactionAsync<T>(
     runFn: (transaction: FakeSpannerTransaction) => Promise<T>,
   ): Promise<T> {
+    if (this.options.failRunTransactionWith !== undefined) {
+      throw this.options.failRunTransactionWith;
+    }
     return runFn(new FakeSpannerTransaction(this));
   }
 
@@ -127,8 +142,15 @@ class FakeSpannerDatabase {
     }
     return [
       [
-        { name: "version", value: row.version },
-        { name: "payload", value: row.payload },
+        { name: "version", value: this.formatVersion(row.version) },
+        ...(this.options.missingSnapshotPayloadField
+          ? []
+          : [
+              {
+                name: "payload",
+                value: this.formatSnapshotPayload(row.payload),
+              },
+            ]),
       ],
     ];
   }
@@ -150,7 +172,12 @@ class FakeSpannerDatabase {
           row.sequenceNumber > latestSequenceNumber,
       )
       .sort((a, b) => b.sequenceNumber - a.sequenceNumber)
-      .map((row) => [{ name: "sequence_number", value: row.sequenceNumber }]);
+      .map((row) => [
+        {
+          name: "sequence_number",
+          value: this.formatRetainedSequenceNumber(row.sequenceNumber),
+        },
+      ]);
   }
 
   private insertJournal(params: Record<string, unknown>): void {
@@ -199,6 +226,7 @@ class FakeSpannerDatabase {
     const row = this.snapshotRows.get(key);
     if (
       row === undefined ||
+      this.options.forceLatestSnapshotUpdateMiss === true ||
       row.version !== this.numberParam(params, "beforeVersion")
     ) {
       return 0;
@@ -272,9 +300,47 @@ class FakeSpannerDatabase {
   }
 
   private alreadyExistsError(): Error {
+    if (this.options.alreadyExistsAsPlainObject === true) {
+      return { code: 6, message: "Already exists" } as unknown as Error;
+    }
     const error = new Error("Already exists") as Error & { code: number };
     error.code = 6;
     return error;
+  }
+
+  private formatRetainedSequenceNumber(sequenceNumber: number): unknown {
+    switch (this.options.retainedSequenceNumberFormat) {
+      case "string":
+        return sequenceNumber.toString();
+      case "wrapped":
+        return { value: sequenceNumber.toString() };
+      default:
+        return sequenceNumber;
+    }
+  }
+
+  private formatSnapshotPayload(payload: Uint8Array): unknown {
+    switch (this.options.snapshotPayloadFormat) {
+      case "base64":
+        return Buffer.from(payload).toString("base64");
+      case "invalid":
+        return { payload };
+      default:
+        return payload;
+    }
+  }
+
+  private formatVersion(version: number): unknown {
+    switch (this.options.snapshotVersionFormat) {
+      case "string":
+        return version.toString();
+      case "wrapped":
+        return { value: version.toString() };
+      case "invalid":
+        return { version };
+      default:
+        return version;
+    }
   }
 }
 
@@ -296,10 +362,10 @@ class FakeSpannerTransaction {
 
 function createFakeEventStore(
   keepSnapshotCount?: number,
+  database = new FakeSpannerDatabase(),
 ): SpannerEventStore<UserAccountId, UserAccount, UserAccountEvent> {
-  const database = new FakeSpannerDatabase().asDatabase();
   return new SpannerEventStore<UserAccountId, UserAccount, UserAccountEvent>({
-    database,
+    database: database.asDatabase(),
     journalTableName: JOURNAL_TABLE_NAME,
     snapshotTableName: SNAPSHOT_TABLE_NAME,
     shardCount: 32,
@@ -351,6 +417,19 @@ describe("SpannerEventStore configuration", () => {
       });
     }).toThrow("Invalid shardCount configuration");
   });
+
+  test("rejects invalid Spanner table names", () => {
+    expect(() => {
+      new SpannerEventStore<UserAccountId, UserAccount, UserAccountEvent>({
+        database,
+        journalTableName: "journal;drop",
+        snapshotTableName: SNAPSHOT_TABLE_NAME,
+        shardCount: 32,
+        eventConverter: convertJSONtoUserAccountEvent,
+        snapshotConverter: convertJSONToUserAccount,
+      });
+    }).toThrow("Invalid journalTableName configuration");
+  });
 });
 
 describe("ShardId", () => {
@@ -379,6 +458,26 @@ describe("DefaultSpannerShardSelector", () => {
 
     expect(selector.selectShardId(id, shardCount)).toBe(
       createShardId(expectedShardId),
+    );
+  });
+
+  test("rejects invalid inputs before selecting a shard", () => {
+    const selector = new DefaultSpannerShardSelector<UserAccountId>();
+    const id = new UserAccountId(ulid());
+    const invalidId = {
+      typeName: "user-account",
+      value: id.value,
+      asString: () => undefined,
+    } as unknown as UserAccountId;
+
+    expect(() =>
+      selector.selectShardId(undefined as unknown as UserAccountId, 32),
+    ).toThrow("aggregateId is undefined or null");
+    expect(() => selector.selectShardId(id, 0)).toThrow(
+      "shardCount must be a positive safe integer",
+    );
+    expect(() => selector.selectShardId(invalidId, 32)).toThrow(
+      "str is undefined or null",
     );
   });
 });
@@ -441,6 +540,129 @@ describe("SpannerEventStore", () => {
     await expect(
       eventStore.persistEvent(renamed, userAccount2.version + 1),
     ).rejects.toThrow(OptimisticLockError);
+  });
+
+  test("converts plain ALREADY_EXISTS failures to OptimisticLockError", async () => {
+    const database = new FakeSpannerDatabase({
+      alreadyExistsAsPlainObject: true,
+    });
+    const eventStore = createFakeEventStore(undefined, database);
+    const id = new UserAccountId(ulid());
+    const [userAccount1, created] = UserAccount.create(id, "Alice");
+    await eventStore.persistEventAndSnapshot(created, userAccount1);
+
+    const [userAccount2, renamed] = userAccount1.rename("Bob");
+    await eventStore.persistEvent(renamed, userAccount2.version);
+
+    await expect(
+      eventStore.persistEvent(renamed, userAccount2.version + 1),
+    ).rejects.toThrow(OptimisticLockError);
+  });
+
+  test("propagates non optimistic-lock Spanner failures unchanged", async () => {
+    const error = new Error("unavailable") as Error & { code: number };
+    error.code = 14;
+    const eventStore = createFakeEventStore(
+      undefined,
+      new FakeSpannerDatabase({
+        failRunTransactionWith: error,
+      }),
+    );
+    const id = new UserAccountId(ulid());
+    const [userAccount1, created] = UserAccount.create(id, "Alice");
+
+    await expect(
+      eventStore.persistEventAndSnapshot(created, userAccount1),
+    ).rejects.toBe(error);
+  });
+
+  test("rejects failed conditional latest snapshot updates as optimistic locks", async () => {
+    const database = new FakeSpannerDatabase({
+      forceLatestSnapshotUpdateMiss: true,
+    });
+    const eventStore = createFakeEventStore(undefined, database);
+    const id = new UserAccountId(ulid());
+    const [userAccount1, created] = UserAccount.create(id, "Alice");
+    await eventStore.persistEventAndSnapshot(created, userAccount1);
+
+    const [userAccount2, renamed] = userAccount1.rename("Bob");
+
+    await expect(
+      eventStore.persistEvent(renamed, userAccount2.version),
+    ).rejects.toThrow(OptimisticLockError);
+  });
+
+  test.each([
+    ["string", "string"],
+    ["wrapped", "wrapped"],
+  ] as const)("purges retained snapshots when sequence numbers are returned as %s", async (_, retainedSequenceNumberFormat) => {
+    const eventStore = createFakeEventStore(
+      0,
+      new FakeSpannerDatabase({ retainedSequenceNumberFormat }),
+    );
+    const id = new UserAccountId(ulid());
+    const [userAccount1, created] = UserAccount.create(id, "Alice");
+
+    await eventStore.persistEventAndSnapshot(created, userAccount1);
+
+    const latestSnapshot = await eventStore.getLatestSnapshotById(id);
+    expect(latestSnapshot?.name).toBe("Alice");
+  });
+
+  test.each([
+    ["base64 payload", { snapshotPayloadFormat: "base64" }],
+    ["string version", { snapshotVersionFormat: "string" }],
+    ["wrapped version", { snapshotVersionFormat: "wrapped" }],
+  ] as const)("reads snapshots with Spanner row %s", async (_, options) => {
+    const eventStore = createFakeEventStore(
+      undefined,
+      new FakeSpannerDatabase(options),
+    );
+    const id = new UserAccountId(ulid());
+    const [userAccount1, created] = UserAccount.create(id, "Alice");
+    await eventStore.persistEventAndSnapshot(created, userAccount1);
+
+    const latestSnapshot = await eventStore.getLatestSnapshotById(id);
+
+    expect(latestSnapshot?.name).toBe("Alice");
+  });
+
+  test.each([
+    [
+      "invalid snapshot version",
+      { snapshotVersionFormat: "invalid" },
+      "version is not a number",
+    ],
+    [
+      "invalid snapshot payload",
+      { snapshotPayloadFormat: "invalid" },
+      "payload is not bytes",
+    ],
+    [
+      "missing snapshot payload",
+      { missingSnapshotPayloadField: true },
+      "payload is undefined",
+    ],
+  ] as const)("rejects malformed Spanner rows with %s", async (_, options, message) => {
+    const eventStore = createFakeEventStore(
+      undefined,
+      new FakeSpannerDatabase(options),
+    );
+    const id = new UserAccountId(ulid());
+    const [userAccount1, created] = UserAccount.create(id, "Alice");
+    await eventStore.persistEventAndSnapshot(created, userAccount1);
+
+    await expect(eventStore.getLatestSnapshotById(id)).rejects.toThrow(message);
+  });
+
+  test("propagates invalid keepSnapshotCount during retention", async () => {
+    const eventStore = createFakeEventStore(Number.NaN);
+    const id = new UserAccountId(ulid());
+    const [userAccount1, created] = UserAccount.create(id, "Alice");
+
+    await expect(
+      eventStore.persistEventAndSnapshot(created, userAccount1),
+    ).rejects.toThrow("keepSnapshotCount must be finite");
   });
 });
 

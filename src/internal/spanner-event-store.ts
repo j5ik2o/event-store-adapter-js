@@ -388,28 +388,25 @@ class SpannerEventStore<
     }
     const keepCount = this.normalizeKeepSnapshotCount(this.keepSnapshotCount);
     const key = this.createKey(aggregateId);
-    const [rows] = await this.database.run({
-      sql: `
-        SELECT sequence_number
-        FROM ${this.quotedSnapshotTableName}
-        WHERE shard_id = @shardId
-          AND aggregate_id = @aggregateId
-          AND sequence_number > @latestSequenceNumber
-        ORDER BY sequence_number DESC
-      `,
-      params: {
-        shardId: key.shardIdValue,
-        aggregateId: key.aggregateIdValue,
-        latestSequenceNumber: LATEST_SNAPSHOT_SEQUENCE_NUMBER,
-      },
-    });
-    const excessSequenceNumbers = (rows as SpannerRow[])
-      .map((row) => this.getNumber(row, "sequence_number"))
-      .slice(keepCount);
-    if (excessSequenceNumbers.length === 0) {
-      return;
-    }
     await this.runWriteTransaction(async (transaction) => {
+      const [rows] = await transaction.run({
+        sql: `
+          SELECT sequence_number
+          FROM ${this.quotedSnapshotTableName}
+          WHERE shard_id = @shardId
+            AND aggregate_id = @aggregateId
+            AND sequence_number > @latestSequenceNumber
+          ORDER BY sequence_number DESC
+        `,
+        params: {
+          shardId: key.shardIdValue,
+          aggregateId: key.aggregateIdValue,
+          latestSequenceNumber: LATEST_SNAPSHOT_SEQUENCE_NUMBER,
+        },
+      });
+      const excessSequenceNumbers = (rows as SpannerRow[])
+        .map((row) => this.getNumber(row, "sequence_number"))
+        .slice(keepCount);
       for (const sequenceNumber of excessSequenceNumbers) {
         await transaction.runUpdate({
           sql: `
@@ -452,6 +449,9 @@ class SpannerEventStore<
         const cause = error instanceof Error ? error : new Error(String(error));
         throw new OptimisticLockError("Optimistic locking failed", cause);
       }
+      // ABORTED is retried by Database.runTransactionAsync. Other infrastructure
+      // errors are not deterministic optimistic lock conflicts, so callers see
+      // the original Spanner failure.
       throw error;
     }
   }
