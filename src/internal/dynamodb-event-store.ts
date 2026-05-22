@@ -496,7 +496,8 @@ class DynamoDBEventStore<
     try {
       return normalizeDynamoDBDeleteTtlMillis(deleteTtlMillis);
     } catch (error) {
-      throw new DynamoDBEventStoreConfigurationError("deleteTtlMillis", error);
+      const cause = error instanceof Error ? error : new Error(String(error));
+      throw new DynamoDBEventStoreConfigurationError("deleteTtlMillis", cause);
     }
   }
 
