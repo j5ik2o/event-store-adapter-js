@@ -87,12 +87,8 @@ class DynamoDBEventStore<
     this.snapshotAidIndexName = input.snapshotAidIndexName;
     this.snapshotActiveTtlIndexName = input.snapshotActiveTtlIndexName;
     this.shardCount = input.shardCount;
-    // Do not probe converters with fake JSON; valid converters may reject incomplete payloads.
-    // Runtime failures are wrapped when real payloads are decoded.
-    this.eventConverter = (json) =>
-      convertJson("eventConverter", input.eventConverter, json);
-    this.snapshotConverter = (json) =>
-      convertJson("snapshotConverter", input.snapshotConverter, json);
+    this.eventConverter = input.eventConverter;
+    this.snapshotConverter = input.snapshotConverter;
     this.keepSnapshotCount = input.keepSnapshotCount;
     this.deleteTtlMillis = this.normalizeDeleteTtlMillis(input.deleteTtlMillis);
     this.keyResolver = input.keyResolver ?? DynamoDBEventStore.keyResolver();
@@ -138,7 +134,9 @@ class DynamoDBEventStore<
         if (payload === undefined) {
           throw new Error("Payload is undefined");
         }
-        return this.eventSerializer.deserialize(payload, this.eventConverter);
+        return this.eventSerializer.deserialize(payload, (json) =>
+          convertJson("eventConverter", this.eventConverter, json),
+        );
       });
     }
     this.logger?.debug(
@@ -185,9 +183,8 @@ class DynamoDBEventStore<
     if (payload === undefined) {
       throw new Error("Payload is undefined");
     }
-    const result = this.snapshotSerializer.deserialize(
-      payload,
-      this.snapshotConverter,
+    const result = this.snapshotSerializer.deserialize(payload, (json) =>
+      convertJson("snapshotConverter", this.snapshotConverter, json),
     );
     this.logger?.debug(
       `getLatestSnapshotById(${JSON.stringify(id)}, ...): finished`,

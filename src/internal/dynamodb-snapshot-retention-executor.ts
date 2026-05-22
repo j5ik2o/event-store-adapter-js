@@ -27,6 +27,7 @@ const EXCESS_SNAPSHOT_QUERY_LIMIT = 1000;
 const MAX_UNPROCESSED_ITEM_RETRY_COUNT = 5;
 const RETENTION_RETRY_BASE_DELAY_MILLIS = 50;
 const MILLIS_PER_SECOND = 1000;
+const MAX_DYNAMODB_TTL_EPOCH_SECONDS = 9_999_999_999;
 const RETRYABLE_DYNAMODB_ERROR_NAMES = new Set([
   "InternalServerError",
   "ProvisionedThroughputExceededException",
@@ -182,15 +183,20 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
 
   private toDeleteTtlEpochSeconds(deleteTtlMillis: number): string {
     const nowMillis = Date.now();
-    const maxSafeDeleteTtlMillis = Number.MAX_SAFE_INTEGER - nowMillis;
-    if (deleteTtlMillis > maxSafeDeleteTtlMillis) {
+    if (deleteTtlMillis > Number.MAX_SAFE_INTEGER - nowMillis) {
       throw new Error(
         "TTL calculation overflow: Date.now() + deleteTtlMillis exceeds safe integer range",
       );
     }
     const ttlEpochMillis = nowMillis + deleteTtlMillis;
     // DynamoDB TTL is epoch seconds; round up so millisecond TTLs do not expire earlier than requested.
-    return Math.ceil(ttlEpochMillis / MILLIS_PER_SECOND).toString();
+    const ttlEpochSeconds = Math.ceil(ttlEpochMillis / MILLIS_PER_SECOND);
+    if (ttlEpochSeconds > MAX_DYNAMODB_TTL_EPOCH_SECONDS) {
+      throw new Error(
+        "TTL calculation overflow: epoch seconds exceed DynamoDB TTL range",
+      );
+    }
+    return ttlEpochSeconds.toString();
   }
 
   private async sendUpdateTtlRequests(
