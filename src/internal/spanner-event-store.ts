@@ -484,10 +484,13 @@ class SpannerEventStore<
       return this.parseSafeInteger(fieldName, value);
     }
     if (typeof value === "object" && value !== null && "value" in value) {
-      return this.parseSafeInteger(
-        fieldName,
-        (value as { value: unknown }).value,
-      );
+      const wrappedValue = (value as { value: unknown }).value;
+      if (
+        typeof wrappedValue === "number" ||
+        typeof wrappedValue === "string"
+      ) {
+        return this.parseSafeInteger(fieldName, wrappedValue);
+      }
     }
     throw new Error(`${fieldName} is not a number`);
   }

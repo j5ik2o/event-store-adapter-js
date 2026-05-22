@@ -70,6 +70,8 @@ type FakeSpannerDatabaseOptions = {
     | "number"
     | "string"
     | "wrapped"
+    | "wrapped-number"
+    | "wrapped-invalid"
     | "invalid"
     | "nan"
     | "unsafe";
@@ -354,6 +356,10 @@ class FakeSpannerDatabase {
         return version.toString();
       case "wrapped":
         return { value: version.toString() };
+      case "wrapped-number":
+        return { value: version };
+      case "wrapped-invalid":
+        return { value: { version } };
       case "invalid":
         return { version };
       case "nan":
@@ -725,6 +731,7 @@ describe("SpannerEventStore", () => {
     ["base64 payload", { snapshotPayloadFormat: "base64" }],
     ["string version", { snapshotVersionFormat: "string" }],
     ["wrapped version", { snapshotVersionFormat: "wrapped" }],
+    ["wrapped numeric version", { snapshotVersionFormat: "wrapped-number" }],
   ] as const)("reads snapshots with Spanner row %s", async (_, options) => {
     const eventStore = createFakeEventStore(
       undefined,
@@ -743,6 +750,11 @@ describe("SpannerEventStore", () => {
     [
       "invalid snapshot version",
       { snapshotVersionFormat: "invalid" },
+      "version is not a number",
+    ],
+    [
+      "invalid wrapped snapshot version",
+      { snapshotVersionFormat: "wrapped-invalid" },
       "version is not a number",
     ],
     [
