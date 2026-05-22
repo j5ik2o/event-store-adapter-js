@@ -181,7 +181,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
 
   private toDeleteTtlEpochSeconds(deleteTtlMillis: number): string {
     const ttlEpochMillis = Date.now() + deleteTtlMillis;
-    return Math.floor(ttlEpochMillis / 1000).toString();
+    return Math.ceil(ttlEpochMillis / 1000).toString();
   }
 
   private async sendUpdateTtlRequests(

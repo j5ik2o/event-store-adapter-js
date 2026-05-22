@@ -5,7 +5,6 @@ import type {
   EventSerializer,
   SnapshotSerializer,
 } from "../types";
-import { convertJson } from "./json-converter";
 
 class JsonEventSerializer<AID extends AggregateId, E extends Event<AID>>
   implements EventSerializer<AID, E>
@@ -16,7 +15,7 @@ class JsonEventSerializer<AID extends AggregateId, E extends Event<AID>>
   deserialize(bytes: Uint8Array, converter: (json: unknown) => E): E {
     const jsonString = this.decoder.decode(bytes);
     const json = JSON.parse(jsonString);
-    return convertJson("eventConverter", converter, json);
+    return converter(json);
   }
 
   serialize(event: E): Uint8Array {
@@ -38,7 +37,7 @@ class JsonSnapshotSerializer<
   deserialize(bytes: Uint8Array, converter: (json: unknown) => A): A {
     const jsonString = this.decoder.decode(bytes);
     const obj = JSON.parse(jsonString);
-    return convertJson("snapshotConverter", converter, obj);
+    return converter(obj);
   }
 
   serialize(aggregate: A): Uint8Array {
