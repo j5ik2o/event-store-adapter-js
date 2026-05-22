@@ -1,11 +1,11 @@
 import type { Aggregate, AggregateId, Event } from "../types";
 
-class JsonEventSerializer {
-  private encoder = new TextEncoder();
-  private decoder = new TextDecoder();
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
+class JsonEventSerializer {
   deserialize<E>(bytes: Uint8Array, converter: (json: unknown) => E): E {
-    const jsonString = this.decoder.decode(bytes);
+    const jsonString = decoder.decode(bytes);
     const json = JSON.parse(jsonString);
     return converter(json);
   }
@@ -17,16 +17,13 @@ class JsonEventSerializer {
       type: event.typeName,
       data: event,
     });
-    return this.encoder.encode(jsonString);
+    return encoder.encode(jsonString);
   }
 }
 
 class JsonSnapshotSerializer {
-  private encoder = new TextEncoder();
-  private decoder = new TextDecoder();
-
   deserialize<A>(bytes: Uint8Array, converter: (json: unknown) => A): A {
-    const jsonString = this.decoder.decode(bytes);
+    const jsonString = decoder.decode(bytes);
     const obj = JSON.parse(jsonString);
     return converter(obj);
   }
@@ -38,7 +35,7 @@ class JsonSnapshotSerializer {
       type: aggregate.typeName,
       data: aggregate,
     });
-    return this.encoder.encode(jsonString);
+    return encoder.encode(jsonString);
   }
 }
 

@@ -43,16 +43,30 @@ class DynamoDBEventStoreConfigurationError extends Error {
   }
 }
 
+function createDefaultKeyResolver<AID extends AggregateId>(): KeyResolver<AID> {
+  return new DefaultKeyResolver<AID>();
+}
+
+function createDefaultEventSerializer<
+  AID extends AggregateId,
+  E extends Event<AID>,
+>(): EventSerializer<AID, E> {
+  return new JsonEventSerializer();
+}
+
+function createDefaultSnapshotSerializer<
+  AID extends AggregateId,
+  A extends Aggregate<A, AID>,
+>(): SnapshotSerializer<AID, A> {
+  return new JsonSnapshotSerializer();
+}
+
 class DynamoDBEventStore<
   AID extends AggregateId,
   A extends Aggregate<A, AID>,
   E extends Event<AID>,
 > implements EventStore<AID, A, E>
 {
-  private static sharedKeyResolver: DefaultKeyResolver<AggregateId> | undefined;
-  private static sharedEventSerializer: JsonEventSerializer | undefined;
-  private static sharedSnapshotSerializer: JsonSnapshotSerializer | undefined;
-
   private readonly dynamodbClient: DynamoDBClient;
   private readonly journalTableName: string;
   private readonly snapshotTableName: string;
@@ -83,11 +97,11 @@ class DynamoDBEventStore<
     this.snapshotConverter = input.snapshotConverter;
     this.keepSnapshotCount = input.keepSnapshotCount;
     this.deleteTtlMillis = this.normalizeDeleteTtlMillis(input.deleteTtlMillis);
-    this.keyResolver = input.keyResolver ?? DynamoDBEventStore.keyResolver();
+    this.keyResolver = input.keyResolver ?? createDefaultKeyResolver<AID>();
     this.eventSerializer =
-      input.eventSerializer ?? DynamoDBEventStore.eventSerializer();
+      input.eventSerializer ?? createDefaultEventSerializer<AID, E>();
     this.snapshotSerializer =
-      input.snapshotSerializer ?? DynamoDBEventStore.snapshotSerializer();
+      input.snapshotSerializer ?? createDefaultSnapshotSerializer<AID, A>();
     this.logger = input.logger;
   }
 
@@ -490,31 +504,6 @@ class DynamoDBEventStore<
       const cause = error instanceof Error ? error : new Error(String(error));
       throw new DynamoDBEventStoreConfigurationError("deleteTtlMillis", cause);
     }
-  }
-
-  private static keyResolver<AID extends AggregateId>(): KeyResolver<AID> {
-    DynamoDBEventStore.sharedKeyResolver ??=
-      new DefaultKeyResolver<AggregateId>();
-    return DynamoDBEventStore.sharedKeyResolver as KeyResolver<AID>;
-  }
-
-  private static eventSerializer<
-    AID extends AggregateId,
-    E extends Event<AID>,
-  >(): EventSerializer<AID, E> {
-    // JsonEventSerializer has no aggregate-specific mutable state; the cast narrows a stateless shared instance.
-    DynamoDBEventStore.sharedEventSerializer ??= new JsonEventSerializer();
-    return DynamoDBEventStore.sharedEventSerializer;
-  }
-
-  private static snapshotSerializer<
-    AID extends AggregateId,
-    A extends Aggregate<A, AID>,
-  >(): SnapshotSerializer<AID, A> {
-    // JsonSnapshotSerializer has no aggregate-specific mutable state; the cast narrows a stateless shared instance.
-    DynamoDBEventStore.sharedSnapshotSerializer ??=
-      new JsonSnapshotSerializer();
-    return DynamoDBEventStore.sharedSnapshotSerializer;
   }
 }
 
