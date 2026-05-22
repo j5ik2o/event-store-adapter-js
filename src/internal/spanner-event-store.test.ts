@@ -517,7 +517,7 @@ describe("DefaultSpannerShardSelector", () => {
       "shardCount must be a positive safe integer",
     );
     expect(() => selector.selectShardId(invalidId, 32)).toThrow(
-      "str is undefined or null",
+      "str is not a string",
     );
   });
 });
@@ -620,6 +620,7 @@ describe("SpannerEventStore", () => {
     ["null", null],
     ["string", "unavailable"],
     ["object without code", { message: "unavailable" }],
+    ["object with string code", { code: "6", message: "unavailable" }],
     ["non matching code", { code: 14, message: "unavailable" }],
   ])("propagates %s Spanner failures unchanged", async (_, error) => {
     const eventStore = createFakeEventStore(

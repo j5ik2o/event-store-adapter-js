@@ -19,9 +19,9 @@ class DefaultSpannerShardSelector<AID extends AggregateId>
   }
 
   private hashString(str: string): number {
-    // AggregateId.asString() is user code, so keep the same runtime guard as DefaultKeyResolver.
-    if (str === undefined || str === null) {
-      throw new Error(`str is undefined or null: ${str}`);
+    // AggregateId.asString() is user code, so validate runtime values despite the TypeScript type.
+    if (typeof str !== "string") {
+      throw new Error(`str is not a string: ${str}`);
     }
     let hash = 0;
     for (let i = 0; i < str.length; i++) {

@@ -456,7 +456,8 @@ class SpannerEventStore<
       typeof error === "object" &&
       error !== null &&
       "code" in error &&
-      (error as { code: unknown }).code === SPANNER_ALREADY_EXISTS_CODE
+      typeof (error as { code: unknown }).code === "number" &&
+      (error as { code: number }).code === SPANNER_ALREADY_EXISTS_CODE
     );
   }
 
