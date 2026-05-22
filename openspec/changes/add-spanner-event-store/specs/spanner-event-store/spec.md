@@ -133,11 +133,12 @@ Spanner adapter は `keepSnapshotCount` が configured の場合、retained snap
 - **THEN** adapter は `sequence_number = event.sequenceNumber` の retained snapshot row を書き込む
 
 ### Requirement: Snapshot retention hard deletion
-Spanner adapter は `keepSnapshotCount` を超過した retained snapshot copies を hard-delete しなければならない。
+Spanner adapter は `sequence_number > 0` の retained snapshot copies だけを retention 対象とし、`keepSnapshotCount` を超過した retained snapshot copies を hard-delete しなければならない。`sequence_number = 0` の latest snapshot は retention count に含めてはならず、retention による削除対象にしてはならない。
 
 #### Scenario: Delete excess retained snapshots
 - **WHEN** aggregate の retained snapshot count が `keepSnapshotCount` を超える
-- **THEN** adapter は古い retained snapshots を削除し、最新の retained snapshots を残す
+- **THEN** adapter は retained snapshots を `sequence_number` descending で並べた最新 `keepSnapshotCount` 件を残す
+- **THEN** adapter はそれ以外の retained snapshots を削除する
 
 ### Requirement: Change Streams out of scope
 初期の Spanner adapter は Change Streams を作成または管理してはならない。
