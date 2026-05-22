@@ -67,8 +67,9 @@ class MemoryEventStore<
     assertExpectedVersion(snapshot.version, expectedVersion);
     const newVersion = snapshot.version + 1;
     const newSnapshot = snapshot.withVersion(newVersion);
+    const storedSnapshot = this.copySnapshot(newSnapshot);
     this.appendEvent(aggregateIdString, event);
-    this.snapshots.set(aggregateIdString, newSnapshot);
+    this.snapshots.set(aggregateIdString, storedSnapshot);
   }
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {

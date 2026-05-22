@@ -184,7 +184,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   private toDeleteTtlEpochSeconds(deleteTtlMillis: number): string {
     const nowMillis = Date.now();
     const ttlEpochMillis = nowMillis + deleteTtlMillis;
-    if (!Number.isSafeInteger(ttlEpochMillis)) {
+    if (ttlEpochMillis > Number.MAX_SAFE_INTEGER) {
       throw new Error(
         "TTL calculation overflow: Date.now() + deleteTtlMillis exceeds safe integer range",
       );

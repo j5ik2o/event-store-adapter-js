@@ -508,6 +508,7 @@ class DynamoDBEventStore<
     AID extends AggregateId,
     E extends Event<AID>,
   >(): EventSerializer<AID, E> {
+    // JsonEventSerializer has no aggregate-specific mutable state; the cast narrows a stateless shared instance.
     return DynamoDBEventStore.SHARED_EVENT_SERIALIZER as unknown as EventSerializer<
       AID,
       E
@@ -518,6 +519,7 @@ class DynamoDBEventStore<
     AID extends AggregateId,
     A extends Aggregate<A, AID>,
   >(): SnapshotSerializer<AID, A> {
+    // JsonSnapshotSerializer has no aggregate-specific mutable state; the cast narrows a stateless shared instance.
     return DynamoDBEventStore.SHARED_SNAPSHOT_SERIALIZER as unknown as SnapshotSerializer<
       AID,
       A
