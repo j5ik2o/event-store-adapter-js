@@ -427,6 +427,7 @@ class SpannerEventStore<
   private async runWriteTransaction(
     operation: (transaction: Transaction) => Promise<void>,
   ): Promise<void> {
+    // runTransactionAsync owns rollback/retry lifecycle for callback failures.
     await this.database.runTransactionAsync(
       async (transaction: Transaction) => {
         await operation(transaction);
@@ -480,15 +481,16 @@ class SpannerEventStore<
     }
     if (typeof value === "object" && value !== null && "value" in value) {
       const wrappedValue = (value as { value: unknown }).value;
-      if (typeof wrappedValue === "string") {
-        return this.parseSafeInteger(fieldName, wrappedValue);
-      }
       if (typeof wrappedValue === "number") {
         if (!Number.isSafeInteger(wrappedValue)) {
           throw new Error(`${fieldName} is not a safe integer`);
         }
         return wrappedValue;
       }
+      if (typeof wrappedValue === "string") {
+        return this.parseSafeInteger(fieldName, wrappedValue);
+      }
+      throw new Error(`${fieldName} is not a number`);
     }
     throw new Error(`${fieldName} is not a number`);
   }
