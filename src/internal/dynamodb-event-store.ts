@@ -54,6 +54,7 @@ class DynamoDBEventStore<
 {
   private static readonly SHARED_KEY_RESOLVER =
     new DefaultKeyResolver<AggregateId>();
+  // Default serializers only hold TextEncoder/TextDecoder instances and are safe to share.
   private static readonly SHARED_EVENT_SERIALIZER = new JsonEventSerializer<
     AggregateId,
     Event<AggregateId>
