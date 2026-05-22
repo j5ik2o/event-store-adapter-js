@@ -5,6 +5,7 @@ import type {
   EventSerializer,
   SnapshotSerializer,
 } from "../types";
+import { convertJson } from "./json-converter";
 
 class JsonEventSerializer<AID extends AggregateId, E extends Event<AID>>
   implements EventSerializer<AID, E>
@@ -46,22 +47,6 @@ class JsonSnapshotSerializer<
       data: aggregate,
     });
     return this.encoder.encode(jsonString);
-  }
-}
-
-function convertJson<T>(
-  converterName: string,
-  converter: (json: unknown) => T,
-  json: unknown,
-): T {
-  try {
-    return converter(json);
-  } catch (error) {
-    throw new Error(
-      `${converterName} failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
   }
 }
 

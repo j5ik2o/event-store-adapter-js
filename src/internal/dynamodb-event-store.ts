@@ -32,6 +32,7 @@ import {
   assertEventMatchesAggregate,
   assertPersistableUpdateEvent,
 } from "./event-store-assertions";
+import { convertJson } from "./json-converter";
 
 interface DefaultSnapshotAggregate
   extends Aggregate<DefaultSnapshotAggregate, AggregateId> {}
@@ -124,7 +125,9 @@ class DynamoDBEventStore<
         if (payload === undefined) {
           throw new Error("Payload is undefined");
         }
-        return this.eventSerializer.deserialize(payload, this.eventConverter);
+        return this.eventSerializer.deserialize(payload, (json) =>
+          this.convertEventJson(json),
+        );
       });
     }
     this.logger?.debug(
@@ -171,9 +174,8 @@ class DynamoDBEventStore<
     if (payload === undefined) {
       throw new Error("Payload is undefined");
     }
-    const result = this.snapshotSerializer.deserialize(
-      payload,
-      this.snapshotConverter,
+    const result = this.snapshotSerializer.deserialize(payload, (json) =>
+      this.convertSnapshotJson(json),
     );
     this.logger?.debug(
       `getLatestSnapshotById(${JSON.stringify(id)}, ...): finished`,
@@ -475,6 +477,15 @@ class DynamoDBEventStore<
     }
     // Runtime signature probing would execute user conversion logic with fake data.
     // The contract is type-level: converters accept decoded JSON as unknown and return the target type.
+    // Converter invocation errors are wrapped at serializer call sites.
+  }
+
+  private convertEventJson(json: unknown): E {
+    return convertJson("eventConverter", this.eventConverter, json);
+  }
+
+  private convertSnapshotJson(json: unknown): A {
+    return convertJson("snapshotConverter", this.snapshotConverter, json);
   }
 
   private normalizeDeleteTtlMillis(

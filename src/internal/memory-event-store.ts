@@ -96,6 +96,7 @@ class MemoryEventStore<
   }
 
   private copySnapshot(snapshot: A): A {
+    // Input isolation depends on Aggregate.withVersion returning a fresh aggregate instance.
     const copiedSnapshot = snapshot.withVersion(snapshot.version);
     if (copiedSnapshot === snapshot) {
       throw new Error(
