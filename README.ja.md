@@ -75,6 +75,15 @@ const eventStore = EventStoreFactory.ofDynamoDB<
 });
 // if you want to use in-memory event store, use the following code.
 // const eventStore = EventStoreFactory.ofMemory<UserAccountId, UserAccount, UserAccountEvent>({});
+// Cloud Spannerを使う場合は、呼び出し側で管理するDatabaseを渡します。
+// const eventStore = EventStoreFactory.ofSpanner<UserAccountId, UserAccount, UserAccountEvent>({
+//     database: spannerDatabase,
+//     journalTableName: "journal",
+//     snapshotTableName: "snapshot",
+//     shardCount: 32,
+//     eventConverter: convertJSONtoUserAccountEvent,
+//     snapshotConverter: convertJSONToUserAccount,
+// });
 
 const userAccountRepository = new UserAccountRepository(eventStore);
 
@@ -102,6 +111,8 @@ expect(userAccount3.version).toEqual(2);
 ## テーブル仕様
 
 [docs/DATABASE_SCHEMA.ja.md](docs/DATABASE_SCHEMA.ja.md)を参照してください。
+
+Cloud Spannerについては[docs/SPANNER_DATABASE_SCHEMA.ja.md](docs/SPANNER_DATABASE_SCHEMA.ja.md)を参照してください。
 
 ## ライセンス
 

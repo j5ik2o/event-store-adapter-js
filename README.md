@@ -78,6 +78,15 @@ const eventStore = EventStoreFactory.ofDynamoDB<
 });
 // if you want to use in-memory event store, use the following code.
 // const eventStore = EventStoreFactory.ofMemory<UserAccountId, UserAccount, UserAccountEvent>({});
+// if you want to use Cloud Spanner, pass a caller-managed Database.
+// const eventStore = EventStoreFactory.ofSpanner<UserAccountId, UserAccount, UserAccountEvent>({
+//     database: spannerDatabase,
+//     journalTableName: "journal",
+//     snapshotTableName: "snapshot",
+//     shardCount: 32,
+//     eventConverter: convertJSONtoUserAccountEvent,
+//     snapshotConverter: convertJSONToUserAccount,
+// });
 
 const userAccountRepository = new UserAccountRepository(eventStore);
 
@@ -105,6 +114,8 @@ expect(userAccount3.version).toEqual(2);
 ## Table Specifications
 
 See [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md).
+
+For Cloud Spanner, see [docs/SPANNER_DATABASE_SCHEMA.md](docs/SPANNER_DATABASE_SCHEMA.md).
 
 ## CQRS/Event Sourcing Example
 

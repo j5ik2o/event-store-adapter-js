@@ -1,7 +1,9 @@
 import type { DynamoDBEventStoreInput } from "./dynamodb-event-store-input";
 import { DynamoDBEventStore } from "./internal/dynamodb-event-store";
 import { MemoryEventStore } from "./internal/memory-event-store";
+import { SpannerEventStore } from "./internal/spanner-event-store";
 import type { MemoryEventStoreInput } from "./memory-event-store-input";
+import type { SpannerEventStoreInput } from "./spanner-event-store-input";
 import type { Aggregate, AggregateId, Event } from "./types";
 
 interface EventStore<
@@ -33,6 +35,14 @@ class EventStoreFactory {
     E extends Event<AID>,
   >(input: MemoryEventStoreInput<AID, A, E> = {}): EventStore<AID, A, E> {
     return new MemoryEventStore(input);
+  }
+
+  static ofSpanner<
+    AID extends AggregateId,
+    A extends Aggregate<A, AID>,
+    E extends Event<AID>,
+  >(input: SpannerEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
+    return new SpannerEventStore<AID, A, E>(input);
   }
 }
 
