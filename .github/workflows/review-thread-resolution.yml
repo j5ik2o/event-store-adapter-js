@@ -67,6 +67,20 @@ jobs:
                 '
             )"
 
+            if jq -e '.errors? | length > 0' <<< "$response" > /dev/null; then
+              echo "::error::GitHub GraphQL returned errors while fetching PR review threads."
+              jq -r '.errors[]?.message' <<< "$response" >&2
+              exit 1
+            fi
+
+            if ! jq -e '.data.repository.pullRequest.reviewThreads.nodes
+              and .data.repository.pullRequest.reviewThreads.pageInfo' \
+              <<< "$response" > /dev/null; then
+              echo "::error::GitHub GraphQL response did not include PR review thread data."
+              jq -c '.' <<< "$response" >&2
+              exit 1
+            fi
+
             page_unresolved="$(
               jq -c '.data.repository.pullRequest.reviewThreads.nodes
                 | map(select(.isResolved == false))' <<< "$response"
