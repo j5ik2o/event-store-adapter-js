@@ -1,5 +1,25 @@
 {
   "name": "@event-store-adapter-js/examples",
   "private": true,
-  "version": "0.0.0"
+  "version": "0.0.0",
+  "description": "Runnable examples for event-store-adapter-js.",
+  "scripts": {
+    "build:library": "pnpm --filter event-store-adapter-js run build",
+    "memory": "pnpm run build:library && node -r ts-node/register src/memory-basic.ts",
+    "dynamodb": "pnpm run build:library && node -r ts-node/register src/dynamodb-basic.ts",
+    "spanner": "pnpm run build:library && node -r ts-node/register src/spanner-basic.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.413.0",
+    "@google-cloud/spanner": "^8.7.1",
+    "event-store-adapter-js": "workspace:*",
+    "testcontainers": "^12.0.0",
+    "ulid": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^6.0.0"
+  }
 }
