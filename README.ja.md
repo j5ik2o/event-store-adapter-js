@@ -62,18 +62,19 @@ const eventStore = EventStoreFactory.ofDynamoDB<
     UserAccountId,
     UserAccount,
     UserAccountEvent
->(
-    dynamodbClient,
-    JOURNAL_TABLE_NAME,
-    SNAPSHOT_TABLE_NAME,
-    JOURNAL_AID_INDEX_NAME,
-    SNAPSHOTS_AID_INDEX_NAME,
-    32,
-    convertJSONtoUserAccountEvent,
-    convertJSONToUserAccount,
-);
+>({
+    client: dynamodbClient,
+    journalTableName: JOURNAL_TABLE_NAME,
+    snapshotTableName: SNAPSHOT_TABLE_NAME,
+    journalAidIndexName: JOURNAL_AID_INDEX_NAME,
+    snapshotAidIndexName: SNAPSHOTS_AID_INDEX_NAME,
+    snapshotActiveTtlIndexName: SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
+    shardCount: 32,
+    eventConverter: convertJSONtoUserAccountEvent,
+    snapshotConverter: convertJSONToUserAccount,
+});
 // if you want to use in-memory event store, use the following code.
-// const eventStore = EventStoreFactory.ofMemory<UserAccountId, UserAccount, UserAccountEvent>();
+// const eventStore = EventStoreFactory.ofMemory<UserAccountId, UserAccount, UserAccountEvent>({});
 
 const userAccountRepository = new UserAccountRepository(eventStore);
 
@@ -116,4 +117,3 @@ MITライセンスです。詳細は[LICENSE](LICENSE)を参照してくださ�
 - [for JavaScript/TypeScript](https://github.com/j5ik2o/event-store-adapter-js)
 - [for .NET](https://github.com/j5ik2o/event-store-adapter-dotnet)
 - [for PHP](https://github.com/j5ik2o/event-store-adapter-php)
-

@@ -1,4 +1,3 @@
-import { describe } from "node:test";
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   GenericContainer,
@@ -48,17 +47,17 @@ describe("UserAccountRepository", () => {
       UserAccountId,
       UserAccount,
       UserAccountEvent
-    >(
-      dynamodbClient,
-      JOURNAL_TABLE_NAME,
-      SNAPSHOT_TABLE_NAME,
-      JOURNAL_AID_INDEX_NAME,
-      SNAPSHOTS_AID_INDEX_NAME,
-      SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
-      32,
-      convertJSONtoUserAccountEvent,
-      convertJSONToUserAccount,
-    );
+    >({
+      client: dynamodbClient,
+      journalTableName: JOURNAL_TABLE_NAME,
+      snapshotTableName: SNAPSHOT_TABLE_NAME,
+      journalAidIndexName: JOURNAL_AID_INDEX_NAME,
+      snapshotAidIndexName: SNAPSHOTS_AID_INDEX_NAME,
+      snapshotActiveTtlIndexName: SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
+      shardCount: 32,
+      eventConverter: convertJSONtoUserAccountEvent,
+      snapshotConverter: convertJSONToUserAccount,
+    });
   }
 
   beforeAll(async () => {

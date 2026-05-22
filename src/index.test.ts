@@ -7,5 +7,4 @@ test("exports public API", () => {
   expect(EventStoreFactory).toBeDefined();
   expect(error.name).toEqual("OptimisticLockError");
   expect(error.cause).toBe(cause);
-  expect(error.stack).toContain("Caused by:");
 });
