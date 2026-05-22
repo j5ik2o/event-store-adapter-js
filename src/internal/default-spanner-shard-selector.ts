@@ -27,8 +27,8 @@ class DefaultSpannerShardSelector<AID extends AggregateId>
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
       hash = (hash << 5) - hash + char;
-      // Match DefaultKeyResolver's signed 32-bit coercion before unsigned modulo.
-      hash = hash | 0;
+      // Match DefaultKeyResolver's signed 32-bit coercion without the opaque hash & hash idiom.
+      hash = hash & 0xffffffff;
     }
     return hash >>> 0;
   }

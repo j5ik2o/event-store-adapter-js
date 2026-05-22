@@ -94,7 +94,10 @@ class SpannerEventStore<
     this.shardCount = input.shardCount;
     this.eventConverter = input.eventConverter;
     this.snapshotConverter = input.snapshotConverter;
-    this.keepSnapshotCount = input.keepSnapshotCount;
+    this.keepSnapshotCount =
+      input.keepSnapshotCount === undefined
+        ? undefined
+        : this.normalizeKeepSnapshotCount(input.keepSnapshotCount);
     this.shardSelector = input.shardSelector ?? createDefaultShardSelector();
     this.eventSerializer = input.eventSerializer ?? new JsonEventSerializer();
     this.snapshotSerializer =
@@ -159,7 +162,7 @@ class SpannerEventStore<
 
   async persistEvent(event: E, expectedVersion: number): Promise<void> {
     this.logger?.debug(
-      `persistEvent(${JSON.stringify(event)}, ${expectedVersion}): start`,
+      `persistEvent(aggregateId=${event.aggregateId.asString()}, sequenceNumber=${event.sequenceNumber}, expectedVersion=${expectedVersion}): start`,
     );
     assertPersistableUpdateEvent(event);
     await this.executeWrite(async () => {
@@ -167,16 +170,14 @@ class SpannerEventStore<
     });
     await this.purgeExcessSnapshots(event.aggregateId);
     this.logger?.debug(
-      `persistEvent(${JSON.stringify(event)}, ${expectedVersion}): finished`,
+      `persistEvent(aggregateId=${event.aggregateId.asString()}, sequenceNumber=${event.sequenceNumber}, expectedVersion=${expectedVersion}): finished`,
     );
   }
 
   async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
     assertEventMatchesAggregate(event, aggregate);
     this.logger?.debug(
-      `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
-        aggregate,
-      )}): start`,
+      `persistEventAndSnapshot(aggregateId=${event.aggregateId.asString()}, sequenceNumber=${event.sequenceNumber}, aggregateVersion=${aggregate.version}): start`,
     );
     await this.executeWrite(async () => {
       if (event.isCreated) {
@@ -187,9 +188,7 @@ class SpannerEventStore<
     });
     await this.purgeExcessSnapshots(event.aggregateId);
     this.logger?.debug(
-      `persistEventAndSnapshot(${JSON.stringify(event)}, ${JSON.stringify(
-        aggregate,
-      )}): finished`,
+      `persistEventAndSnapshot(aggregateId=${event.aggregateId.asString()}, sequenceNumber=${event.sequenceNumber}, aggregateVersion=${aggregate.version}): finished`,
     );
   }
 
@@ -331,7 +330,7 @@ class SpannerEventStore<
     aggregate: A,
     version: number,
   ): Promise<void> {
-    if (this.keepSnapshotCount === undefined) {
+    if (this.keepSnapshotCount === undefined || this.keepSnapshotCount === 0) {
       return;
     }
     await this.insertSnapshot(transaction, key, event, aggregate, {
@@ -382,10 +381,10 @@ class SpannerEventStore<
   }
 
   private async purgeExcessSnapshots(aggregateId: AID): Promise<void> {
-    if (this.keepSnapshotCount === undefined) {
+    if (this.keepSnapshotCount === undefined || this.keepSnapshotCount === 0) {
       return;
     }
-    const keepCount = this.normalizeKeepSnapshotCount(this.keepSnapshotCount);
+    const keepCount = this.keepSnapshotCount;
     const key = this.createKey(aggregateId);
     await this.runWriteTransaction(async (transaction) => {
       const [rows] = await transaction.run({
@@ -510,9 +509,20 @@ class SpannerEventStore<
       return value;
     }
     if (typeof value === "string") {
+      if (!this.isBase64(value)) {
+        throw new Error(`${fieldName} is not valid base64`);
+      }
       return Buffer.from(value, "base64");
     }
     throw new Error(`${fieldName} is not bytes`);
+  }
+
+  private isBase64(value: string): boolean {
+    return (
+      value.length > 0 &&
+      value.length % 4 === 0 &&
+      /^[A-Za-z0-9+/]+={0,2}$/.test(value)
+    );
   }
 
   private getField(row: SpannerRow, fieldName: string): unknown {

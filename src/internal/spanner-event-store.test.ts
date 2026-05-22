@@ -61,11 +61,12 @@ type FakeSnapshotRow = {
 
 type FakeSpannerDatabaseOptions = {
   alreadyExistsAsPlainObject?: boolean;
+  failRetainedSnapshotInsert?: boolean;
   failRunTransactionWith?: unknown;
   forceLatestSnapshotUpdateMiss?: boolean;
   missingSnapshotPayloadField?: boolean;
   retainedSequenceNumberFormat?: "number" | "string" | "wrapped" | "invalid";
-  snapshotPayloadFormat?: "bytes" | "base64" | "invalid";
+  snapshotPayloadFormat?: "bytes" | "base64" | "invalid" | "invalid-base64";
   snapshotVersionFormat?:
     | "number"
     | "string"
@@ -230,6 +231,12 @@ class FakeSpannerDatabase {
       row.aggregateId,
       row.sequenceNumber,
     );
+    if (
+      this.options.failRetainedSnapshotInsert === true &&
+      row.sequenceNumber > 0
+    ) {
+      throw new Error("retained snapshot insert is disabled");
+    }
     if (this.snapshotRows.has(key)) {
       throw this.alreadyExistsError();
     }
@@ -344,6 +351,8 @@ class FakeSpannerDatabase {
     switch (this.options.snapshotPayloadFormat) {
       case "base64":
         return Buffer.from(payload).toString("base64");
+      case "invalid-base64":
+        return "not-base64!";
       case "invalid":
         return { payload };
       default:
@@ -486,19 +495,25 @@ describe("ShardId", () => {
 
 describe("DefaultSpannerShardSelector", () => {
   test("selects the same shard as the existing hash distribution", () => {
-    const id = new UserAccountId(ulid());
     const shardCount = 32;
     const selector = new DefaultSpannerShardSelector<UserAccountId>();
     const keyResolver = new DefaultKeyResolver<UserAccountId>();
-    const dynamodbPartitionKey = keyResolver.resolvePartitionKey(
-      id,
-      shardCount,
-    );
-    const expectedShardId = Number(dynamodbPartitionKey.split("-").at(-1));
 
-    expect(selector.selectShardId(id, shardCount)).toBe(
-      createShardId(expectedShardId),
-    );
+    for (const id of [
+      new UserAccountId(ulid()),
+      new UserAccountId("01HZX3D9Z2C4J9V3K9WQ6T8Y7A"),
+      new UserAccountId("user-account-with-a-long-stable-id-000000000001"),
+    ]) {
+      const dynamodbPartitionKey = keyResolver.resolvePartitionKey(
+        id,
+        shardCount,
+      );
+      const expectedShardId = Number(dynamodbPartitionKey.split("-").at(-1));
+
+      expect(selector.selectShardId(id, shardCount)).toBe(
+        createShardId(expectedShardId),
+      );
+    }
   });
 
   test("rejects invalid inputs before selecting a shard", () => {
@@ -558,14 +573,32 @@ describe("SpannerEventStore", () => {
     const [userAccount2, renamedToBob] = userAccount1.rename("Bob");
     await eventStore.persistEventAndSnapshot(renamedToBob, userAccount2);
 
-    const [userAccount3, renamedToCarol] = userAccount2
-      .withVersion(userAccount2.version + 1)
-      .rename("Carol");
+    const snapshotAfterBob = await eventStore.getLatestSnapshotById(id);
+    if (snapshotAfterBob === undefined) {
+      throw new Error("snapshotAfterBob is undefined");
+    }
+    const [userAccount3, renamedToCarol] = snapshotAfterBob.rename("Carol");
     await eventStore.persistEventAndSnapshot(renamedToCarol, userAccount3);
 
     const latestSnapshot = await eventStore.getLatestSnapshotById(id);
 
     expect(latestSnapshot?.name).toBe("Carol");
+  });
+
+  test("skips retained snapshot writes when keepSnapshotCount is zero", async () => {
+    const eventStore = createFakeEventStore(
+      0,
+      new FakeSpannerDatabase({ failRetainedSnapshotInsert: true }),
+    );
+    const id = new UserAccountId(ulid());
+    const [userAccount1, created] = UserAccount.create(id, "Alice");
+    await eventStore.persistEventAndSnapshot(created, userAccount1);
+
+    const [userAccount2, renamed] = userAccount1.rename("Bob");
+    await eventStore.persistEventAndSnapshot(renamed, userAccount2);
+
+    const latestSnapshot = await eventStore.getLatestSnapshotById(id);
+    expect(latestSnapshot?.name).toBe("Bob");
   });
 
   test("converts duplicate journal inserts to OptimisticLockError", async () => {
@@ -719,16 +752,18 @@ describe("SpannerEventStore", () => {
     ["wrapped", "wrapped"],
   ] as const)("purges retained snapshots when sequence numbers are returned as %s", async (_, retainedSequenceNumberFormat) => {
     const eventStore = createFakeEventStore(
-      0,
+      1,
       new FakeSpannerDatabase({ retainedSequenceNumberFormat }),
     );
     const id = new UserAccountId(ulid());
     const [userAccount1, created] = UserAccount.create(id, "Alice");
-
     await eventStore.persistEventAndSnapshot(created, userAccount1);
 
+    const [userAccount2, renamed] = userAccount1.rename("Bob");
+    await eventStore.persistEventAndSnapshot(renamed, userAccount2);
+
     const latestSnapshot = await eventStore.getLatestSnapshotById(id);
-    expect(latestSnapshot?.name).toBe("Alice");
+    expect(latestSnapshot?.name).toBe("Bob");
   });
 
   test.each([
@@ -782,6 +817,11 @@ describe("SpannerEventStore", () => {
       "payload is not bytes",
     ],
     [
+      "invalid base64 snapshot payload",
+      { snapshotPayloadFormat: "invalid-base64" },
+      "payload is not valid base64",
+    ],
+    [
       "missing snapshot payload",
       { missingSnapshotPayloadField: true },
       "payload is undefined",
@@ -798,19 +838,15 @@ describe("SpannerEventStore", () => {
     await expect(eventStore.getLatestSnapshotById(id)).rejects.toThrow(message);
   });
 
-  test("propagates invalid keepSnapshotCount during retention", async () => {
-    const eventStore = createFakeEventStore(Number.NaN);
-    const id = new UserAccountId(ulid());
-    const [userAccount1, created] = UserAccount.create(id, "Alice");
-
-    await expect(
-      eventStore.persistEventAndSnapshot(created, userAccount1),
-    ).rejects.toThrow("keepSnapshotCount must be finite");
+  test("rejects invalid keepSnapshotCount at construction", () => {
+    expect(() => createFakeEventStore(Number.NaN)).toThrow(
+      "keepSnapshotCount must be finite",
+    );
   });
 
   test("rejects invalid retained snapshot sequence numbers during retention", async () => {
     const eventStore = createFakeEventStore(
-      0,
+      1,
       new FakeSpannerDatabase({ retainedSequenceNumberFormat: "invalid" }),
     );
     const id = new UserAccountId(ulid());
@@ -826,9 +862,12 @@ const describeSpannerIntegration =
   process.env.RUN_SPANNER_EMULATOR_TESTS === "1" ? describe : describe.skip;
 
 describeSpannerIntegration("SpannerEventStore emulator", () => {
-  const TEST_TIME_FACTOR = Number.parseFloat(
+  const parsedTestTimeFactor = Number.parseFloat(
     process.env.TEST_TIME_FACTOR ?? "1.0",
   );
+  const TEST_TIME_FACTOR = Number.isFinite(parsedTestTimeFactor)
+    ? parsedTestTimeFactor
+    : 1.0;
   const TIMEOUT: number = 120 * 1000 * TEST_TIME_FACTOR;
 
   let container: TestContainer;
@@ -900,9 +939,11 @@ describeSpannerIntegration("SpannerEventStore emulator", () => {
       const [userAccount2, renamedToBob] = userAccount1.rename("Bob");
       await eventStore.persistEventAndSnapshot(renamedToBob, userAccount2);
 
-      const [userAccount3, renamedToCarol] = userAccount2
-        .withVersion(userAccount2.version + 1)
-        .rename("Carol");
+      const snapshotAfterBob = await eventStore.getLatestSnapshotById(id);
+      if (snapshotAfterBob === undefined) {
+        throw new Error("snapshotAfterBob is undefined");
+      }
+      const [userAccount3, renamedToCarol] = snapshotAfterBob.rename("Carol");
       await eventStore.persistEventAndSnapshot(renamedToCarol, userAccount3);
 
       const [rows] = await database.run({
