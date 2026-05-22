@@ -53,7 +53,10 @@ async function assertOptimisticLockError(
       console.log(`[${backendName}] detected optimistic lock error`);
       return;
     }
-    throw error;
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(`[${backendName}] unexpected error: ${String(error)}`);
   }
   throw new Error(
     `[${backendName}] expected OptimisticLockError but none was thrown`,
