@@ -11,11 +11,11 @@
 ## 開発
 
 ```shell
-$ pnpm install
-$ pnpm run lint
-$ pnpm run build
-$ pnpm run test
-$ pnpm run coverage
+pnpm install
+pnpm run lint
+pnpm run build
+pnpm run test
+pnpm run coverage
 ```
 
 ライブラリの README は [packages/library/README.ja.md](packages/library/README.ja.md) を参照してください。

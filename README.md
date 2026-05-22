@@ -11,11 +11,11 @@ This repository uses pnpm workspaces.
 ## Development
 
 ```shell
-$ pnpm install
-$ pnpm run lint
-$ pnpm run build
-$ pnpm run test
-$ pnpm run coverage
+pnpm install
+pnpm run lint
+pnpm run build
+pnpm run test
+pnpm run coverage
 ```
 
 Library documentation lives in [packages/library/README.md](packages/library/README.md).

@@ -13,7 +13,7 @@
 # 導入方法
 
 ```shell
-$ npm install event-store-adapter-js
+npm install event-store-adapter-js
 ```
 
 # 使い方
@@ -115,11 +115,11 @@ expect(userAccount3.version).toEqual(2);
 `packages/examples` と `packages/tests` を予約しています。
 
 ```shell
-$ pnpm install
-$ pnpm run lint
-$ pnpm run build
-$ pnpm run test
-$ pnpm run coverage
+pnpm install
+pnpm run lint
+pnpm run build
+pnpm run test
+pnpm run coverage
 ```
 
 ## テーブル仕様
@@ -130,7 +130,8 @@ Cloud Spannerについては[docs/SPANNER_DATABASE_SCHEMA.ja.md](docs/SPANNER_DA
 
 ## ライセンス
 
-MITライセンスです。詳細は[LICENSE](LICENSE)を参照してください。
+MIT と Apache-2.0 のデュアルライセンスです。詳細は
+[LICENSE-MIT](LICENSE-MIT) と [LICENSE-APACHE](LICENSE-APACHE) を参照してください。
 
 ## 他の言語のための実装
 

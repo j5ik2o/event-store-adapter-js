@@ -32,9 +32,9 @@ jobs:
       - run: |
           git config --global user.email "j5ik2o@gmail.com"
           git config --global user.name "Junichi Kato"
-          SNAPSHOT_VERSION=$(node "${GITHUB_WORKSPACE}"/.github/bump-snapshot-version.js)
+          SNAPSHOT_VERSION=$(node "${GITHUB_WORKSPACE}"/.github/bump-snapshot-version.js | tr -d '\r\n')
           test -n "$SNAPSHOT_VERSION"
-          echo "SNAPSHOT_VERSION=${SNAPSHOT_VERSION}" >> "$GITHUB_ENV"
+          printf '%s\n' "SNAPSHOT_VERSION=${SNAPSHOT_VERSION}" >> "$GITHUB_ENV"
           git add packages/library/package.json pnpm-lock.yaml
           git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
           git push origin main

@@ -14,7 +14,7 @@ This library is designed to turn DynamoDB into an Event Store for CQRS/Event Sou
 # Installation
 
 ```shell
-$ npm install event-store-adapter-js
+npm install event-store-adapter-js
 ```
 
 # Usage
@@ -118,11 +118,11 @@ This repository uses pnpm workspaces. The library package is located at
 future example and test packages.
 
 ```shell
-$ pnpm install
-$ pnpm run lint
-$ pnpm run build
-$ pnpm run test
-$ pnpm run coverage
+pnpm install
+pnpm run lint
+pnpm run build
+pnpm run test
+pnpm run coverage
 ```
 
 ## Table Specifications
@@ -135,9 +135,10 @@ For Cloud Spanner, see [docs/SPANNER_DATABASE_SCHEMA.md](docs/SPANNER_DATABASE_S
 
 See [j5ik2o/cqrs-es-example-js](https://github.com/j5ik2o/cqrs-es-example-js).
 
-## License.
+## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+Dual-licensed under MIT and Apache-2.0.
+See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).
 
 ## Links
 

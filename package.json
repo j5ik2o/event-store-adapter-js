@@ -9,6 +9,6 @@
     "lint": "pnpm --filter event-store-adapter-js run lint",
     "fmt": "pnpm --filter event-store-adapter-js run fmt",
     "fix": "pnpm --filter event-store-adapter-js run fix",
-    "clean": "pnpm -r --if-present run clean"
+    "clean": "pnpm --filter event-store-adapter-js run clean"
   }
 }

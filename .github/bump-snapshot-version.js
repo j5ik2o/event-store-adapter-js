@@ -20,6 +20,9 @@ try {
 }
 
 const version = packageJson.version;
+if (typeof version !== "string" || version.length === 0) {
+  throw new Error(`Missing or invalid version in ${packageJsonPath}`);
+}
 const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-snapshot\.(\d+))?$/);
 
 if (!match) {

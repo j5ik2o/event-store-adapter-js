@@ -5,6 +5,11 @@ const nextVersion = process.argv[2];
 if (!nextVersion) {
   throw new Error("Usage: node .github/set-package-version.js <version>");
 }
+if (!/^\d+\.\d+\.\d+(?:-snapshot\.\d+)?$/.test(nextVersion)) {
+  throw new Error(
+    `Unsupported version format: ${nextVersion}. Expected X.Y.Z or X.Y.Z-snapshot.N`,
+  );
+}
 
 const packageJsonPath = path.join(
   __dirname,
