@@ -10,8 +10,8 @@ import {
   type UpdateItemInput,
   type WriteRequest,
 } from "@aws-sdk/client-dynamodb";
-import moment from "moment/moment";
 import type { AggregateId } from "../types";
+import { normalizeDynamoDBDeleteTtlMillis } from "./dynamodb-delete-ttl-millis";
 
 type SnapshotKey = {
   pkey: string;
@@ -26,6 +26,8 @@ const EXCESS_SNAPSHOT_QUERY_LIMIT = 1000;
 // Keep retention bounded while allowing short DynamoDB throttle bursts to clear.
 const MAX_UNPROCESSED_ITEM_RETRY_COUNT = 5;
 const RETENTION_RETRY_BASE_DELAY_MILLIS = 50;
+const MILLIS_PER_SECOND = 1000;
+const MAX_DYNAMODB_TTL_EPOCH_SECONDS = 9_999_999_999;
 const RETRYABLE_DYNAMODB_ERROR_NAMES = new Set([
   "InternalServerError",
   "ProvisionedThroughputExceededException",
@@ -45,17 +47,23 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   async purgeExcessSnapshots(
     aggregateId: AID,
     keepSnapshotCount: number | undefined,
-    deleteTtl: moment.Duration | undefined,
+    deleteTtlMillis: number | undefined,
   ): Promise<void> {
     if (keepSnapshotCount === undefined) {
       return;
     }
     const keepCount = this.normalizeKeepSnapshotCount(keepSnapshotCount);
-    if (deleteTtl === undefined) {
+    const normalizedDeleteTtlMillis =
+      normalizeDynamoDBDeleteTtlMillis(deleteTtlMillis);
+    if (normalizedDeleteTtlMillis === undefined) {
       await this.deleteExcessSnapshots(aggregateId, keepCount);
       return;
     }
-    await this.updateTtlOfExcessSnapshots(aggregateId, keepCount, deleteTtl);
+    await this.updateTtlOfExcessSnapshots(
+      aggregateId,
+      keepCount,
+      normalizedDeleteTtlMillis,
+    );
   }
 
   private normalizeKeepSnapshotCount(keepSnapshotCount: number): number {
@@ -159,7 +167,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
   private async updateTtlOfExcessSnapshots(
     aggregateId: AID,
     keepSnapshotCount: number,
-    deleteTtl: moment.Duration,
+    deleteTtlMillis: number,
   ): Promise<void> {
     const keys = await this.getExcessSnapshotKeys(
       aggregateId,
@@ -169,8 +177,21 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     if (keys.length === 0) {
       return;
     }
-    const ttl = moment().add(deleteTtl).unix().toString();
+    const ttl = this.toDeleteTtlEpochSeconds(deleteTtlMillis);
     await this.sendUpdateTtlRequests(keys, ttl);
+  }
+
+  private toDeleteTtlEpochSeconds(deleteTtlMillis: number): string {
+    const nowMillis = Date.now();
+    const ttlEpochMillis = nowMillis + deleteTtlMillis;
+    // DynamoDB TTL is epoch seconds; round up so millisecond TTLs do not expire earlier than requested.
+    const ttlEpochSeconds = Math.ceil(ttlEpochMillis / MILLIS_PER_SECOND);
+    if (ttlEpochSeconds > MAX_DYNAMODB_TTL_EPOCH_SECONDS) {
+      throw new Error(
+        "TTL calculation overflow: epoch seconds exceed DynamoDB TTL range",
+      );
+    }
+    return ttlEpochSeconds.toString();
   }
 
   private async sendUpdateTtlRequests(

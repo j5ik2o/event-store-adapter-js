@@ -1,81 +1,8 @@
-interface AggregateId {
-  typeName: string;
-  value: string;
-  asString: () => string;
-}
-
-interface Aggregate<
-  This extends Aggregate<This, AID>,
-  AID extends AggregateId,
-> {
-  typeName: string;
-  id: AID;
-  sequenceNumber: number;
-  version: number;
-  withVersion(version: number): This;
-  updateVersion(version: (value: number) => number): This;
-}
-
-interface Event<AID extends AggregateId> {
-  typeName: string;
-  id: string;
-  aggregateId: AID;
-  sequenceNumber: number;
-  occurredAt: Date;
-  isCreated: boolean;
-}
-
-interface KeyResolver<AID extends AggregateId> {
-  resolvePartitionKey(aggregateId: AID, shardCount: number): string;
-
-  resolveSortKey(aggregateId: AID, sequenceNumber: number): string;
-}
-
-interface EventSerializer<AID extends AggregateId, E extends Event<AID>> {
-  serialize(event: E): Uint8Array;
-  // biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
-  deserialize(bytes: Uint8Array, converter: (json: any) => E): E;
-}
-
-interface SnapshotSerializer<
-  AID extends AggregateId,
-  A extends Aggregate<A, AID>,
-> {
-  serialize(aggregate: A): Uint8Array;
-  // biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
-  deserialize(bytes: Uint8Array, converter: (json: any) => A): A;
-}
-
-export interface Logger {
-  // biome-ignore lint/suspicious/noExplicitAny: Logger accepts any content type
-  trace?: (...content: any[]) => void;
-  // biome-ignore lint/suspicious/noExplicitAny: Logger accepts any content type
-  debug: (...content: any[]) => void;
-  // biome-ignore lint/suspicious/noExplicitAny: Logger accepts any content type
-  info: (...content: any[]) => void;
-  // biome-ignore lint/suspicious/noExplicitAny: Logger accepts any content type
-  warn: (...content: any[]) => void;
-  // biome-ignore lint/suspicious/noExplicitAny: Logger accepts any content type
-  error: (...content: any[]) => void;
-}
-
-class OptimisticLockError extends Error {
-  constructor(message: string, cause?: Error) {
-    super(message);
-    this.name = "OptimisticLockError";
-    this.cause = cause;
-    if (cause) {
-      this.stack = `${this.stack}\nCaused by:\n${cause.stack}`;
-    }
-  }
-}
-
-export {
-  type Aggregate,
-  type AggregateId,
-  type Event,
-  type EventSerializer,
-  type KeyResolver,
-  OptimisticLockError,
-  type SnapshotSerializer,
-};
+export type { Aggregate } from "./aggregate";
+export type { AggregateId } from "./aggregate-id";
+export type { Event } from "./event";
+export type { EventSerializer } from "./event-serializer";
+export type { KeyResolver } from "./key-resolver";
+export type { Logger } from "./logger";
+export { OptimisticLockError } from "./optimistic-lock-error";
+export type { SnapshotSerializer } from "./snapshot-serializer";

@@ -5,7 +5,6 @@ import {
   QueryCommand,
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
-import moment from "moment/moment";
 import type { AggregateId } from "../types";
 import { DynamoDBSnapshotRetentionExecutor } from "./dynamodb-snapshot-retention-executor";
 
@@ -276,6 +275,32 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     expect(sentCommands).toHaveLength(0);
   });
 
+  test.each([
+    [Number.NaN, "deleteTtlMillis must be finite"],
+    [Number.POSITIVE_INFINITY, "deleteTtlMillis must be finite"],
+    [-1, "deleteTtlMillis must be non-negative"],
+    [-0, "deleteTtlMillis must be non-negative, got -0"],
+  ])("rejects invalid delete ttl millis %s", async (deleteTtlMillis, message) => {
+    const dynamodbClient = {
+      send: jest.fn(),
+    } as unknown as DynamoDBClient;
+    const executor = new DynamoDBSnapshotRetentionExecutor(
+      dynamodbClient,
+      "snapshot",
+      "snapshot-aid-index",
+      "snapshot-active-ttl-index",
+    );
+
+    await expect(
+      executor.purgeExcessSnapshots(
+        new TestAggregateId("1"),
+        1,
+        deleteTtlMillis,
+      ),
+    ).rejects.toThrow(message);
+    expect(dynamodbClient.send).not.toHaveBeenCalled();
+  });
+
   test("retries unprocessed snapshot deletes", async () => {
     const sentCommands: unknown[] = [];
     const unprocessedRequest = {
@@ -372,7 +397,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     await executor.purgeExcessSnapshots(
       new TestAggregateId("1"),
       1,
-      moment.duration(1, "hour"),
+      60 * 60 * 1000,
     );
 
     const updateCommand = sentCommands.find((command) => {
@@ -433,7 +458,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     await executor.purgeExcessSnapshots(
       new TestAggregateId("1"),
       1,
-      moment.duration(1, "hour"),
+      60 * 60 * 1000,
     );
 
     const updateCommands = sentCommands.filter((command) => {
@@ -495,7 +520,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     await executor.purgeExcessSnapshots(
       new TestAggregateId("1"),
       1,
-      moment.duration(1, "hour"),
+      60 * 60 * 1000,
     );
 
     expect(updateAttemptCount).toBe(2);
@@ -543,7 +568,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       executor.purgeExcessSnapshots(
         new TestAggregateId("1"),
         1,
-        moment.duration(1, "hour"),
+        60 * 60 * 1000,
       ),
     ).rejects.toThrow("Failed to update TTL for 1 snapshot items");
 
@@ -589,7 +614,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     await executor.purgeExcessSnapshots(
       new TestAggregateId("1"),
       1,
-      moment.duration(1, "hour"),
+      60 * 60 * 1000,
     );
 
     expect(maxActiveUpdateCount).toBe(25);
@@ -631,7 +656,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     const retention = executor.purgeExcessSnapshots(
       new TestAggregateId("1"),
       0,
-      moment.duration(1, "hour"),
+      60 * 60 * 1000,
     );
 
     await expect(retention).rejects.toThrow(
@@ -689,7 +714,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     const retention = executor.purgeExcessSnapshots(
       new TestAggregateId("1"),
       0,
-      moment.duration(1, "hour"),
+      60 * 60 * 1000,
     );
 
     await expect(retention).rejects.toThrow(
@@ -748,7 +773,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
       executor.purgeExcessSnapshots(
         new TestAggregateId("1"),
         1,
-        moment.duration(1, "hour"),
+        60 * 60 * 1000,
       ),
     ).resolves.toBeUndefined();
   });

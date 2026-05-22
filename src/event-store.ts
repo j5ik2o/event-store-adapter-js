@@ -1,29 +1,15 @@
-import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import type moment from "moment";
-import type { EventStoreWithOptions } from "./event-store-with-options";
-import { DefaultKeyResolver } from "./internal/default-key-resolver";
-import {
-  JsonEventSerializer,
-  JsonSnapshotSerializer,
-} from "./internal/default-serializer";
-import { EventStoreForDynamoDB } from "./internal/event-store-for-dynamodb";
-import { EventStoreForMemory } from "./internal/event-store-for-memory";
-import type {
-  Aggregate,
-  AggregateId,
-  Event,
-  EventSerializer,
-  KeyResolver,
-  Logger,
-  SnapshotSerializer,
-} from "./types";
+import type { DynamoDBEventStoreInput } from "./dynamodb-event-store-input";
+import { DynamoDBEventStore } from "./internal/dynamodb-event-store";
+import { MemoryEventStore } from "./internal/memory-event-store";
+import type { MemoryEventStoreInput } from "./memory-event-store-input";
+import type { Aggregate, AggregateId, Event } from "./types";
 
 interface EventStore<
   AID extends AggregateId,
   A extends Aggregate<A, AID>,
   E extends Event<AID>,
 > {
-  persistEvent(event: E, version: number): Promise<void>;
+  persistEvent(event: E, expectedVersion: number): Promise<void>;
   persistEventAndSnapshot(event: E, aggregate: A): Promise<void>;
   getEventsByIdSinceSequenceNumber(
     id: AID,
@@ -37,56 +23,16 @@ class EventStoreFactory {
     AID extends AggregateId,
     A extends Aggregate<A, AID>,
     E extends Event<AID>,
-  >(
-    dynamodbClient: DynamoDBClient,
-    journalTableName: string,
-    snapshotTableName: string,
-    journalAidIndexName: string,
-    snapshotAidIndexName: string,
-    snapshotActiveTtlIndexName: string,
-    shardCount: number,
-    eventConverter: (json: string) => E,
-    snapshotConverter: (json: string) => A,
-    keepSnapshotCount: number | undefined = undefined,
-    deleteTtl: moment.Duration | undefined = undefined,
-    keyResolver: KeyResolver<AID> = new DefaultKeyResolver(),
-    eventSerializer: EventSerializer<AID, E> = new JsonEventSerializer<
-      AID,
-      E
-    >(),
-    snapshotSerializer: SnapshotSerializer<AID, A> = new JsonSnapshotSerializer<
-      AID,
-      A
-    >(),
-    logger: Logger | undefined = undefined,
-  ): EventStoreWithOptions<AID, A, E> {
-    return new EventStoreForDynamoDB<AID, A, E>(
-      dynamodbClient,
-      journalTableName,
-      snapshotTableName,
-      journalAidIndexName,
-      snapshotAidIndexName,
-      snapshotActiveTtlIndexName,
-      shardCount,
-      eventConverter,
-      snapshotConverter,
-      keepSnapshotCount,
-      deleteTtl,
-      keyResolver,
-      eventSerializer,
-      snapshotSerializer,
-      logger,
-    );
+  >(input: DynamoDBEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
+    return new DynamoDBEventStore<AID, A, E>(input);
   }
+
   static ofMemory<
     AID extends AggregateId,
     A extends Aggregate<A, AID>,
     E extends Event<AID>,
-  >(
-    events: Map<AID, E[]> = new Map(),
-    snapshots: Map<AID, A> = new Map(),
-  ): EventStore<AID, A, E> {
-    return new EventStoreForMemory(events, snapshots);
+  >(input: MemoryEventStoreInput<AID, A, E> = {}): EventStore<AID, A, E> {
+    return new MemoryEventStore(input);
   }
 }
 

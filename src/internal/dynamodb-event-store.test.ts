@@ -1,4 +1,3 @@
-import { describe } from "node:test";
 import { type DynamoDBClient, QueryCommand } from "@aws-sdk/client-dynamodb";
 import {
   GenericContainer,
@@ -7,12 +6,13 @@ import {
   Wait,
 } from "testcontainers";
 import { ulid } from "ulid";
-import { EventStoreForDynamoDB } from "./event-store-for-dynamodb";
+import { DynamoDBEventStore } from "./dynamodb-event-store";
 import {
   createDynamoDBClient,
   createJournalTable,
   createSnapshotTable,
 } from "./test/dynamodb-utils";
+import { runEventStoreContractTests } from "./test/event-store-contract";
 import { convertJSONToUserAccount, UserAccount } from "./test/user-account";
 import {
   convertJSONtoUserAccountEvent,
@@ -24,7 +24,7 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-describe("EventStoreForDynamoDB", () => {
+describe("DynamoDBEventStore", () => {
   const TEST_TIME_FACTOR = Number.parseFloat(
     process.env.TEST_TIME_FACTOR ?? "1.0",
   );
@@ -33,11 +33,6 @@ describe("EventStoreForDynamoDB", () => {
   let container: TestContainer;
   let startedContainer: StartedTestContainer;
   let dynamodbClient: DynamoDBClient;
-  let eventStore: EventStoreForDynamoDB<
-    UserAccountId,
-    UserAccount,
-    UserAccountEvent
-  >;
 
   const JOURNAL_TABLE_NAME = "journal";
   const SNAPSHOT_TABLE_NAME = "snapshot";
@@ -47,21 +42,21 @@ describe("EventStoreForDynamoDB", () => {
 
   function createEventStore(
     dynamodbClient: DynamoDBClient,
-  ): EventStoreForDynamoDB<UserAccountId, UserAccount, UserAccountEvent> {
-    return new EventStoreForDynamoDB<
-      UserAccountId,
-      UserAccount,
-      UserAccountEvent
-    >(
-      dynamodbClient,
-      JOURNAL_TABLE_NAME,
-      SNAPSHOT_TABLE_NAME,
-      JOURNAL_AID_INDEX_NAME,
-      SNAPSHOTS_AID_INDEX_NAME,
-      SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
-      32,
-      convertJSONtoUserAccountEvent,
-      convertJSONToUserAccount,
+    keepSnapshotCount?: number,
+  ): DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent> {
+    return new DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>(
+      {
+        client: dynamodbClient,
+        journalTableName: JOURNAL_TABLE_NAME,
+        snapshotTableName: SNAPSHOT_TABLE_NAME,
+        journalAidIndexName: JOURNAL_AID_INDEX_NAME,
+        snapshotAidIndexName: SNAPSHOTS_AID_INDEX_NAME,
+        snapshotActiveTtlIndexName: SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
+        shardCount: 32,
+        eventConverter: convertJSONtoUserAccountEvent,
+        snapshotConverter: convertJSONToUserAccount,
+        keepSnapshotCount,
+      },
     );
   }
 
@@ -89,7 +84,6 @@ describe("EventStoreForDynamoDB", () => {
       SNAPSHOTS_AID_INDEX_NAME,
       SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
     );
-    eventStore = createEventStore(dynamodbClient);
   }, TIMEOUT);
 
   afterAll(async () => {
@@ -98,67 +92,74 @@ describe("EventStoreForDynamoDB", () => {
     }
   }, TIMEOUT);
 
-  test(
-    "persistAndSnapshot",
-    async () => {
-      const id = new UserAccountId(ulid());
-      const name = "Alice";
-      const [userAccount1, created] = UserAccount.create(id, name);
+  runEventStoreContractTests({
+    name: "DynamoDBEventStore contract",
+    timeout: TIMEOUT,
+    createEventStore: () => createEventStore(dynamodbClient),
+  });
 
-      await eventStore.persistEventAndSnapshot(created, userAccount1);
+  test.each([
+    [
+      Number.NaN,
+      "Invalid deleteTtlMillis configuration: deleteTtlMillis must be finite, got NaN",
+    ],
+    [
+      Number.POSITIVE_INFINITY,
+      "Invalid deleteTtlMillis configuration: deleteTtlMillis must be finite, got Infinity",
+    ],
+    [
+      -1,
+      "Invalid deleteTtlMillis configuration: deleteTtlMillis must be non-negative, got -1",
+    ],
+    [
+      -0,
+      "Invalid deleteTtlMillis configuration: deleteTtlMillis must be non-negative, got -0",
+    ],
+  ])("rejects invalid deleteTtlMillis %s", (deleteTtlMillis, message) => {
+    expect(() => {
+      new DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>({
+        client: {} as DynamoDBClient,
+        journalTableName: JOURNAL_TABLE_NAME,
+        snapshotTableName: SNAPSHOT_TABLE_NAME,
+        journalAidIndexName: JOURNAL_AID_INDEX_NAME,
+        snapshotAidIndexName: SNAPSHOTS_AID_INDEX_NAME,
+        snapshotActiveTtlIndexName: SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
+        shardCount: 32,
+        eventConverter: convertJSONtoUserAccountEvent,
+        snapshotConverter: convertJSONToUserAccount,
+        deleteTtlMillis,
+      });
+    }).toThrow(message);
+  });
 
-      const userAccount2 = await eventStore.getLatestSnapshotById(id);
-      if (userAccount2 === undefined) {
-        throw new Error("userAccount2 is undefined");
-      }
-      expect(userAccount2.id).toEqual(id);
-      expect(userAccount2.name).toEqual(name);
-      expect(userAccount2.version).toEqual(1);
-    },
-    TIMEOUT,
-  );
+  test.each([
+    ["eventConverter", undefined],
+    ["snapshotConverter", undefined],
+  ])("rejects invalid %s", (converterName, converter) => {
+    const input = {
+      client: {} as DynamoDBClient,
+      journalTableName: JOURNAL_TABLE_NAME,
+      snapshotTableName: SNAPSHOT_TABLE_NAME,
+      journalAidIndexName: JOURNAL_AID_INDEX_NAME,
+      snapshotAidIndexName: SNAPSHOTS_AID_INDEX_NAME,
+      snapshotActiveTtlIndexName: SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
+      shardCount: 32,
+      eventConverter: convertJSONtoUserAccountEvent,
+      snapshotConverter: convertJSONToUserAccount,
+      [converterName]: converter,
+    };
 
-  test(
-    "persistAndSnapshot2",
-    async () => {
-      const id = new UserAccountId(ulid());
-      const name = "Alice";
-      const [userAccount1, created] = UserAccount.create(id, name);
-
-      await eventStore.persistEventAndSnapshot(created, userAccount1);
-
-      const [userAccount2, renamed] = userAccount1.rename("Bob");
-
-      await eventStore.persistEvent(renamed, userAccount2.version);
-
-      const latestSnapshot = await eventStore.getLatestSnapshotById(id);
-      if (latestSnapshot === undefined) {
-        throw new Error("latestSnapshot is undefined");
-      }
-      const eventsAfterSnapshot =
-        await eventStore.getEventsByIdSinceSequenceNumber(
-          id,
-          latestSnapshot.sequenceNumber + 1,
-        );
-      const userAccount3 = UserAccount.replay(
-        eventsAfterSnapshot,
-        latestSnapshot,
+    expect(() => {
+      new DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>(
+        input,
       );
-
-      expect(userAccount3.id).toEqual(id);
-      expect(userAccount3.name).toEqual("Bob");
-      expect(userAccount3.sequenceNumber).toEqual(2);
-      expect(userAccount3.version).toEqual(2);
-    },
-    TIMEOUT,
-  );
+    }).toThrow("must be a function");
+  });
 
   test(
     "persists redundant snapshots when retention is enabled",
     async () => {
-      const retainedEventStore = eventStore.withKeepSnapshotCount(
-        1,
-      ) as EventStoreForDynamoDB<UserAccountId, UserAccount, UserAccountEvent>;
+      const retainedEventStore = createEventStore(dynamodbClient, 1);
       const id = new UserAccountId(ulid());
       const [userAccount1, created] = UserAccount.create(id, "Alice");
 
