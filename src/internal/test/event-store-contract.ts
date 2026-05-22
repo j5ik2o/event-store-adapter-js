@@ -70,6 +70,45 @@ function runEventStoreContractTests(config: {
     );
 
     test(
+      "persists multiple update events between snapshots",
+      async () => {
+        const eventStore = await config.createEventStore();
+        const id = new UserAccountId(ulid());
+        const [userAccount1, created] = UserAccount.create(id, "Alice");
+
+        await eventStore.persistEventAndSnapshot(created, userAccount1);
+
+        const [userAccount2, renamedToBob] = userAccount1.rename("Bob");
+        await eventStore.persistEvent(renamedToBob, userAccount2.version);
+
+        const [userAccount3, renamedToCarol] = userAccount2
+          .withVersion(userAccount2.version + 1)
+          .rename("Carol");
+        await eventStore.persistEvent(renamedToCarol, userAccount3.version);
+
+        const latestSnapshot = await eventStore.getLatestSnapshotById(id);
+        if (latestSnapshot === undefined) {
+          throw new Error("latestSnapshot is undefined");
+        }
+        const eventsAfterSnapshot =
+          await eventStore.getEventsByIdSinceSequenceNumber(
+            id,
+            latestSnapshot.sequenceNumber + 1,
+          );
+        const userAccount4 = UserAccount.replay(
+          eventsAfterSnapshot,
+          latestSnapshot,
+        );
+
+        expect(userAccount4.id).toEqual(id);
+        expect(userAccount4.name).toEqual("Carol");
+        expect(userAccount4.sequenceNumber).toEqual(3);
+        expect(userAccount4.version).toEqual(3);
+      },
+      config.timeout,
+    );
+
+    test(
       "persists update event with a new snapshot",
       async () => {
         const eventStore = await config.createEventStore();

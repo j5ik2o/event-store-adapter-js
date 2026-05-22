@@ -66,6 +66,7 @@ class MemoryEventStore<
     assertEventMatchesAggregate(event, snapshot);
     assertExpectedVersion(snapshot.version, expectedVersion);
     const newVersion = snapshot.version + 1;
+    // Event-only updates advance version while keeping the latest snapshot point.
     const newSnapshot = snapshot.withVersion(newVersion);
     this.appendEvent(aggregateIdString, event);
     this.snapshots.set(aggregateIdString, newSnapshot);
