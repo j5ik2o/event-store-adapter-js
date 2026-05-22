@@ -26,6 +26,7 @@ class DefaultShardSelector<AID extends AggregateId>
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
       hash = (hash << 5) - hash + char;
+      // Keep the legacy DefaultKeyResolver 32-bit coercion while avoiding the opaque hash & hash idiom.
       hash = hash & 0xffffffff;
     }
     return hash >>> 0;
