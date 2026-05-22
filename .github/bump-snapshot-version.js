@@ -23,7 +23,9 @@ const version = packageJson.version;
 const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-snapshot\.(\d+))?$/);
 
 if (!match) {
-  throw new Error(`Unsupported package version: ${version}`);
+  throw new Error(
+    `Unsupported package version format: ${version}. Expected X.Y.Z or X.Y.Z-snapshot.N`,
+  );
 }
 
 const major = Number(match[1]);

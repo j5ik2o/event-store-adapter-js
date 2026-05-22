@@ -14,7 +14,7 @@
     "README.ja.md"
   ],
   "scripts": {
-    "build": "rimraf ./dist && tsc && find dist -name '*.test.d.ts' -delete && find dist -name '*.test.js' -delete && rimraf dist/internal/test && test -z \"$(find dist \\( -name '*.test.d.ts' -o -name '*.test.js' -o -path 'dist/internal/test' \\) -print -quit)\"",
+    "build": "rimraf ./dist && tsc && find dist -name '*.test.d.ts' -delete && find dist -name '*.test.js' -delete && rimraf dist/internal/test && test ! -d dist/internal/test && test -z \"$(find dist \\( -name '*.test.d.ts' -o -name '*.test.js' \\) -print -quit)\"",
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --no-cache",
     "coverage": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --no-cache --coverage",
     "lint": "biome check src/",
