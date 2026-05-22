@@ -52,15 +52,13 @@ class DynamoDBEventStore<
   E extends Event<AID>,
 > implements EventStore<AID, A, E>
 {
-  private static readonly SHARED_KEY_RESOLVER =
-    new DefaultKeyResolver<AggregateId>();
-  // Default serializers only hold TextEncoder/TextDecoder instances and are safe to share.
-  private static readonly SHARED_EVENT_SERIALIZER = new JsonEventSerializer<
-    AggregateId,
-    Event<AggregateId>
-  >();
-  private static readonly SHARED_SNAPSHOT_SERIALIZER =
-    new JsonSnapshotSerializer<AggregateId, DefaultSnapshotAggregate>();
+  private static sharedKeyResolver: DefaultKeyResolver<AggregateId> | undefined;
+  private static sharedEventSerializer:
+    | JsonEventSerializer<AggregateId, Event<AggregateId>>
+    | undefined;
+  private static sharedSnapshotSerializer:
+    | JsonSnapshotSerializer<AggregateId, DefaultSnapshotAggregate>
+    | undefined;
 
   private readonly dynamodbClient: DynamoDBClient;
   private readonly journalTableName: string;
@@ -502,7 +500,9 @@ class DynamoDBEventStore<
   }
 
   private static keyResolver<AID extends AggregateId>(): KeyResolver<AID> {
-    return DynamoDBEventStore.SHARED_KEY_RESOLVER as KeyResolver<AID>;
+    DynamoDBEventStore.sharedKeyResolver ??=
+      new DefaultKeyResolver<AggregateId>();
+    return DynamoDBEventStore.sharedKeyResolver as KeyResolver<AID>;
   }
 
   private static eventSerializer<
@@ -510,7 +510,11 @@ class DynamoDBEventStore<
     E extends Event<AID>,
   >(): EventSerializer<AID, E> {
     // JsonEventSerializer has no aggregate-specific mutable state; the cast narrows a stateless shared instance.
-    return DynamoDBEventStore.SHARED_EVENT_SERIALIZER as unknown as EventSerializer<
+    DynamoDBEventStore.sharedEventSerializer ??= new JsonEventSerializer<
+      AggregateId,
+      Event<AggregateId>
+    >();
+    return DynamoDBEventStore.sharedEventSerializer as unknown as EventSerializer<
       AID,
       E
     >;
@@ -521,7 +525,11 @@ class DynamoDBEventStore<
     A extends Aggregate<A, AID>,
   >(): SnapshotSerializer<AID, A> {
     // JsonSnapshotSerializer has no aggregate-specific mutable state; the cast narrows a stateless shared instance.
-    return DynamoDBEventStore.SHARED_SNAPSHOT_SERIALIZER as unknown as SnapshotSerializer<
+    DynamoDBEventStore.sharedSnapshotSerializer ??= new JsonSnapshotSerializer<
+      AggregateId,
+      DefaultSnapshotAggregate
+    >();
+    return DynamoDBEventStore.sharedSnapshotSerializer as unknown as SnapshotSerializer<
       AID,
       A
     >;
