@@ -60,7 +60,7 @@ jobs:
           git config --global user.email "j5ik2o@gmail.com"
           git config --global user.name "Junichi Kato"
           node "${GITHUB_WORKSPACE}"/.github/set-package-version.js ${{ steps.versions.outputs.next_version }}
-          git add .
+          git add package.json
           git commit -m "version up to ${{ steps.versions.outputs.next_tag }}"
           git push origin main
           COMMIT_SHA=$(git rev-parse HEAD)
@@ -97,7 +97,7 @@ jobs:
           SNAPSHOT_VERSION=$(node "${GITHUB_WORKSPACE}"/.github/bump-snapshot-version.js)
           test -n "$SNAPSHOT_VERSION"
           echo "SNAPSHOT_VERSION=${SNAPSHOT_VERSION}" >> "$GITHUB_ENV"
-          git add .
+          git add package.json
           git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
           git push origin main
         if: steps.changes.outputs.count > 0

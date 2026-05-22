@@ -1,11 +1,12 @@
 const fs = require("node:fs");
+const path = require("node:path");
 
 const nextVersion = process.argv[2];
 if (!nextVersion) {
   throw new Error("Usage: node .github/set-package-version.js <version>");
 }
 
-const packageJsonPath = "package.json";
+const packageJsonPath = path.join(__dirname, "..", "package.json");
 if (!fs.existsSync(packageJsonPath)) {
   throw new Error(`Missing ${packageJsonPath}`);
 }
