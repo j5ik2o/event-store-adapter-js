@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+coverage/
 
 # Debug logs
 npm-debug.log
@@ -60,6 +61,5 @@ yarn-error.log
 /.codex-personal/tmp/
 /.codex-personal/version.json
 /.codex-personal/skills/.system
-
 
 
