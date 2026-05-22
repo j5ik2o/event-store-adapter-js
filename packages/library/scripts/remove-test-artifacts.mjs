@@ -40,6 +40,7 @@ await rm(testSupportPath, { force: true, recursive: true });
 const remainingArtifacts = await collectTestArtifacts(distPath);
 if (remainingArtifacts.length > 0) {
   throw new Error(
-    `Build output still contains test artifacts: ${remainingArtifacts.join(", ")}`,
+    `Build output still contains test artifacts after cleanup: ${remainingArtifacts.join(", ")}. ` +
+      "Verify that tsconfig.json excludes test files and that the build cleanup ran successfully.",
   );
 }
