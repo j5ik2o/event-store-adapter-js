@@ -1,14 +1,8 @@
-import type { Event } from "event-store-adapter-js";
 import { UserAccountCreated } from "./user-account-created";
-import {
-  convertJSONToUserAccountId,
-  type UserAccountId,
-} from "./user-account-id";
+import { convertJSONToUserAccountId } from "./user-account-id";
 import { UserAccountRenamed } from "./user-account-renamed";
 
-type UserAccountEvent =
-  | (Event<UserAccountId> & UserAccountCreated)
-  | (Event<UserAccountId> & UserAccountRenamed);
+type UserAccountEvent = UserAccountCreated | UserAccountRenamed;
 
 function convertJSONToUserAccountEvent(json: unknown): UserAccountEvent {
   const payload = parseEventPayload(json);

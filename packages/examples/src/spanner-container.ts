@@ -24,17 +24,26 @@ async function startSpannerContainer(input: {
     .withExposedPorts(SPANNER_EMULATOR_GRPC_PORT, SPANNER_EMULATOR_REST_PORT)
     .withWaitStrategy(Wait.forLogMessage("gRPC server listening"));
   const startedContainer = await container.start();
-  const context = await createSpannerDatabase({
-    startedContainer,
-    ...input,
-  });
+  let context: Awaited<ReturnType<typeof createSpannerDatabase>>;
+  try {
+    context = await createSpannerDatabase({
+      startedContainer,
+      ...input,
+    });
+  } catch (error) {
+    await startedContainer.stop();
+    throw error;
+  }
   return {
     database: context.database,
     stop: async () => {
-      await context.database.close();
-      context.spanner.close();
-      context.restoreEmulatorHost();
-      await startedContainer.stop();
+      try {
+        await context.database.close();
+        context.spanner.close();
+      } finally {
+        context.restoreEmulatorHost();
+        await startedContainer.stop();
+      }
     },
   };
 }
@@ -61,38 +70,45 @@ async function createSpannerDatabase(input: {
   process.env.GCLOUD_PROJECT = DEFAULT_PROJECT_ID;
   process.env.METADATA_SERVER_DETECTION = "none";
   const spanner = new Spanner({ projectId: DEFAULT_PROJECT_ID });
-  const [instance, instanceOperation] = await spanner.createInstance(
-    input.instanceId,
-    {
-      config: "emulator-config",
-      nodes: 1,
-      displayName: "Example Instance",
-    },
-  );
-  await instanceOperation.promise();
-  const [database, databaseOperation] = await instance.createDatabase(
-    input.databaseId,
-    {
-      schema: createSpannerEventStoreSchema(
-        input.journalTableName,
-        input.snapshotTableName,
-      ),
-    },
-  );
-  await databaseOperation.promise();
-  return {
-    spanner,
-    database,
-    restoreEmulatorHost: () => {
-      restoreEnvValue("SPANNER_EMULATOR_HOST", previousEmulatorHost);
-      restoreEnvValue("GOOGLE_CLOUD_PROJECT", previousGoogleCloudProject);
-      restoreEnvValue("GCLOUD_PROJECT", previousGcloudProject);
-      restoreEnvValue(
-        "METADATA_SERVER_DETECTION",
-        previousMetadataServerDetection,
-      );
-    },
+  const restoreEmulatorHost = () => {
+    restoreEnvValue("SPANNER_EMULATOR_HOST", previousEmulatorHost);
+    restoreEnvValue("GOOGLE_CLOUD_PROJECT", previousGoogleCloudProject);
+    restoreEnvValue("GCLOUD_PROJECT", previousGcloudProject);
+    restoreEnvValue(
+      "METADATA_SERVER_DETECTION",
+      previousMetadataServerDetection,
+    );
   };
+  try {
+    const [instance, instanceOperation] = await spanner.createInstance(
+      input.instanceId,
+      {
+        config: "emulator-config",
+        nodes: 1,
+        displayName: "Example Instance",
+      },
+    );
+    await instanceOperation.promise();
+    const [database, databaseOperation] = await instance.createDatabase(
+      input.databaseId,
+      {
+        schema: createSpannerEventStoreSchema(
+          input.journalTableName,
+          input.snapshotTableName,
+        ),
+      },
+    );
+    await databaseOperation.promise();
+    return {
+      spanner,
+      database,
+      restoreEmulatorHost,
+    };
+  } catch (error) {
+    spanner.close();
+    restoreEmulatorHost();
+    throw error;
+  }
 }
 
 function restoreEnvValue(name: string, value: string | undefined): void {
