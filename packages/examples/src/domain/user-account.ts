@@ -154,6 +154,7 @@ function isSnapshotData(json: unknown): json is {
     json.id !== null &&
     "value" in json.id &&
     typeof json.id.value === "string" &&
+    json.id.value.length > 0 &&
     "name" in json &&
     typeof json.name === "string" &&
     "sequenceNumber" in json &&

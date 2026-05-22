@@ -31,6 +31,7 @@ async function startSpannerContainer(input: {
       ...input,
     });
   } catch (error) {
+    // createSpannerDatabase closes its Spanner client and restores env on failure.
     await startedContainer.stop();
     throw error;
   }
@@ -105,6 +106,7 @@ async function createSpannerDatabase(input: {
       restoreEmulatorHost,
     };
   } catch (error) {
+    // Close the client created in this function before the caller stops the container.
     spanner.close();
     restoreEmulatorHost();
     throw error;

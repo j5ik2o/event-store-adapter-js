@@ -74,6 +74,7 @@ function isEventData(json: unknown): json is {
     json.aggregateId !== null &&
     "value" in json.aggregateId &&
     typeof json.aggregateId.value === "string" &&
+    json.aggregateId.value.length > 0 &&
     "name" in json &&
     typeof json.name === "string" &&
     "sequenceNumber" in json &&
