@@ -106,7 +106,7 @@ jobs:
           {
             echo "### Unresolved PR review threads"
             echo
-            jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0].author.login // "unknown"): \(.comments.nodes[0].url // "no comment URL")"' \
+            jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0]?.author.login // "unknown"): \(.comments.nodes[0]?.url // "no comment URL")"' \
               <<< "$unresolved"
           } >> "$GITHUB_STEP_SUMMARY"
 
