@@ -35,7 +35,7 @@ jobs:
           SNAPSHOT_VERSION=$(node "${GITHUB_WORKSPACE}"/.github/bump-snapshot-version.js)
           test -n "$SNAPSHOT_VERSION"
           echo "SNAPSHOT_VERSION=${SNAPSHOT_VERSION}" >> "$GITHUB_ENV"
-          git add package.json
+          git add package.json pnpm-lock.yaml
           git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
           git push origin main
       - run: pnpm -r run build
