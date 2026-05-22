@@ -8,6 +8,13 @@ import {
 } from "./user-account-id";
 import { UserAccountRenamed } from "./user-account-renamed";
 
+type UserAccountSnapshotData = {
+  id: { value: string };
+  name: string;
+  sequenceNumber: number;
+  version: number;
+};
+
 class UserAccount implements Aggregate<UserAccount, UserAccountId> {
   public readonly typeName = "UserAccount";
 
@@ -137,12 +144,7 @@ function convertJSONToUserAccount(json: unknown): UserAccount {
 }
 
 function parseSnapshotPayload(json: unknown): {
-  data: {
-    id: { value: string };
-    name: string;
-    sequenceNumber: number;
-    version: number;
-  };
+  data: UserAccountSnapshotData;
 } {
   if (
     typeof json !== "object" ||
@@ -152,17 +154,13 @@ function parseSnapshotPayload(json: unknown): {
   ) {
     throw new Error("Invalid UserAccount JSON");
   }
+  const data: UserAccountSnapshotData = json.data;
   return {
-    data: json.data,
+    data,
   };
 }
 
-function isSnapshotData(json: unknown): json is {
-  id: { value: string };
-  name: string;
-  sequenceNumber: number;
-  version: number;
-} {
+function isSnapshotData(json: unknown): json is UserAccountSnapshotData {
   return (
     typeof json === "object" &&
     json !== null &&
