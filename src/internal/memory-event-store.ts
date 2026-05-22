@@ -68,6 +68,7 @@ class MemoryEventStore<
     const newVersion = snapshot.version + 1;
     // Event-only updates advance version while keeping the latest snapshot point.
     const newSnapshot = snapshot.withVersion(newVersion);
+    this.assertSnapshotCopy(snapshot, newSnapshot);
     this.appendEvent(aggregateIdString, event);
     this.snapshots.set(aggregateIdString, newSnapshot);
   }
@@ -93,6 +94,7 @@ class MemoryEventStore<
       newVersion = snapshot.version + 1;
     }
     const newSnapshot = aggregate.withVersion(newVersion);
+    this.assertSnapshotCopy(aggregate, newSnapshot);
     this.appendEvent(aggregateIdString, event);
     this.snapshots.set(aggregateIdString, newSnapshot);
   }
@@ -121,10 +123,14 @@ class MemoryEventStore<
   private copySnapshot(snapshot: A): A {
     // Aggregate.withVersion must be pure and return a fresh instance; the memory store verifies that contract after the call.
     const copiedSnapshot = snapshot.withVersion(snapshot.version);
+    this.assertSnapshotCopy(snapshot, copiedSnapshot);
+    return copiedSnapshot;
+  }
+
+  private assertSnapshotCopy(snapshot: A, copiedSnapshot: A): void {
     if (copiedSnapshot === snapshot) {
       throw new SnapshotCopyContractError(snapshot.id.asString());
     }
-    return copiedSnapshot;
   }
 
   private copySeededSnapshot(key: AID, snapshot: A): A {
