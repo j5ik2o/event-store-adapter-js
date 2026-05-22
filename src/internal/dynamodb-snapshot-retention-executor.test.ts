@@ -433,6 +433,52 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     expect(snapshotKeyQuery.input.ProjectionExpression).toBe("#pkey, #skey");
   });
 
+  test("rounds ttl up without overflowing at the maximum DynamoDB ttl second", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(9_999_999_998_999));
+    const sentCommands: unknown[] = [];
+    const dynamodbClient = {
+      send: jest.fn(async (command: unknown) => {
+        sentCommands.push(command);
+        if (command instanceof QueryCommand) {
+          return {
+            Items: [
+              {
+                pkey: { S: "snapshot-pkey-1" },
+                skey: { S: "snapshot-skey-1" },
+                ttl: { N: "0" },
+              },
+              {
+                pkey: { S: "snapshot-pkey-2" },
+                skey: { S: "snapshot-skey-2" },
+                ttl: { N: "0" },
+              },
+            ],
+          };
+        }
+        return {};
+      }),
+    } as unknown as DynamoDBClient;
+    const executor = new DynamoDBSnapshotRetentionExecutor(
+      dynamodbClient,
+      "snapshot",
+      "snapshot-aid-index",
+      "snapshot-active-ttl-index",
+    );
+
+    await executor.purgeExcessSnapshots(new TestAggregateId("1"), 1, 1);
+
+    const updateCommand = sentCommands.find((command) => {
+      return command instanceof UpdateItemCommand;
+    });
+    expect(updateCommand).toBeInstanceOf(UpdateItemCommand);
+    expect((updateCommand as UpdateItemCommand).input).toMatchObject({
+      ExpressionAttributeValues: {
+        ":ttl": { N: "9999999999" },
+      },
+    });
+  });
+
   test("queries active ttl snapshot index", async () => {
     const sentCommands: unknown[] = [];
     const dynamodbClient = {
