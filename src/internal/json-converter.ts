@@ -1,3 +1,10 @@
+class ConverterError extends Error {
+  constructor(converterName: string, error: Error) {
+    super(`${converterName} failed: ${error.message}`);
+    this.name = "ConverterError";
+  }
+}
+
 function convertJson<T>(
   converterName: string,
   converter: (json: unknown) => T,
@@ -6,11 +13,12 @@ function convertJson<T>(
   try {
     return converter(json);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.startsWith(`${converterName} failed:`)) {
+    if (error instanceof ConverterError) {
       throw error;
     }
-    throw new Error(`${converterName} failed: ${message}`);
+    const wrappedError =
+      error instanceof Error ? error : new Error(String(error));
+    throw new ConverterError(converterName, wrappedError);
   }
 }
 

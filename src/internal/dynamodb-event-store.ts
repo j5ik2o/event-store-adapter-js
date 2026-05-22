@@ -78,8 +78,10 @@ class DynamoDBEventStore<
     this.snapshotAidIndexName = input.snapshotAidIndexName;
     this.snapshotActiveTtlIndexName = input.snapshotActiveTtlIndexName;
     this.shardCount = input.shardCount;
-    this.eventConverter = input.eventConverter;
-    this.snapshotConverter = input.snapshotConverter;
+    this.eventConverter = (json) =>
+      convertJson("eventConverter", input.eventConverter, json);
+    this.snapshotConverter = (json) =>
+      convertJson("snapshotConverter", input.snapshotConverter, json);
     this.keepSnapshotCount = input.keepSnapshotCount;
     this.deleteTtlMillis = this.normalizeDeleteTtlMillis(input.deleteTtlMillis);
     this.keyResolver = input.keyResolver ?? DynamoDBEventStore.keyResolver();
@@ -125,9 +127,7 @@ class DynamoDBEventStore<
         if (payload === undefined) {
           throw new Error("Payload is undefined");
         }
-        return this.eventSerializer.deserialize(payload, (json) =>
-          this.convertEventJson(json),
-        );
+        return this.eventSerializer.deserialize(payload, this.eventConverter);
       });
     }
     this.logger?.debug(
@@ -174,8 +174,9 @@ class DynamoDBEventStore<
     if (payload === undefined) {
       throw new Error("Payload is undefined");
     }
-    const result = this.snapshotSerializer.deserialize(payload, (json) =>
-      this.convertSnapshotJson(json),
+    const result = this.snapshotSerializer.deserialize(
+      payload,
+      this.snapshotConverter,
     );
     this.logger?.debug(
       `getLatestSnapshotById(${JSON.stringify(id)}, ...): finished`,
@@ -475,17 +476,6 @@ class DynamoDBEventStore<
     if (typeof converter !== "function") {
       throw new Error(`${name} must be a function`);
     }
-    // Runtime signature probing would execute user conversion logic with fake data.
-    // The contract is type-level: converters accept decoded JSON as unknown and return the target type.
-    // Converter invocation errors are wrapped at serializer call sites.
-  }
-
-  private convertEventJson(json: unknown): E {
-    return convertJson("eventConverter", this.eventConverter, json);
-  }
-
-  private convertSnapshotJson(json: unknown): A {
-    return convertJson("snapshotConverter", this.snapshotConverter, json);
   }
 
   private normalizeDeleteTtlMillis(

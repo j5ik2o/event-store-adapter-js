@@ -96,7 +96,7 @@ class MemoryEventStore<
   }
 
   private copySnapshot(snapshot: A): A {
-    // Input isolation depends on Aggregate.withVersion returning a fresh aggregate instance.
+    // Aggregate.withVersion must be pure and return a fresh instance; the memory store verifies that contract after the call.
     const copiedSnapshot = snapshot.withVersion(snapshot.version);
     if (copiedSnapshot === snapshot) {
       throw new Error(
