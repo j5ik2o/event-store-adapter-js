@@ -556,14 +556,15 @@ class SpannerEventStore<
   }
 
   private parseShardCount(shardCount: number): ShardCount {
-    try {
-      return createShardCount(shardCount);
-    } catch (error) {
+    if (!Number.isSafeInteger(shardCount) || shardCount <= 0) {
       throw new SpannerEventStoreConfigurationError(
         "shardCount",
-        error instanceof Error ? error : new Error(String(error)),
+        new Error(
+          `shardCount must be a positive safe integer, got ${shardCount}`,
+        ),
       );
     }
+    return createShardCount(shardCount);
   }
 
   private assertTableName(fieldName: string, tableName: string): string {
