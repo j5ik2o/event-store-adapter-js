@@ -430,6 +430,7 @@ class SpannerEventStore<
     await this.database.runTransactionAsync(
       async (transaction: Transaction) => {
         await operation(transaction);
+        // @google-cloud/spanner's runTransactionAsync async callback examples commit explicitly.
         await transaction.commit();
       },
     );
@@ -518,6 +519,7 @@ class SpannerEventStore<
   }
 
   private isBase64(value: string): boolean {
+    // Spanner string values are accepted only as canonical padded base64.
     return (
       value.length > 0 &&
       value.length % 4 === 0 &&
