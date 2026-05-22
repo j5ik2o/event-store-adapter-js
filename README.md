@@ -111,6 +111,20 @@ expect(userAccount3.sequenceNumber).toEqual(2);
 expect(userAccount3.version).toEqual(2);
 ```
 
+## Development
+
+This repository uses pnpm workspaces. The current library package is the
+workspace root, and `packages/*` and `tests/e2e` are reserved for future example
+and end-to-end packages.
+
+```shell
+$ pnpm install
+$ pnpm -r run lint
+$ pnpm -r run build
+$ pnpm -r run test
+$ pnpm -r run coverage
+```
+
 ## Table Specifications
 
 See [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md).

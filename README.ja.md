@@ -108,6 +108,20 @@ expect(userAccount3.sequenceNumber).toEqual(2);
 expect(userAccount3.version).toEqual(2);
 ```
 
+## 開発
+
+このリポジトリは pnpm workspace を使います。現在のライブラリパッケージは
+workspace root として扱い、今後の example や e2e package の追加先として
+`packages/*` と `tests/e2e` を予約しています。
+
+```shell
+$ pnpm install
+$ pnpm -r run lint
+$ pnpm -r run build
+$ pnpm -r run test
+$ pnpm -r run coverage
+```
+
 ## テーブル仕様
 
 [docs/DATABASE_SCHEMA.ja.md](docs/DATABASE_SCHEMA.ja.md)を参照してください。

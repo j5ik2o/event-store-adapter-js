@@ -13,9 +13,10 @@ jobs:
     - uses: actions/setup-node@v6
       with:
         node-version: 24.x
-        cache: 'npm'
-    - run: npm install
-    - run: npm run lint
+        cache: 'pnpm'
+    - run: corepack enable
+    - run: pnpm install --frozen-lockfile
+    - run: pnpm -r run lint
   test:
     runs-on: ubuntu-latest
     needs: lint
@@ -33,10 +34,11 @@ jobs:
       uses: actions/setup-node@v6
       with:
         node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-    - run: npm install
-    - run: npm run build
-    - run: npm run coverage -- --runInBand
+        cache: 'pnpm'
+    - run: corepack enable
+    - run: pnpm install --frozen-lockfile
+    - run: pnpm -r run build
+    - run: pnpm -r run coverage --runInBand
     - name: Upload coverage to Codecov
       if: success()
       uses: codecov/codecov-action@v6

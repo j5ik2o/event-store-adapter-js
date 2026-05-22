@@ -23,16 +23,18 @@ jobs:
         with:
           node-version: 24.x
           registry-url: 'https://registry.npmjs.org'
-      - run: npm install
+          cache: 'pnpm'
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
       - run: |
           git config --global user.email "j5ik2o@gmail.com"
           git config --global user.name "Junichi Kato"
-          npm version prerelease --preid=snapshot --no-git-tag-version
-          SNAPSHOT_VERSION=$(npm version --json | jq -r '.["event-store-adapter-js"]')
+          pnpm version prerelease --preid=snapshot --no-git-tag-version
+          SNAPSHOT_VERSION=$(node -p "require('./package.json').version")
           git add .
           git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
           git push origin main
-      - run: npm run build
-      - run: npm publish --access public
+      - run: pnpm -r run build
+      - run: pnpm publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
