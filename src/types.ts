@@ -8,5 +8,6 @@ export type { Event } from "./event";
 export type { EventSerializer } from "./event-serializer";
 export type { Logger } from "./logger";
 export { OptimisticLockError } from "./optimistic-lock-error";
+export { createShardCount, type ShardCount } from "./shard-count";
 export type { ShardSelector } from "./shard-selector";
 export type { SnapshotSerializer } from "./snapshot-serializer";

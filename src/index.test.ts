@@ -1,10 +1,11 @@
-import { EventStoreFactory, OptimisticLockError } from ".";
+import { createShardCount, EventStoreFactory, OptimisticLockError } from ".";
 
 test("exports public API", () => {
   const cause = new Error("conditional check failed");
   const error = new OptimisticLockError("Optimistic locking failed", cause);
 
   expect(EventStoreFactory).toBeDefined();
+  expect(createShardCount(32)).toBe(32);
   expect(error.name).toEqual("OptimisticLockError");
   expect(error.cause).toBe(cause);
 });

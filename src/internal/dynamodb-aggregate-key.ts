@@ -1,3 +1,4 @@
+import type { ShardCount } from "../shard-count";
 import type { ShardId } from "../shard-id";
 import type { ShardSelector } from "../shard-selector";
 import type { AggregateId } from "../types";
@@ -13,8 +14,13 @@ class DynamoDBAggregateKey<AID extends AggregateId> {
     aggregateId: AID,
     sequenceNumber: number,
     shardSelector: ShardSelector<AID>,
-    shardCount: number,
+    shardCount: ShardCount,
   ): DynamoDBAggregateKey<AID> {
+    if (!Number.isSafeInteger(sequenceNumber) || sequenceNumber < 0) {
+      throw new Error(
+        `sequenceNumber must be a non-negative safe integer, got ${sequenceNumber}`,
+      );
+    }
     return new DynamoDBAggregateKey(
       shardSelector.selectShardId(aggregateId, shardCount),
       aggregateId,

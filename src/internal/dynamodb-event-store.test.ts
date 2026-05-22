@@ -46,6 +46,7 @@ describe("DynamoDBEventStore", () => {
     dynamodbClient: DynamoDBClient,
     keepSnapshotCount?: number,
     options: {
+      shardCount?: number;
       shardSelector?: ShardSelector<UserAccountId>;
     } = {},
   ): DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent> {
@@ -160,6 +161,20 @@ describe("DynamoDBEventStore", () => {
         input,
       );
     }).toThrow("must be a function");
+  });
+
+  test.each([
+    0,
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ])("rejects invalid shardCount %s", (shardCount) => {
+    expect(() => {
+      createEventStore(dynamodbClient, undefined, {
+        shardCount,
+      });
+    }).toThrow("Invalid shardCount configuration");
   });
 
   test(

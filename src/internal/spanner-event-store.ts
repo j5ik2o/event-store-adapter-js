@@ -8,10 +8,12 @@ import type { SpannerEventStoreInput } from "../spanner-event-store-input";
 import {
   type Aggregate,
   type AggregateId,
+  createShardCount,
   type Event,
   type EventSerializer,
   type Logger,
   OptimisticLockError,
+  type ShardCount,
   type ShardSelector,
   type SnapshotSerializer,
 } from "../types";
@@ -67,7 +69,7 @@ class SpannerEventStore<
   private readonly snapshotTableName: string;
   private readonly quotedJournalTableName: string;
   private readonly quotedSnapshotTableName: string;
-  private readonly shardCount: number;
+  private readonly shardCount: ShardCount;
   private readonly eventConverter: (json: unknown) => E;
   private readonly snapshotConverter: (json: unknown) => A;
   private readonly keepSnapshotCount: number | undefined;
@@ -79,7 +81,7 @@ class SpannerEventStore<
   constructor(input: SpannerEventStoreInput<AID, A, E>) {
     this.assertConverter("eventConverter", input.eventConverter);
     this.assertConverter("snapshotConverter", input.snapshotConverter);
-    this.assertShardCount(input.shardCount);
+    const shardCount = this.parseShardCount(input.shardCount);
     this.database = input.database;
     this.journalTableName = this.assertTableName(
       "journalTableName",
@@ -91,7 +93,7 @@ class SpannerEventStore<
     );
     this.quotedJournalTableName = this.quoteTableName(this.journalTableName);
     this.quotedSnapshotTableName = this.quoteTableName(this.snapshotTableName);
-    this.shardCount = input.shardCount;
+    this.shardCount = shardCount;
     this.eventConverter = input.eventConverter;
     this.snapshotConverter = input.snapshotConverter;
     this.keepSnapshotCount =
@@ -553,11 +555,13 @@ class SpannerEventStore<
     }
   }
 
-  private assertShardCount(shardCount: number): void {
-    if (!Number.isSafeInteger(shardCount) || shardCount <= 0) {
+  private parseShardCount(shardCount: number): ShardCount {
+    try {
+      return createShardCount(shardCount);
+    } catch (error) {
       throw new SpannerEventStoreConfigurationError(
         "shardCount",
-        new Error(`must be a positive safe integer, got ${String(shardCount)}`),
+        error instanceof Error ? error : new Error(String(error)),
       );
     }
   }

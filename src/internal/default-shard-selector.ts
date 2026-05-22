@@ -1,10 +1,10 @@
 import { createShardId, type ShardId } from "../shard-id";
-import type { AggregateId, ShardSelector } from "../types";
+import type { AggregateId, ShardCount, ShardSelector } from "../types";
 
 class DefaultShardSelector<AID extends AggregateId>
   implements ShardSelector<AID>
 {
-  selectShardId(aggregateId: AID, shardCount: number): ShardId {
+  selectShardId(aggregateId: AID, shardCount: ShardCount): ShardId {
     if (aggregateId === undefined || aggregateId === null) {
       throw new Error(`aggregateId is undefined or null: ${aggregateId}`);
     }

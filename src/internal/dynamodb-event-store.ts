@@ -14,10 +14,12 @@ import type { EventStore } from "../event-store";
 import {
   type Aggregate,
   type AggregateId,
+  createShardCount,
   type Event,
   type EventSerializer,
   type Logger,
   OptimisticLockError,
+  type ShardCount,
   type ShardSelector,
   type SnapshotSerializer,
 } from "../types";
@@ -62,7 +64,7 @@ class DynamoDBEventStore<
   private readonly journalAidIndexName: string;
   private readonly snapshotAidIndexName: string;
   private readonly snapshotActiveTtlIndexName: string;
-  private readonly shardCount: number;
+  private readonly shardCount: ShardCount;
   private readonly eventConverter: (json: unknown) => E;
   private readonly snapshotConverter: (json: unknown) => A;
   private readonly keepSnapshotCount: number | undefined;
@@ -81,7 +83,7 @@ class DynamoDBEventStore<
     this.journalAidIndexName = input.journalAidIndexName;
     this.snapshotAidIndexName = input.snapshotAidIndexName;
     this.snapshotActiveTtlIndexName = input.snapshotActiveTtlIndexName;
-    this.shardCount = input.shardCount;
+    this.shardCount = this.parseShardCount(input.shardCount);
     this.eventConverter = input.eventConverter;
     this.snapshotConverter = input.snapshotConverter;
     this.keepSnapshotCount = input.keepSnapshotCount;
@@ -475,6 +477,15 @@ class DynamoDBEventStore<
         name,
         new Error("must be a function"),
       );
+    }
+  }
+
+  private parseShardCount(shardCount: number): ShardCount {
+    try {
+      return createShardCount(shardCount);
+    } catch (error) {
+      const cause = error instanceof Error ? error : new Error(String(error));
+      throw new DynamoDBEventStoreConfigurationError("shardCount", cause);
     }
   }
 

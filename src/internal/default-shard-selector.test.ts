@@ -1,3 +1,4 @@
+import { createShardCount, type ShardCount } from "../shard-count";
 import { createShardId } from "../shard-id";
 import { DefaultShardSelector } from "./default-shard-selector";
 import { UserAccountId } from "./test/user-account-id";
@@ -23,13 +24,13 @@ describe("DefaultShardSelector", () => {
   ])("selects a stable shard for %s", (value, shardId) => {
     const selector = new DefaultShardSelector<UserAccountId>();
 
-    expect(selector.selectShardId(new UserAccountId(value), 32)).toBe(
-      createShardId(shardId),
-    );
+    expect(
+      selector.selectShardId(new UserAccountId(value), createShardCount(32)),
+    ).toBe(createShardId(shardId));
   });
 
   test("matches the legacy DynamoDB shard hash coercion", () => {
-    const shardCount = 32;
+    const shardCount = createShardCount(32);
     const selector = new DefaultShardSelector<UserAccountId>();
     const ids = [
       new UserAccountId("01HZX3D9Z2C4J9V3K9WQ6T8Y7A"),
@@ -54,13 +55,16 @@ describe("DefaultShardSelector", () => {
     } as unknown as UserAccountId;
 
     expect(() =>
-      selector.selectShardId(undefined as unknown as UserAccountId, 32),
+      selector.selectShardId(
+        undefined as unknown as UserAccountId,
+        createShardCount(32),
+      ),
     ).toThrow("aggregateId is undefined or null");
-    expect(() => selector.selectShardId(id, 0)).toThrow(
+    expect(() => selector.selectShardId(id, 0 as ShardCount)).toThrow(
       "shardCount must be a positive safe integer",
     );
-    expect(() => selector.selectShardId(invalidId, 32)).toThrow(
-      "str is not a string",
-    );
+    expect(() =>
+      selector.selectShardId(invalidId, createShardCount(32)),
+    ).toThrow("str is not a string");
   });
 });

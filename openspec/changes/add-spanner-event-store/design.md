@@ -74,7 +74,7 @@ CREATE TABLE snapshot (
 
 ### Shard と aggregate key の VO 境界を保つ
 
-`ShardId` は `createShardId(value: number)` から作る public branded value object とする。`ShardSelector<AID>` は `ShardId` を返す。
+`ShardId` は `createShardId(value: number)` から作る public branded value object とする。`ShardCount` は `createShardCount(value: number)` から作る public branded value object とし、`ShardSelector<AID>` は検証済みの `ShardCount` を受け取って `ShardId` を返す。
 
 内部では `SpannerAggregateKey<AID>` が以下を保持する。
 
@@ -89,11 +89,11 @@ adapter は SQL boundary でのみ `aggregateId.asString()` と `ShardId` を Sp
 
 代替案として Spanner 実装内で `number` と `string` をそのまま渡す方法もあるが、既存の VO style を弱め、row-key construction の誤用を招きやすい。
 
-### shardCount は public input では primitive のままにする
+### shardCount は input boundary で parse する
 
 `SpannerEventStoreInput.shardCount` は `DynamoDBEventStoreInput` と合わせて `number` のままにする。adapter は使用前に positive integer として validate し、invalid value は configuration error として reject する。
 
-代替案として public `ShardCount` VO を導入する案もあるが、Spanner だけ DynamoDB より厳しい API になり、必要性が実証される前に API friction が増える。
+`ShardSelector` には primitive `number` ではなく `ShardCount` を渡す。これにより public input の使いやすさを保ちながら、selector extension point では positive safe integer の不変条件を型で表現する。
 
 ### 楽観ロックには read-write transaction を使う
 

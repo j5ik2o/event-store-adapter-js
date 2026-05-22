@@ -41,6 +41,7 @@ const eventStore = EventStoreFactory.ofDynamoDB({
 ```
 
 The same `ShardSelector` type is used by `EventStoreFactory.ofSpanner(...)`.
+`shardCount` remains a `number` in EventStore input objects, but the adapter parses it into a validated `ShardCount` before calling your selector.
 
 ```ts
 const eventStore = EventStoreFactory.ofSpanner({
