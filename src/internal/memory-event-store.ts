@@ -63,11 +63,6 @@ class MemoryEventStore<
         `Aggregate does not exist: ${aggregateIdString}`,
       );
     }
-    if (snapshot.id.asString() !== event.aggregateId.asString()) {
-      throw new Error(
-        `Seeded snapshot aggregateId mismatch: expected ${event.aggregateId.asString()}, got ${snapshot.id.asString()}`,
-      );
-    }
     assertEventMatchesAggregate(event, snapshot);
     assertExpectedVersion(snapshot.version, expectedVersion);
     this.appendEvent(aggregateIdString, event);
