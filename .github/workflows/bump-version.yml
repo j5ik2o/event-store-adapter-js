@@ -95,6 +95,7 @@ jobs:
         run: |
           rm changelog.txt
           SNAPSHOT_VERSION=$(node "${GITHUB_WORKSPACE}"/.github/bump-snapshot-version.js)
+          test -n "$SNAPSHOT_VERSION"
           git add .
           git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
           git push origin main
