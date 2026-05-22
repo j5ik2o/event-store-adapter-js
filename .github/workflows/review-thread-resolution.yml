@@ -3,11 +3,13 @@ name: Review Thread Resolution
 on:
   pull_request:
     branches: ["main"]
-    types: [opened, reopened, synchronize, ready_for_review]
+    types: [opened, reopened, synchronize, ready_for_review, edited]
   pull_request_review:
     types: [submitted, edited, dismissed]
   pull_request_review_comment:
     types: [created, edited, deleted]
+  pull_request_review_thread:
+    types: [resolved, unresolved]
 
 permissions:
   contents: read
