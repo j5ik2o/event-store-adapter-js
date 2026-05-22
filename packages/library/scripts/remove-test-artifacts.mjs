@@ -1,8 +1,12 @@
-import { readdir, rm } from "node:fs/promises";
+import { access, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 
 const distPath = path.resolve("dist");
 const testSupportPath = path.join(distPath, "internal", "test");
+
+await access(distPath).catch((error) => {
+  throw new Error(`Build output directory not found: ${distPath}: ${error.message}`);
+});
 
 const collectTestArtifacts = async (directory) => {
   const entries = await readdir(directory, { withFileTypes: true }).catch((error) => {
