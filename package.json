@@ -9,6 +9,9 @@
     "lint": "pnpm --filter event-store-adapter-js run lint",
     "fmt": "pnpm --filter event-store-adapter-js run fmt",
     "fix": "pnpm --filter event-store-adapter-js run fix",
+    "example:memory": "pnpm --filter @event-store-adapter-js/examples run memory",
+    "example:dynamodb": "pnpm --filter @event-store-adapter-js/examples run dynamodb",
+    "example:spanner": "pnpm --filter @event-store-adapter-js/examples run spanner",
     "clean": "pnpm --filter event-store-adapter-js run clean"
   }
 }
