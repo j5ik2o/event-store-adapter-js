@@ -19,20 +19,26 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
       - uses: actions/setup-node@v6
         with:
           node-version: 24.x
           registry-url: 'https://registry.npmjs.org'
-      - run: npm install
+          cache: 'pnpm'
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
       - run: |
           git config --global user.email "j5ik2o@gmail.com"
           git config --global user.name "Junichi Kato"
-          npm version prerelease --preid=snapshot --no-git-tag-version
-          SNAPSHOT_VERSION=$(npm version --json | jq -r '.["event-store-adapter-js"]')
-          git add .
+          SNAPSHOT_VERSION=$(node "${GITHUB_WORKSPACE}"/.github/bump-snapshot-version.js | tr -d '\r\n')
+          test -n "$SNAPSHOT_VERSION"
+          printf '%s\n' "SNAPSHOT_VERSION=${SNAPSHOT_VERSION}" >> "$GITHUB_ENV"
+          git add packages/library/package.json pnpm-lock.yaml
           git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
           git push origin main
-      - run: npm run build
-      - run: npm publish --access public
+      - run: pnpm run build
+      - run: pnpm --filter event-store-adapter-js publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

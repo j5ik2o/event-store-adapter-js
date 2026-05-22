@@ -12,10 +12,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
       - uses: actions/setup-node@v6
         with:
           node-version: 24.x
-          cache: 'npm'
+          cache: 'pnpm'
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
@@ -54,8 +59,8 @@ jobs:
         run: |
           git config --global user.email "j5ik2o@gmail.com"
           git config --global user.name "Junichi Kato"
-          npm version ${{ steps.versions.outputs.next_version }} --no-git-tag-version
-          git add .
+          node "${GITHUB_WORKSPACE}"/.github/set-package-version.js "${{ steps.versions.outputs.next_version }}"
+          git add packages/library/package.json pnpm-lock.yaml
           git commit -m "version up to ${{ steps.versions.outputs.next_tag }}"
           git push origin main
           COMMIT_SHA=$(git rev-parse HEAD)
@@ -89,9 +94,10 @@ jobs:
       - name: Switch to Snapshot version
         run: |
           rm changelog.txt
-          npm version prerelease --preid=snapshot --no-git-tag-version
-          SNAPSHOT_VERSION=$(npm version --json | jq -r '.["event-store-adapter-js"]')
-          git add .
+          SNAPSHOT_VERSION=$(node "${GITHUB_WORKSPACE}"/.github/bump-snapshot-version.js | tr -d '\r\n')
+          test -n "$SNAPSHOT_VERSION"
+          printf '%s\n' "SNAPSHOT_VERSION=${SNAPSHOT_VERSION}" >> "$GITHUB_ENV"
+          git add packages/library/package.json pnpm-lock.yaml
           git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
           git push origin main
         if: steps.changes.outputs.count > 0
