@@ -63,7 +63,7 @@ describe("MemoryEventStore input isolation", () => {
   });
 
   test("rejects snapshot copies that keep the same aggregate reference", () => {
-    const id = new UserAccountId("user-account-2");
+    const id = new UserAccountId("2");
     const snapshot = new SameReferenceAggregate(id, 1);
 
     expect(() =>
@@ -75,7 +75,7 @@ describe("MemoryEventStore input isolation", () => {
         snapshots: new Map([[id, snapshot]]),
       }),
     ).toThrow(
-      "Invalid seeded snapshot for aggregate user-account-user-account-2: Aggregate.withVersion must return a new instance for aggregate user-account-user-account-2",
+      "Invalid seeded snapshot for aggregate user-account-2: Aggregate.withVersion must return a new instance for aggregate user-account-2",
     );
   });
 
