@@ -26,6 +26,7 @@ const EXCESS_SNAPSHOT_QUERY_LIMIT = 1000;
 // Keep retention bounded while allowing short DynamoDB throttle bursts to clear.
 const MAX_UNPROCESSED_ITEM_RETRY_COUNT = 5;
 const RETENTION_RETRY_BASE_DELAY_MILLIS = 50;
+const MILLIS_PER_SECOND = 1000;
 const RETRYABLE_DYNAMODB_ERROR_NAMES = new Set([
   "InternalServerError",
   "ProvisionedThroughputExceededException",
@@ -181,8 +182,10 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
 
   private toDeleteTtlEpochSeconds(deleteTtlMillis: number): string {
     const ttlEpochMillis = Date.now() + deleteTtlMillis;
-    // DynamoDB TTL is epoch seconds; ceiling keeps sub-second positive TTLs from rounding into the past.
-    return Math.ceil(ttlEpochMillis / 1000).toString();
+    // DynamoDB TTL is epoch seconds; round up so millisecond TTLs do not expire earlier than requested.
+    return Math.floor(
+      (ttlEpochMillis + MILLIS_PER_SECOND - 1) / MILLIS_PER_SECOND,
+    ).toString();
   }
 
   private async sendUpdateTtlRequests(
