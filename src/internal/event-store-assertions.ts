@@ -27,7 +27,9 @@ function assertPersistableUpdateEvent<AID extends AggregateId>(
 
 function assertExpectedVersion(actual: number, expected: number): void {
   if (actual !== expected) {
-    throw new OptimisticLockError("Optimistic locking failed");
+    throw new OptimisticLockError(
+      `Optimistic locking failed: expected version ${expected}, got ${actual}`,
+    );
   }
 }
 

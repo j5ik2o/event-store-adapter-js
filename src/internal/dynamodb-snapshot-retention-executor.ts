@@ -181,6 +181,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
 
   private toDeleteTtlEpochSeconds(deleteTtlMillis: number): string {
     const ttlEpochMillis = Date.now() + deleteTtlMillis;
+    // DynamoDB TTL is epoch seconds; ceiling keeps sub-second positive TTLs from rounding into the past.
     return Math.ceil(ttlEpochMillis / 1000).toString();
   }
 
