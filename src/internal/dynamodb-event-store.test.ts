@@ -179,16 +179,19 @@ describe("DynamoDBEventStore", () => {
       const result = await dynamodbClient.send(
         new QueryCommand({
           TableName: JOURNAL_TABLE_NAME,
-          KeyConditionExpression: "#pkey = :pkey",
+          KeyConditionExpression: "#pkey = :pkey AND #skey = :skey",
           ExpressionAttributeNames: {
             "#pkey": "pkey",
+            "#skey": "skey",
           },
           ExpressionAttributeValues: {
             ":pkey": { S: "user-account-7" },
+            ":skey": { S: `${id.asString()}-1` },
           },
         }),
       );
       expect(result.Items).toHaveLength(1);
+      expect(result.Items?.[0].pkey).toEqual({ S: "user-account-7" });
       expect(shardSelector.selectShardId).toHaveBeenCalledWith(id, 32);
     },
     TIMEOUT,
