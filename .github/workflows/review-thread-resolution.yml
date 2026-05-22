@@ -16,7 +16,7 @@ permissions:
 jobs:
   unresolved-review-threads:
     name: Check unresolved review threads
-    if: ${{ github.event.pull_request.base.ref == 'main' }}
+    if: ${{ github.event.pull_request != null && github.event.pull_request.base.ref == 'main' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check unresolved review threads
@@ -51,9 +51,9 @@ jobs:
                             isResolved
                             path
                             line
-                            url
                             comments(first: 1) {
                               nodes {
+                                url
                                 author {
                                   login
                                 }
@@ -92,7 +92,7 @@ jobs:
           {
             echo "### Unresolved PR review threads"
             echo
-            jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0].author.login // "unknown"): \(.url)"' \
+            jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0].author.login // "unknown"): \(.comments.nodes[0].url // "no comment URL")"' \
               <<< "$unresolved"
           } >> "$GITHUB_STEP_SUMMARY"
 
