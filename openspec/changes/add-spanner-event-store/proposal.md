@@ -6,7 +6,7 @@
 
 - `EventStoreFactory.ofSpanner(...)` から利用できる Cloud Spanner 用 `EventStore` アダプタを追加する。
 - 呼び出し側が構成済みの Spanner `Database`、テーブル名、converter、serializer、shard 設定、logger を渡せる `SpannerEventStoreInput` を追加する。
-- 既存の VO 重視の設計に合わせて、`SpannerShardSelector` と `ShardId` 値オブジェクトを追加する。
+- 既存の VO 重視の設計に合わせて、DynamoDB / Spanner 共通の `ShardSelector` と `ShardId` 値オブジェクトを追加する。
 - Spanner の `journal` / `snapshot` テーブル向け GoogleSQL schema ドキュメントを追加する。
 - イベントとスナップショットの payload は serializer が生成した bytes として保存する。
 - DynamoDB 版と同じ snapshot 意味論を維持する。`sequence_number = 0` を最新 snapshot、`sequence_number > 0` を任意の保持用 snapshot copy とする。
@@ -25,7 +25,7 @@
 
 ## Impact
 
-- Public API: `EventStoreFactory.ofSpanner(...)`, `SpannerEventStoreInput`, `SpannerShardSelector`, `ShardId`。
+- Public API: `EventStoreFactory.ofSpanner(...)`, `SpannerEventStoreInput`, `ShardSelector`, `ShardId`。
 - Runtime dependency: `@google-cloud/spanner`。
 - Internal implementation: Spanner adapter、shard selector、aggregate key handling、snapshot retention executor。
 - Tests: 既存の `EventStore` contract test suite を Spanner emulator 上で実行する。

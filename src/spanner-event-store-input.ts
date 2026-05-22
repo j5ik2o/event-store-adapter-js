@@ -1,11 +1,11 @@
 import type { Database } from "@google-cloud/spanner";
-import type { SpannerShardSelector } from "./spanner-shard-selector";
 import type {
   Aggregate,
   AggregateId,
   Event,
   EventSerializer,
   Logger,
+  ShardSelector,
   SnapshotSerializer,
 } from "./types";
 
@@ -23,7 +23,7 @@ interface SpannerEventStoreInput<
   /** Converts the deserialized snapshot JSON payload from unknown into an aggregate. */
   snapshotConverter: (json: unknown) => A;
   keepSnapshotCount?: number;
-  shardSelector?: SpannerShardSelector<AID>;
+  shardSelector?: ShardSelector<AID>;
   eventSerializer?: EventSerializer<AID, E>;
   snapshotSerializer?: SnapshotSerializer<AID, A>;
   logger?: Logger;

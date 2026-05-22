@@ -5,7 +5,6 @@ import {
 } from "@google-cloud/spanner";
 import type { EventStore } from "../event-store";
 import type { SpannerEventStoreInput } from "../spanner-event-store-input";
-import type { SpannerShardSelector } from "../spanner-shard-selector";
 import {
   type Aggregate,
   type AggregateId,
@@ -13,13 +12,14 @@ import {
   type EventSerializer,
   type Logger,
   OptimisticLockError,
+  type ShardSelector,
   type SnapshotSerializer,
 } from "../types";
 import {
   JsonEventSerializer,
   JsonSnapshotSerializer,
 } from "./default-serializer";
-import { DefaultSpannerShardSelector } from "./default-spanner-shard-selector";
+import { DefaultShardSelector } from "./default-shard-selector";
 import {
   assertEventMatchesAggregate,
   assertExpectedVersion,
@@ -52,8 +52,8 @@ class SpannerEventStoreConfigurationError extends Error {
 
 function createDefaultShardSelector<
   AID extends AggregateId,
->(): SpannerShardSelector<AID> {
-  return new DefaultSpannerShardSelector<AID>();
+>(): ShardSelector<AID> {
+  return new DefaultShardSelector<AID>();
 }
 
 class SpannerEventStore<
@@ -71,7 +71,7 @@ class SpannerEventStore<
   private readonly eventConverter: (json: unknown) => E;
   private readonly snapshotConverter: (json: unknown) => A;
   private readonly keepSnapshotCount: number | undefined;
-  private readonly shardSelector: SpannerShardSelector<AID>;
+  private readonly shardSelector: ShardSelector<AID>;
   private readonly eventSerializer: EventSerializer<AID, E>;
   private readonly snapshotSerializer: SnapshotSerializer<AID, A>;
   private readonly logger: Logger | undefined;

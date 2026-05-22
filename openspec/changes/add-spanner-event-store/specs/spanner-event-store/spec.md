@@ -18,11 +18,11 @@ Spanner adapter は caller-managed Spanner `Database` を受け取らなけれ�
 
 ### Requirement: Shard value object
 MUST: Spanner shard identity は public value object と selector で表現すること。
-システムは `ShardId` value object と、`ShardId` を返す `SpannerShardSelector` を提供しなければならない。
+システムは `ShardId` value object と、`ShardId` を返す共通 `ShardSelector` を提供しなければならない。
 
 #### Scenario: Select shard for aggregate
 - **WHEN** Spanner adapter が aggregate ID の row key を組み立てる
-- **THEN** `SpannerShardSelector.selectShardId(...)` を使って `ShardId` を取得する
+- **THEN** `ShardSelector.selectShardId(...)` を使って `ShardId` を取得する
 - **THEN** SQL boundary で parameter に変換するまでは aggregate identity を `AggregateId` として保持する
 
 ### Requirement: Valid shard configuration

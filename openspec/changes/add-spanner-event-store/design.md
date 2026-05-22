@@ -12,7 +12,7 @@ Cloud Spanner 対応でもこの契約を再利用しつつ、Spanner のリレ�
 - `EventStoreFactory.ofSpanner(...)` から Spanner 実装を作成できるようにする。
 - DynamoDB 版が caller-managed client を受け取る方針に合わせ、caller-managed Spanner `Database` を受け取る。
 - serializer が生成した bytes を Spanner に保存し、payload 処理を DynamoDB と共有する。
-- `ShardId` と `SpannerShardSelector` を使い、shard 選択を明示的かつ VO-oriented にする。
+- `ShardId` と共通 `ShardSelector` を使い、DynamoDB / Spanner の shard 選択を明示的かつ VO-oriented にする。
 - `journal` / `snapshot` 向け GoogleSQL DDL を定義する。
 - 既存の楽観ロックと snapshot replay の意味論を維持する。
 - 既存の `EventStore` contract test suite を Spanner emulator 上で実行して検証する。
@@ -74,7 +74,7 @@ CREATE TABLE snapshot (
 
 ### Shard と aggregate key の VO 境界を保つ
 
-`ShardId` は `createShardId(value: number)` から作る public branded value object とする。`SpannerShardSelector<AID>` は `ShardId` を返す。
+`ShardId` は `createShardId(value: number)` から作る public branded value object とする。`ShardSelector<AID>` は `ShardId` を返す。
 
 内部では `SpannerAggregateKey<AID>` が以下を保持する。
 
