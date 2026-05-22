@@ -476,15 +476,29 @@ class SpannerEventStore<
   private getNumber(row: SpannerRow, fieldName: string): number {
     const value = this.getField(row, fieldName);
     if (typeof value === "number") {
+      if (!Number.isSafeInteger(value)) {
+        throw new Error(`${fieldName} is not a safe integer`);
+      }
       return value;
     }
     if (typeof value === "string") {
-      return Number(value);
+      return this.parseSafeInteger(fieldName, value);
     }
     if (typeof value === "object" && value !== null && "value" in value) {
-      return Number((value as { value: unknown }).value);
+      return this.parseSafeInteger(
+        fieldName,
+        (value as { value: unknown }).value,
+      );
     }
     throw new Error(`${fieldName} is not a number`);
+  }
+
+  private parseSafeInteger(fieldName: string, value: unknown): number {
+    const numberValue = Number(value);
+    if (!Number.isSafeInteger(numberValue)) {
+      throw new Error(`${fieldName} is not a safe integer`);
+    }
+    return numberValue;
   }
 
   private getBytes(row: SpannerRow, fieldName: string): Uint8Array {

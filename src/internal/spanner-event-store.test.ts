@@ -54,9 +54,9 @@ type FakeSpannerDatabaseOptions = {
   failRunTransactionWith?: unknown;
   forceLatestSnapshotUpdateMiss?: boolean;
   missingSnapshotPayloadField?: boolean;
-  retainedSequenceNumberFormat?: "number" | "string" | "wrapped";
+  retainedSequenceNumberFormat?: "number" | "string" | "wrapped" | "invalid";
   snapshotPayloadFormat?: "bytes" | "base64" | "invalid";
-  snapshotVersionFormat?: "number" | "string" | "wrapped" | "invalid";
+  snapshotVersionFormat?: "number" | "string" | "wrapped" | "invalid" | "nan";
 };
 
 class FakeSpannerDatabase {
@@ -314,6 +314,8 @@ class FakeSpannerDatabase {
         return sequenceNumber.toString();
       case "wrapped":
         return { value: sequenceNumber.toString() };
+      case "invalid":
+        return "not-a-number";
       default:
         return sequenceNumber;
     }
@@ -338,6 +340,8 @@ class FakeSpannerDatabase {
         return { value: version.toString() };
       case "invalid":
         return { version };
+      case "nan":
+        return "not-a-number";
       default:
         return version;
     }
@@ -634,6 +638,11 @@ describe("SpannerEventStore", () => {
       "version is not a number",
     ],
     [
+      "NaN snapshot version",
+      { snapshotVersionFormat: "nan" },
+      "version is not a safe integer",
+    ],
+    [
       "invalid snapshot payload",
       { snapshotPayloadFormat: "invalid" },
       "payload is not bytes",
@@ -663,6 +672,19 @@ describe("SpannerEventStore", () => {
     await expect(
       eventStore.persistEventAndSnapshot(created, userAccount1),
     ).rejects.toThrow("keepSnapshotCount must be finite");
+  });
+
+  test("rejects invalid retained snapshot sequence numbers during retention", async () => {
+    const eventStore = createFakeEventStore(
+      0,
+      new FakeSpannerDatabase({ retainedSequenceNumberFormat: "invalid" }),
+    );
+    const id = new UserAccountId(ulid());
+    const [userAccount1, created] = UserAccount.create(id, "Alice");
+
+    await expect(
+      eventStore.persistEventAndSnapshot(created, userAccount1),
+    ).rejects.toThrow("sequence_number is not a safe integer");
   });
 });
 
