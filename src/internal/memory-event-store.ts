@@ -12,6 +12,24 @@ import {
   assertPersistableUpdateEvent,
 } from "./event-store-assertions";
 
+class SnapshotCopyContractError extends Error {
+  constructor(aggregateId: string) {
+    super(
+      `Aggregate.withVersion must return a new instance for aggregate ${aggregateId}`,
+    );
+    this.name = "SnapshotCopyContractError";
+  }
+}
+
+class InvalidSeededSnapshotError extends Error {
+  constructor(aggregateId: string, cause: unknown) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    super(`Invalid seeded snapshot for aggregate ${aggregateId}: ${message}`);
+    this.name = "InvalidSeededSnapshotError";
+    this.cause = cause;
+  }
+}
+
 class MemoryEventStore<
   AID extends AggregateId,
   A extends Aggregate<A, AID>,
@@ -99,9 +117,7 @@ class MemoryEventStore<
     // Aggregate.withVersion must be pure and return a fresh instance; the memory store verifies that contract after the call.
     const copiedSnapshot = snapshot.withVersion(snapshot.version);
     if (copiedSnapshot === snapshot) {
-      throw new Error(
-        `Aggregate.withVersion must return a new instance for aggregate ${snapshot.id.asString()}`,
-      );
+      throw new SnapshotCopyContractError(snapshot.id.asString());
     }
     return copiedSnapshot;
   }
@@ -110,11 +126,7 @@ class MemoryEventStore<
     try {
       return this.copySnapshot(snapshot);
     } catch (error) {
-      throw new Error(
-        `Invalid seeded snapshot for aggregate ${key.asString()}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      throw new InvalidSeededSnapshotError(key.asString(), error);
     }
   }
 }

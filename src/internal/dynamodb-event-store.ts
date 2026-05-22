@@ -37,6 +37,15 @@ import { convertJson } from "./json-converter";
 interface DefaultSnapshotAggregate
   extends Aggregate<DefaultSnapshotAggregate, AggregateId> {}
 
+class DynamoDBEventStoreConfigurationError extends Error {
+  constructor(fieldName: string, cause: unknown) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    super(`Invalid ${fieldName} configuration: ${message}`);
+    this.name = "DynamoDBEventStoreConfigurationError";
+    this.cause = cause;
+  }
+}
+
 class DynamoDBEventStore<
   AID extends AggregateId,
   A extends Aggregate<A, AID>,
@@ -484,11 +493,7 @@ class DynamoDBEventStore<
     try {
       return normalizeDynamoDBDeleteTtlMillis(deleteTtlMillis);
     } catch (error) {
-      throw new Error(
-        `Invalid deleteTtlMillis configuration: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      throw new DynamoDBEventStoreConfigurationError("deleteTtlMillis", error);
     }
   }
 
