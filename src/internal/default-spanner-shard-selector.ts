@@ -19,6 +19,7 @@ class DefaultSpannerShardSelector<AID extends AggregateId>
   }
 
   private hashString(str: string): number {
+    // AggregateId.asString() is user code, so keep the same runtime guard as DefaultKeyResolver.
     if (str === undefined || str === null) {
       throw new Error(`str is undefined or null: ${str}`);
     }
@@ -26,6 +27,7 @@ class DefaultSpannerShardSelector<AID extends AggregateId>
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
       hash = (hash << 5) - hash + char;
+      // Match DefaultKeyResolver's signed 32-bit coercion before unsigned modulo.
       hash = hash | 0;
     }
     return hash >>> 0;

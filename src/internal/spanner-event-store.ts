@@ -429,12 +429,7 @@ class SpannerEventStore<
   ): Promise<void> {
     await this.database.runTransactionAsync(
       async (transaction: Transaction) => {
-        try {
-          await operation(transaction);
-        } catch (error) {
-          await transaction.rollback();
-          throw error;
-        }
+        await operation(transaction);
         await transaction.commit();
       },
     );
