@@ -32,8 +32,7 @@ jobs:
       - run: |
           git config --global user.email "j5ik2o@gmail.com"
           git config --global user.name "Junichi Kato"
-          pnpm version prerelease --preid=snapshot --no-git-tag-version
-          SNAPSHOT_VERSION=$(node -p "require('./package.json').version")
+          SNAPSHOT_VERSION=$(node "${GITHUB_WORKSPACE}"/.github/bump-snapshot-version.js)
           git add .
           git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
           git push origin main

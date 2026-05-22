@@ -59,7 +59,7 @@ jobs:
         run: |
           git config --global user.email "j5ik2o@gmail.com"
           git config --global user.name "Junichi Kato"
-          pnpm version ${{ steps.versions.outputs.next_version }} --no-git-tag-version
+          node "${GITHUB_WORKSPACE}"/.github/set-package-version.js ${{ steps.versions.outputs.next_version }}
           git add .
           git commit -m "version up to ${{ steps.versions.outputs.next_tag }}"
           git push origin main
@@ -94,8 +94,7 @@ jobs:
       - name: Switch to Snapshot version
         run: |
           rm changelog.txt
-          pnpm version prerelease --preid=snapshot --no-git-tag-version
-          SNAPSHOT_VERSION=$(node -p "require('./package.json').version")
+          SNAPSHOT_VERSION=$(node "${GITHUB_WORKSPACE}"/.github/bump-snapshot-version.js)
           git add .
           git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
           git push origin main
