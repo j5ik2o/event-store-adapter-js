@@ -87,7 +87,8 @@ class DynamoDBEventStore<
     this.snapshotAidIndexName = input.snapshotAidIndexName;
     this.snapshotActiveTtlIndexName = input.snapshotActiveTtlIndexName;
     this.shardCount = input.shardCount;
-    // Converter execution is not probed with fake JSON; runtime failures are wrapped when real payloads are decoded.
+    // Do not probe converters with fake JSON; valid converters may reject incomplete payloads.
+    // Runtime failures are wrapped when real payloads are decoded.
     this.eventConverter = (json) =>
       convertJson("eventConverter", input.eventConverter, json);
     this.snapshotConverter = (json) =>

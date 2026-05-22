@@ -116,6 +116,6 @@ describe("MemoryEventStore input isolation", () => {
 
     await expect(
       eventStore.persistEvent(renamed, renamedSnapshot.version),
-    ).rejects.toThrow("aggregateId mismatch");
+    ).rejects.toThrow("Seeded snapshot aggregateId mismatch");
   });
 });

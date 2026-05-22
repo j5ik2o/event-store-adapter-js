@@ -188,9 +188,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       );
     }
     // DynamoDB TTL is epoch seconds; round up so millisecond TTLs do not expire earlier than requested.
-    return Math.floor(
-      (ttlEpochMillis + MILLIS_PER_SECOND - 1) / MILLIS_PER_SECOND,
-    ).toString();
+    return Math.ceil(ttlEpochMillis / MILLIS_PER_SECOND).toString();
   }
 
   private async sendUpdateTtlRequests(
