@@ -16,7 +16,7 @@ permissions:
 jobs:
   unresolved-review-threads:
     name: Check unresolved review threads
-    if: ${{ github.event.pull_request != null && github.event.pull_request.base.ref == 'main' }}
+    if: ${{ github.event.pull_request != null && github.event.pull_request.base != null && github.event.pull_request.base.ref == 'main' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check unresolved review threads
@@ -29,16 +29,21 @@ jobs:
           set -euo pipefail
 
           unresolved='[]'
-          cursor='null'
+          cursor=''
           page=1
 
           while :; do
+            cursor_args=()
+            if [[ -n "$cursor" ]]; then
+              cursor_args=(-F cursor="$cursor")
+            fi
+
             response="$(
               gh api graphql \
                 -F owner="$OWNER" \
                 -F name="$REPO" \
                 -F number="$PR_NUMBER" \
-                -F cursor="$cursor" \
+                "${cursor_args[@]}" \
                 -f query='
                   query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
                     repository(owner: $owner, name: $name) {
