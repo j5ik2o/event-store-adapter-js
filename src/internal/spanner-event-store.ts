@@ -53,7 +53,7 @@ class SpannerEventStoreConfigurationError extends Error {
 function createDefaultShardSelector<
   AID extends AggregateId,
 >(): ShardSelector<AID> {
-  return new DefaultShardSelector<AID>();
+  return new DefaultShardSelector();
 }
 
 class SpannerEventStore<

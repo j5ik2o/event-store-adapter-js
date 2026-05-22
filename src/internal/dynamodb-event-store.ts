@@ -47,7 +47,7 @@ class DynamoDBEventStoreConfigurationError extends Error {
 function createDefaultShardSelector<
   AID extends AggregateId,
 >(): ShardSelector<AID> {
-  return new DefaultShardSelector<AID>();
+  return new DefaultShardSelector();
 }
 
 class DynamoDBEventStore<
