@@ -92,9 +92,10 @@ class MemoryEventStore<
       assertExpectedVersion(snapshot.version, aggregate.version);
       newVersion = snapshot.version + 1;
     }
-    this.appendEvent(aggregateIdString, event);
     const newSnapshot = aggregate.withVersion(newVersion);
-    this.snapshots.set(aggregateIdString, newSnapshot);
+    const storedSnapshot = this.copySnapshot(newSnapshot);
+    this.appendEvent(aggregateIdString, event);
+    this.snapshots.set(aggregateIdString, storedSnapshot);
   }
 
   async getEventsByIdSinceSequenceNumber(
