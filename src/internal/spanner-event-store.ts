@@ -43,9 +43,8 @@ const SPANNER_ALREADY_EXISTS_CODE = 6;
 const TABLE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 class SpannerEventStoreConfigurationError extends Error {
-  constructor(fieldName: string, cause: unknown) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    super(`Invalid ${fieldName} configuration: ${message}`);
+  constructor(fieldName: string, cause: Error) {
+    super(`Invalid ${fieldName} configuration: ${cause.message}`);
     this.name = "SpannerEventStoreConfigurationError";
     this.cause = cause;
   }

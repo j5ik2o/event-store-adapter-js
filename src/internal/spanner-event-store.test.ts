@@ -8,8 +8,18 @@ import {
 import { ulid } from "ulid";
 import { EventStoreFactory } from "../event-store";
 import { createShardId } from "../shard-id";
-import { OptimisticLockError } from "../types";
+import type { SpannerShardSelector } from "../spanner-shard-selector";
+import {
+  type EventSerializer,
+  type Logger,
+  OptimisticLockError,
+  type SnapshotSerializer,
+} from "../types";
 import { DefaultKeyResolver } from "./default-key-resolver";
+import {
+  JsonEventSerializer,
+  JsonSnapshotSerializer,
+} from "./default-serializer";
 import { DefaultSpannerShardSelector } from "./default-spanner-shard-selector";
 import { SpannerEventStore } from "./spanner-event-store";
 import { runEventStoreContractTests } from "./test/event-store-contract";
@@ -56,7 +66,13 @@ type FakeSpannerDatabaseOptions = {
   missingSnapshotPayloadField?: boolean;
   retainedSequenceNumberFormat?: "number" | "string" | "wrapped" | "invalid";
   snapshotPayloadFormat?: "bytes" | "base64" | "invalid";
-  snapshotVersionFormat?: "number" | "string" | "wrapped" | "invalid" | "nan";
+  snapshotVersionFormat?:
+    | "number"
+    | "string"
+    | "wrapped"
+    | "invalid"
+    | "nan"
+    | "unsafe";
 };
 
 class FakeSpannerDatabase {
@@ -342,6 +358,8 @@ class FakeSpannerDatabase {
         return { version };
       case "nan":
         return "not-a-number";
+      case "unsafe":
+        return Number.MAX_SAFE_INTEGER + 1;
       default:
         return version;
     }
@@ -364,9 +382,17 @@ class FakeSpannerTransaction {
   async rollback(): Promise<void> {}
 }
 
+type FakeEventStoreOptions = {
+  eventSerializer?: EventSerializer<UserAccountId, UserAccountEvent>;
+  logger?: Logger;
+  shardSelector?: SpannerShardSelector<UserAccountId>;
+  snapshotSerializer?: SnapshotSerializer<UserAccountId, UserAccount>;
+};
+
 function createFakeEventStore(
   keepSnapshotCount?: number,
   database = new FakeSpannerDatabase(),
+  options: FakeEventStoreOptions = {},
 ): SpannerEventStore<UserAccountId, UserAccount, UserAccountEvent> {
   return new SpannerEventStore<UserAccountId, UserAccount, UserAccountEvent>({
     database: database.asDatabase(),
@@ -376,6 +402,7 @@ function createFakeEventStore(
     eventConverter: convertJSONtoUserAccountEvent,
     snapshotConverter: convertJSONToUserAccount,
     keepSnapshotCount,
+    ...options,
   });
 }
 
@@ -580,6 +607,87 @@ describe("SpannerEventStore", () => {
     ).rejects.toBe(error);
   });
 
+  test.each([
+    ["null", null],
+    ["string", "unavailable"],
+    ["object without code", { message: "unavailable" }],
+    ["non matching code", { code: 14, message: "unavailable" }],
+  ])("propagates %s Spanner failures unchanged", async (_, error) => {
+    const eventStore = createFakeEventStore(
+      undefined,
+      new FakeSpannerDatabase({
+        failRunTransactionWith: error,
+      }),
+    );
+    const id = new UserAccountId(ulid());
+    const [userAccount1, created] = UserAccount.create(id, "Alice");
+
+    await expect(
+      eventStore.persistEventAndSnapshot(created, userAccount1),
+    ).rejects.toBe(error);
+  });
+
+  test("uses custom shard selector, serializers, and logger", async () => {
+    const jsonEventSerializer = new JsonEventSerializer();
+    const jsonSnapshotSerializer = new JsonSnapshotSerializer();
+    const eventSerializer: EventSerializer<UserAccountId, UserAccountEvent> = {
+      serialize: jest.fn((event) => jsonEventSerializer.serialize(event)),
+      deserialize: jest.fn((bytes, converter) =>
+        jsonEventSerializer.deserialize(bytes, converter),
+      ),
+    };
+    const snapshotSerializer: SnapshotSerializer<UserAccountId, UserAccount> = {
+      serialize: jest.fn((aggregate) =>
+        jsonSnapshotSerializer.serialize(aggregate),
+      ),
+      deserialize: jest.fn((bytes, converter) =>
+        jsonSnapshotSerializer.deserialize(bytes, converter),
+      ),
+    };
+    const logger: Logger = {
+      debug: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+    const shardSelector: SpannerShardSelector<UserAccountId> = {
+      selectShardId: jest.fn(() => createShardId(0)),
+    };
+    const eventStore = createFakeEventStore(
+      undefined,
+      new FakeSpannerDatabase(),
+      {
+        eventSerializer,
+        logger,
+        shardSelector,
+        snapshotSerializer,
+      },
+    );
+    const id = new UserAccountId(ulid());
+    const [userAccount1, created] = UserAccount.create(id, "Alice");
+    await eventStore.persistEventAndSnapshot(created, userAccount1);
+
+    const [userAccount2, renamed] = userAccount1.rename("Bob");
+    await eventStore.persistEventAndSnapshot(renamed, userAccount2);
+    const snapshotAfterBob = await eventStore.getLatestSnapshotById(id);
+    if (snapshotAfterBob === undefined) {
+      throw new Error("snapshotAfterBob is undefined");
+    }
+    const [, renamedToCarol] = snapshotAfterBob.rename("Carol");
+    await eventStore.persistEvent(renamedToCarol, snapshotAfterBob.version);
+    const events = await eventStore.getEventsByIdSinceSequenceNumber(id, 1);
+    const latestSnapshot = await eventStore.getLatestSnapshotById(id);
+
+    expect(events).toHaveLength(3);
+    expect(latestSnapshot?.name).toBe("Bob");
+    expect(shardSelector.selectShardId).toHaveBeenCalledWith(id, 32);
+    expect(eventSerializer.serialize).toHaveBeenCalled();
+    expect(eventSerializer.deserialize).toHaveBeenCalled();
+    expect(snapshotSerializer.serialize).toHaveBeenCalled();
+    expect(snapshotSerializer.deserialize).toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalled();
+  });
+
   test("rejects failed conditional latest snapshot updates as optimistic locks", async () => {
     const database = new FakeSpannerDatabase({
       forceLatestSnapshotUpdateMiss: true,
@@ -640,6 +748,11 @@ describe("SpannerEventStore", () => {
     [
       "NaN snapshot version",
       { snapshotVersionFormat: "nan" },
+      "version is not a safe integer",
+    ],
+    [
+      "unsafe numeric snapshot version",
+      { snapshotVersionFormat: "unsafe" },
       "version is not a safe integer",
     ],
     [
