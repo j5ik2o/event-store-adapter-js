@@ -2,6 +2,7 @@ import { access, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 
 const distPath = path.resolve("dist");
+const tsconfigPath = path.resolve("tsconfig.json");
 const testSupportPath = path.join(distPath, "internal", "test");
 
 await access(distPath).catch((error) => {
@@ -41,6 +42,6 @@ const remainingArtifacts = await collectTestArtifacts(distPath);
 if (remainingArtifacts.length > 0) {
   throw new Error(
     `Build output still contains test artifacts after cleanup: ${remainingArtifacts.join(", ")}. ` +
-      "Verify that tsconfig.json excludes test files and that the build cleanup ran successfully.",
+      `Verify that ${tsconfigPath} excludes test files and that the build cleanup ran successfully.`,
   );
 }

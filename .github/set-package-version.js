@@ -7,7 +7,7 @@ if (!nextVersion) {
 }
 if (!/^\d+\.\d+\.\d+(?:-snapshot\.\d+)?$/.test(nextVersion)) {
   throw new Error(
-    `Unsupported version format: ${nextVersion}. Expected X.Y.Z or X.Y.Z-snapshot.N`,
+    `Unsupported version format: ${nextVersion}. Expected X.Y.Z or X.Y.Z-snapshot.N; only snapshot pre-releases are supported`,
   );
 }
 
