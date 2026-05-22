@@ -1,0 +1,100 @@
+name: Review Thread Resolution
+
+on:
+  pull_request:
+    branches: ["main"]
+    types: [opened, reopened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  unresolved-review-threads:
+    name: Check unresolved review threads
+    if: ${{ github.event.pull_request.base.ref == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check unresolved review threads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          unresolved='[]'
+          cursor='null'
+
+          while :; do
+            response="$(
+              gh api graphql \
+                -F owner="$OWNER" \
+                -F name="$REPO" \
+                -F number="$PR_NUMBER" \
+                -F cursor="$cursor" \
+                -f query='
+                  query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+                    repository(owner: $owner, name: $name) {
+                      pullRequest(number: $number) {
+                        reviewThreads(first: 100, after: $cursor) {
+                          pageInfo {
+                            hasNextPage
+                            endCursor
+                          }
+                          nodes {
+                            isResolved
+                            path
+                            line
+                            url
+                            comments(first: 1) {
+                              nodes {
+                                author {
+                                  login
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                '
+            )"
+
+            page_unresolved="$(
+              jq -c '.data.repository.pullRequest.reviewThreads.nodes
+                | map(select(.isResolved == false))' <<< "$response"
+            )"
+            unresolved="$(
+              jq -c -n --argjson current "$unresolved" --argjson page "$page_unresolved" \
+                '$current + $page'
+            )"
+
+            has_next="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<< "$response")"
+            if [[ "$has_next" != "true" ]]; then
+              break
+            fi
+            cursor="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor' <<< "$response")"
+          done
+
+          unresolved_count="$(jq 'length' <<< "$unresolved")"
+          if [[ "$unresolved_count" -eq 0 ]]; then
+            echo "No unresolved PR review threads."
+            exit 0
+          fi
+
+          {
+            echo "### Unresolved PR review threads"
+            echo
+            jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0].author.login // "unknown"): \(.url)"' \
+              <<< "$unresolved"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::error::$unresolved_count unresolved PR review thread(s) remain. Resolve all review conversations before merging."
+          exit 1
