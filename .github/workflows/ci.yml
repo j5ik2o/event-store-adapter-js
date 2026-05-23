@@ -167,6 +167,7 @@ jobs:
   codecov-status:
     name: Codecov Status
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs:
       - changes
       - test
