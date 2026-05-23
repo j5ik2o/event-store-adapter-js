@@ -1,2 +1,14 @@
 packages:
   - "packages/*"
+allowBuilds:
+  aws-sdk: false
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
+  unrs-resolver: false
+minimumReleaseAgeExclude:
+  - "@aws-sdk/client-dynamodb"
+  - "@protobufjs/eventemitter"
+  - "electron-to-chromium"
+  - "node-releases"
+  - "protobufjs"

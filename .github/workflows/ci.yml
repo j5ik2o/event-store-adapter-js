@@ -140,7 +140,7 @@ jobs:
       TEST_TIME_FACTOR: 10.0
     strategy:
       matrix:
-        node-version: [20.x]
+        node-version: [22.x]
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
