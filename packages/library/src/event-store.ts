@@ -44,4 +44,4 @@ export const EventStore = Object.freeze({
   >(input: SpannerEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
     return new SpannerEventStore<AID, A, E>(input);
   },
-});
+} as const);
