@@ -8,25 +8,156 @@ on:
     types: [submitted, edited, dismissed]
   pull_request_review_comment:
     types: [created, edited, deleted]
+  issue_comment:
+    types: [created, edited, deleted]
 
 permissions:
+  checks: read
   contents: read
+  issues: read
   pull-requests: read
 
+concurrency:
+  group: review-thread-resolution-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
 jobs:
-  unresolved-review-threads:
-    name: Check unresolved review threads
-    if: ${{ github.event.pull_request != null && github.event.pull_request.base != null && github.event.pull_request.base.ref == 'main' }}
+  unresolved-comments:
+    name: Check unresolved comments
+    if: ${{ github.event.pull_request != null || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null) }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - name: Check unresolved review threads
+      - name: Check unresolved comments
         env:
           GH_TOKEN: ${{ github.token }}
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event.pull_request.number }}
         run: |
           set -euo pipefail
+
+          if [[ -z "${PR_NUMBER:-}" ]]; then
+            echo "::error::PR_NUMBER is empty."
+            exit 1
+          fi
+
+          pr_response="$(
+            gh api graphql \
+              -F owner="$OWNER" \
+              -F name="$REPO" \
+              -F number="$PR_NUMBER" \
+              -f query='
+                query($owner: String!, $name: String!, $number: Int!) {
+                  repository(owner: $owner, name: $name) {
+                    pullRequest(number: $number) {
+                      author {
+                        __typename
+                        login
+                      }
+                      baseRefName
+                      headRefOid
+                    }
+                  }
+                }
+              '
+          )"
+
+          if jq -e '.errors? | length > 0' <<< "$pr_response" > /dev/null; then
+            echo "::error::GitHub GraphQL returned errors while fetching PR metadata."
+            jq -r '.errors[]?.message' <<< "$pr_response" >&2
+            exit 1
+          fi
+
+          if ! jq -e '.data.repository.pullRequest.author.login
+            and .data.repository.pullRequest.baseRefName' \
+            <<< "$pr_response" > /dev/null; then
+            echo "::error::GitHub GraphQL response did not include PR metadata."
+            jq -c '.' <<< "$pr_response" >&2
+            exit 1
+          fi
+
+          pr_author="$(jq -r '.data.repository.pullRequest.author.login' <<< "$pr_response")"
+          pr_author_type="$(jq -r '.data.repository.pullRequest.author.__typename' <<< "$pr_response")"
+          base_ref="$(jq -r '.data.repository.pullRequest.baseRefName' <<< "$pr_response")"
+          head_ref_oid="$(jq -r '.data.repository.pullRequest.headRefOid' <<< "$pr_response")"
+
+          if [[ "$base_ref" != "main" ]]; then
+            echo "Skipping PR #$PR_NUMBER because base branch is $base_ref, not main."
+            exit 0
+          fi
+
+          max_attempts=60
+          initial_sleep_seconds=5
+          max_sleep_seconds=30
+          sleep_seconds="$initial_sleep_seconds"
+          attempt=0
+          while [[ "$attempt" -lt "$max_attempts" ]]; do
+            attempt=$((attempt + 1))
+            status_response="$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json headRefOid,statusCheckRollup)" || {
+              if [[ "$attempt" -eq "$max_attempts" ]]; then
+                echo "::error::Failed to fetch PR status after $max_attempts attempts."
+                exit 1
+              fi
+              echo "::warning::Failed to fetch PR status on attempt $attempt; retrying."
+              sleep "$sleep_seconds"
+              if [[ "$sleep_seconds" -lt "$max_sleep_seconds" ]]; then
+                sleep_seconds=$((sleep_seconds * 2))
+                if [[ "$sleep_seconds" -gt "$max_sleep_seconds" ]]; then
+                  sleep_seconds="$max_sleep_seconds"
+                fi
+              fi
+              continue
+            }
+            current_head_ref_oid="$(jq -r '.headRefOid' <<< "$status_response")"
+            if [[ "$current_head_ref_oid" != "$head_ref_oid" ]]; then
+              echo "::error::PR head changed from $head_ref_oid to $current_head_ref_oid while waiting for checks."
+              exit 1
+            fi
+
+            pending_checks="$(
+              jq -r '
+                .statusCheckRollup[]
+                | select(
+                    if .__typename == "CheckRun" then
+                      (.name != "Check unresolved comments"
+                        and .workflowName != "Review Thread Resolution"
+                        and (.status != "COMPLETED"))
+                    elif .__typename == "StatusContext" then
+                      (.state == "PENDING" or .state == "EXPECTED")
+                    else
+                      false
+                    end
+                  )
+                | if .__typename == "CheckRun" then
+                    "\(.workflowName // "unknown") / \(.name // "unknown")"
+                  else
+                    "\(.context // "unknown")"
+                  end
+              ' <<< "$status_response"
+            )"
+
+            if [[ -z "$pending_checks" ]]; then
+              echo "All other PR checks have reached a terminal state."
+              break
+            fi
+
+            if [[ "$attempt" -eq "$max_attempts" ]]; then
+              echo "::error::Timed out waiting for other PR checks to finish before evaluating review comments."
+              echo "$pending_checks" >&2
+              exit 1
+            fi
+
+            echo "Waiting for other PR checks to finish before evaluating review comments:"
+            echo "$pending_checks"
+            sleep "$sleep_seconds"
+            if [[ "$sleep_seconds" -lt "$max_sleep_seconds" ]]; then
+              sleep_seconds=$((sleep_seconds * 2))
+              if [[ "$sleep_seconds" -gt "$max_sleep_seconds" ]]; then
+                sleep_seconds="$max_sleep_seconds"
+              fi
+            fi
+          done
 
           unresolved='[]'
           cursor=''
@@ -107,15 +238,219 @@ jobs:
           unresolved_count="$(jq 'length' <<< "$unresolved")"
           if [[ "$unresolved_count" -eq 0 ]]; then
             echo "No unresolved PR review threads."
-            exit 0
+          fi
+
+          top_level_comments='[]'
+          cursor=''
+          page=1
+
+          while :; do
+            cursor_args=()
+            if [[ -n "$cursor" ]]; then
+              cursor_args=(-F cursor="$cursor")
+            fi
+
+            response="$(
+              gh api graphql \
+                -F owner="$OWNER" \
+                -F name="$REPO" \
+                -F number="$PR_NUMBER" \
+                "${cursor_args[@]}" \
+                -f query='
+                  query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+                    repository(owner: $owner, name: $name) {
+                      pullRequest(number: $number) {
+                        comments(first: 100, after: $cursor) {
+                          pageInfo {
+                            hasNextPage
+                            endCursor
+                          }
+                          nodes {
+                            url
+                            createdAt
+                            updatedAt
+                            authorAssociation
+                            author {
+                              login
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                '
+            )"
+
+            if jq -e '.errors? | length > 0' <<< "$response" > /dev/null; then
+              echo "::error::GitHub GraphQL returned errors while fetching top-level PR comments on page $page."
+              jq -r '.errors[]?.message' <<< "$response" >&2
+              exit 1
+            fi
+
+            if ! jq -e '.data.repository.pullRequest.comments.nodes
+              and .data.repository.pullRequest.comments.pageInfo' \
+              <<< "$response" > /dev/null; then
+              echo "::error::GitHub GraphQL response did not include top-level PR comments on page $page."
+              jq -c '.' <<< "$response" >&2
+              exit 1
+            fi
+
+            page_comments="$(jq -c '.data.repository.pullRequest.comments.nodes' <<< "$response")"
+            top_level_comments="$(
+              jq -c -n --argjson current "$top_level_comments" --argjson page "$page_comments" \
+                '$current + $page'
+            )"
+
+            has_next="$(jq -r '.data.repository.pullRequest.comments.pageInfo.hasNextPage' <<< "$response")"
+            if [[ "$has_next" != "true" ]]; then
+              break
+            fi
+            cursor="$(jq -r '.data.repository.pullRequest.comments.pageInfo.endCursor' <<< "$response")"
+            page=$((page + 1))
+          done
+
+          cursor=''
+          page=1
+
+          while :; do
+            cursor_args=()
+            if [[ -n "$cursor" ]]; then
+              cursor_args=(-F cursor="$cursor")
+            fi
+
+            response="$(
+              gh api graphql \
+                -F owner="$OWNER" \
+                -F name="$REPO" \
+                -F number="$PR_NUMBER" \
+                "${cursor_args[@]}" \
+                -f query='
+                  query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+                    repository(owner: $owner, name: $name) {
+                      pullRequest(number: $number) {
+                        reviews(first: 100, after: $cursor) {
+                          pageInfo {
+                            hasNextPage
+                            endCursor
+                          }
+                          nodes {
+                            url
+                            body
+                            state
+                            submittedAt
+                            updatedAt
+                            authorAssociation
+                            author {
+                              login
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                '
+            )"
+
+            if jq -e '.errors? | length > 0' <<< "$response" > /dev/null; then
+              echo "::error::GitHub GraphQL returned errors while fetching PR reviews on page $page."
+              jq -r '.errors[]?.message' <<< "$response" >&2
+              exit 1
+            fi
+
+            if ! jq -e '.data.repository.pullRequest.reviews.nodes
+              and .data.repository.pullRequest.reviews.pageInfo' \
+              <<< "$response" > /dev/null; then
+              echo "::error::GitHub GraphQL response did not include PR review data on page $page."
+              jq -c '.' <<< "$response" >&2
+              exit 1
+            fi
+
+            page_review_comments="$(
+              jq -c '.data.repository.pullRequest.reviews.nodes
+                | map(select((.body // "") != "" and .state != "DISMISSED"))
+                | map({
+                    url,
+                    createdAt: .submittedAt,
+                    updatedAt: (.updatedAt // .submittedAt),
+                    authorAssociation,
+                    author
+                  })' <<< "$response"
+            )"
+            top_level_comments="$(
+              jq -c -n --argjson current "$top_level_comments" --argjson page "$page_review_comments" \
+                '$current + $page'
+            )"
+
+            has_next="$(jq -r '.data.repository.pullRequest.reviews.pageInfo.hasNextPage' <<< "$response")"
+            if [[ "$has_next" != "true" ]]; then
+              break
+            fi
+            cursor="$(jq -r '.data.repository.pullRequest.reviews.pageInfo.endCursor' <<< "$response")"
+            page=$((page + 1))
+          done
+
+          unacknowledged_top_level="$(
+            jq -c --arg pr_author "$pr_author" --arg pr_author_type "$pr_author_type" '
+              . as $comments
+              | [
+                  $comments[]
+                  | select(
+                      ((.author.login // "") != $pr_author)
+                      and (
+                        $pr_author_type != "Bot"
+                        or (
+                          .authorAssociation != "OWNER"
+                          and .authorAssociation != "MEMBER"
+                          and .authorAssociation != "COLLABORATOR"
+                        )
+                      )
+                    )
+                  | . as $comment
+                  | select([
+                      $comments[]
+                      # Human-authored PRs require the PR author to acknowledge.
+                      # Bot-authored PRs allow maintainers to acknowledge on behalf of the bot.
+                      | select(
+                          (.author.login // "") == $pr_author
+                          or (
+                            $pr_author_type == "Bot"
+                            and (
+                              .authorAssociation == "OWNER"
+                              or .authorAssociation == "MEMBER"
+                              or .authorAssociation == "COLLABORATOR"
+                            )
+                          )
+                        )
+                      | select(.createdAt > ($comment.updatedAt // $comment.createdAt))
+                    ] | length == 0)
+                ]
+            ' <<< "$top_level_comments"
+          )"
+
+          unacknowledged_top_level_count="$(jq 'length' <<< "$unacknowledged_top_level")"
+          if [[ "$unacknowledged_top_level_count" -eq 0 ]]; then
+            echo "No unacknowledged top-level PR comments or review summaries."
           fi
 
           {
-            echo "### Unresolved PR review threads"
-            echo
-            jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0]?.author.login // "unknown"): \(.comments.nodes[0]?.url // "no comment URL")"' \
-              <<< "$unresolved"
+            if [[ "$unresolved_count" -gt 0 ]]; then
+              echo "### Unresolved PR review threads"
+              echo
+              jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0]?.author.login // "unknown"): \(.comments.nodes[0]?.url // "no comment URL")"' \
+                <<< "$unresolved"
+              echo
+            fi
+            if [[ "$unacknowledged_top_level_count" -gt 0 ]]; then
+              echo "### Unacknowledged top-level PR comments or review summaries"
+              echo
+              jq -r '.[] | "- by \(.author.login // "unknown") updated at \((.updatedAt // .createdAt)): \(.url // "no comment URL")"' \
+                <<< "$unacknowledged_top_level"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "::error::$unresolved_count unresolved PR review thread(s) remain. Resolve all review conversations before merging."
-          exit 1
+          if [[ "$unresolved_count" -gt 0 || "$unacknowledged_top_level_count" -gt 0 ]]; then
+            echo "::error::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) or review summary comment(s) remain. Resolve or acknowledge all review conversations before merging."
+            exit 1
+          fi
+
+          exit 0
