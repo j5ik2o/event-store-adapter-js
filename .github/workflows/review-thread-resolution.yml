@@ -107,11 +107,6 @@ jobs:
               return 1
             fi
 
-            if [[ "$pr_author" == "dependabot[bot]" ]]; then
-              echo "::warning::Skipping synthetic check-run publication for Dependabot PR author." >&2
-              return 1
-            fi
-
             return 0
           }
 
@@ -122,9 +117,11 @@ jobs:
             local max_summary_chars=60000
             local truncation_suffix
             local available_chars
-            local request_payload
+            local create_payload
+            local update_payload
             local check_run_response
             local check_run_error
+            local existing_check_run_id
             local check_run_url
 
             if (( ${#check_summary} > max_summary_chars )); then
@@ -137,7 +134,7 @@ jobs:
               fi
             fi
 
-            request_payload="$(
+            create_payload="$(
               jq -n \
                 --arg name "Check unresolved comments" \
                 --arg head_sha "$head_ref_oid" \
@@ -157,21 +154,70 @@ jobs:
                   }
                 }'
             )"
+            update_payload="$(
+              jq -n \
+                --arg name "Check unresolved comments" \
+                --arg conclusion "$conclusion" \
+                --arg details_url "$RUN_URL" \
+                --arg title "Review Thread Resolution" \
+                --arg summary "$check_summary" \
+                '{
+                  name: $name,
+                  status: "completed",
+                  conclusion: $conclusion,
+                  details_url: $details_url,
+                  output: {
+                    title: $title,
+                    summary: $summary
+                  }
+                }'
+            )"
+
+            existing_check_run_id="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "repos/$OWNER/$REPO/commits/$head_ref_oid/check-runs?check_name=Check%20unresolved%20comments&per_page=100" \
+                --jq '
+                  [
+                    .check_runs[]
+                    | select(.output.title == "Review Thread Resolution")
+                    | .id
+                  ]
+                  | first // empty
+                '
+            )"
 
             check_run_error="$(mktemp)"
             trap 'rm -f "$check_run_error"; trap - RETURN' RETURN
-            if ! check_run_response="$(
-              gh api \
-                --method POST \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                "repos/$OWNER/$REPO/check-runs" \
-                --input - \
-                2> "$check_run_error" <<< "$request_payload"
-            )"; then
-              echo "::error::Failed to create check run via GitHub API."
-              cat "$check_run_error" >&2
-              return 1
+            if [[ -n "$existing_check_run_id" ]]; then
+              if ! check_run_response="$(
+                gh api \
+                  --method PATCH \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "repos/$OWNER/$REPO/check-runs/$existing_check_run_id" \
+                  --input - \
+                  2> "$check_run_error" <<< "$update_payload"
+              )"; then
+                echo "::error::Failed to update check run via GitHub API."
+                cat "$check_run_error" >&2
+                return 1
+              fi
+            else
+              if ! check_run_response="$(
+                gh api \
+                  --method POST \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "repos/$OWNER/$REPO/check-runs" \
+                  --input - \
+                  2> "$check_run_error" <<< "$create_payload"
+              )"; then
+                echo "::error::Failed to create check run via GitHub API."
+                cat "$check_run_error" >&2
+                return 1
+              fi
             fi
             if [[ -s "$check_run_error" ]]; then
               cat "$check_run_error" >&2
