@@ -167,7 +167,7 @@ jobs:
   codecov-status:
     name: Codecov Status
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     needs:
       - changes
       - test
@@ -206,7 +206,7 @@ jobs:
             }
 
             async function waitForCheck(checkName) {
-              for (let attempt = 1; attempt <= 60; attempt += 1) {
+              for (let attempt = 1; attempt <= 90; attempt += 1) {
                 const run = await latestCheckRun(checkName);
 
                 if (run) {

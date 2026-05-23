@@ -33,7 +33,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
-          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event.pull_request.number }}
         run: |
           set -euo pipefail
 
@@ -353,9 +353,9 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [[ "$unresolved_count" -eq 0 && "$unacknowledged_top_level_count" -eq 0 ]]; then
-            exit 0
+          if [[ "$unresolved_count" -gt 0 || "$unacknowledged_top_level_count" -gt 0 ]]; then
+            echo "::error::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) remain. Resolve or acknowledge all review conversations before merging."
+            exit 1
           fi
 
-          echo "::error::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) remain. Resolve or acknowledge all review conversations before merging."
-          exit 1
+          exit 0
