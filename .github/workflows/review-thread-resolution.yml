@@ -10,21 +10,30 @@ on:
     types: [created, edited, deleted]
   issue_comment:
     types: [created, edited, deleted]
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to refresh. Leave empty to refresh all open main PRs.
+        required: false
+        type: string
 
 permissions:
   contents: read
+  actions: write
   checks: write
   issues: read
   pull-requests: read
 
 concurrency:
-  group: review-thread-resolution-${{ github.event.pull_request.number || github.event.issue.number }}
+  group: review-thread-resolution-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   unresolved-comments:
     name: Check unresolved comments
-    if: ${{ github.event.pull_request != null || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null) }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event.pull_request != null || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -33,291 +42,359 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
-          PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event.pull_request.number || inputs.pr_number }}
           EVENT_NAME: ${{ github.event_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
 
-          if [[ -z "${PR_NUMBER:-}" ]]; then
-            echo "::error::PR_NUMBER is empty."
-            exit 1
-          fi
+          check_pr() (
+            set -euo pipefail
+            PR_NUMBER="$1"
 
-          pr_response="$(
-            gh api graphql \
-              -F owner="$OWNER" \
-              -F name="$REPO" \
-              -F number="$PR_NUMBER" \
-              -f query='
-                query($owner: String!, $name: String!, $number: Int!) {
-                  repository(owner: $owner, name: $name) {
-                    pullRequest(number: $number) {
-                      author {
-                        __typename
-                        login
+            if [[ -z "${PR_NUMBER:-}" ]]; then
+              echo "::error::PR_NUMBER is empty."
+              exit 1
+            fi
+
+            pr_response="$(
+              gh api graphql \
+                -F owner="$OWNER" \
+                -F name="$REPO" \
+                -F number="$PR_NUMBER" \
+                -f query='
+                  query($owner: String!, $name: String!, $number: Int!) {
+                    repository(owner: $owner, name: $name) {
+                      pullRequest(number: $number) {
+                        author {
+                          __typename
+                          login
+                        }
+                        baseRefName
+                        headRepository {
+                          nameWithOwner
+                        }
+                        headRefOid
+                        url
                       }
-                      baseRefName
-                      headRepository {
-                        nameWithOwner
-                      }
-                      headRefOid
-                      url
                     }
                   }
-                }
-              '
-          )"
-
-          if jq -e '.errors? | length > 0' <<< "$pr_response" > /dev/null; then
-            echo "::error::GitHub GraphQL returned errors while fetching PR metadata."
-            jq -r '.errors[]?.message' <<< "$pr_response" >&2
-            exit 1
-          fi
-
-          if ! jq -e '.data.repository.pullRequest.author.login
-            and .data.repository.pullRequest.baseRefName
-            and .data.repository.pullRequest.headRefOid
-            and .data.repository.pullRequest.url' \
-            <<< "$pr_response" > /dev/null; then
-            echo "::error::GitHub GraphQL response did not include PR metadata."
-            jq -c '.' <<< "$pr_response" >&2
-            exit 1
-          fi
-
-          pr_author="$(jq -r '.data.repository.pullRequest.author.login' <<< "$pr_response")"
-          pr_author_type="$(jq -r '.data.repository.pullRequest.author.__typename' <<< "$pr_response")"
-          base_ref="$(jq -r '.data.repository.pullRequest.baseRefName' <<< "$pr_response")"
-          head_repository="$(jq -r '.data.repository.pullRequest.headRepository.nameWithOwner // ""' <<< "$pr_response")"
-          head_ref_oid="$(jq -r '.data.repository.pullRequest.headRefOid' <<< "$pr_response")"
-          pr_url="$(jq -r '.data.repository.pullRequest.url' <<< "$pr_response")"
-
-          find_existing_head_check() {
-            gh api \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "repos/$OWNER/$REPO/commits/$head_ref_oid/check-runs?check_name=Check%20unresolved%20comments&per_page=100" \
-              --jq '
-                [
-                  .check_runs[]
-                  | select(.output.title == "Review Thread Resolution")
-                  | .id
-                ]
-                | first // empty
-              '
-          }
-
-          should_publish_head_check() {
-            if [[ -z "$head_repository" ]]; then
-              echo "::warning::Skipping synthetic check-run publication because PR head repository metadata is unavailable." >&2
-              return 1
-            fi
-
-            if [[ "$head_repository" != "$OWNER/$REPO" ]]; then
-              echo "::notice::Skipping synthetic check-run publication for fork PR head ($head_repository)." >&2
-              return 1
-            fi
-
-            return 0
-          }
-
-          refresh_head_ref_oid() {
-            local latest_head_ref_oid
-
-            latest_head_ref_oid="$(
-              gh pr view "$PR_NUMBER" \
-                --repo "$OWNER/$REPO" \
-                --json headRefOid \
-                --jq '.headRefOid'
+                '
             )"
 
-            if [[ -z "$latest_head_ref_oid" || "$latest_head_ref_oid" == "null" ]]; then
-              echo "::error::Failed to refresh PR head SHA before publishing the synthetic check." >&2
-              return 1
+            if jq -e '.errors? | length > 0' <<< "$pr_response" > /dev/null; then
+              echo "::error::GitHub GraphQL returned errors while fetching PR metadata."
+              jq -r '.errors[]?.message' <<< "$pr_response" >&2
+              exit 1
             fi
 
-            if [[ "$latest_head_ref_oid" != "$head_ref_oid" ]]; then
-              echo "::notice::PR head changed from $head_ref_oid to $latest_head_ref_oid before publishing the synthetic check." >&2
-              head_ref_oid="$latest_head_ref_oid"
-            fi
-          }
-
-          publish_head_check() {
-            local conclusion="$1"
-            local summary="$2"
-            local check_summary="$summary"
-            local max_summary_chars=60000
-            local truncation_suffix
-            local available_chars
-            local create_payload
-            local update_payload
-            local check_run_response
-            local check_run_error
-            local existing_check_run_id
-            local check_run_url
-            local create_if_missing="false"
-
-            if [[ "$EVENT_NAME" == "issue_comment" ]]; then
-              create_if_missing="true"
+            if ! jq -e '.data.repository.pullRequest.author.login
+              and .data.repository.pullRequest.baseRefName
+              and .data.repository.pullRequest.headRefOid
+              and .data.repository.pullRequest.url' \
+              <<< "$pr_response" > /dev/null; then
+              echo "::error::GitHub GraphQL response did not include PR metadata."
+              jq -c '.' <<< "$pr_response" >&2
+              exit 1
             fi
 
-            if (( ${#check_summary} > max_summary_chars )); then
-              truncation_suffix=$'\n\n... truncated for GitHub Checks API summary limit ...'
-              available_chars=$(( max_summary_chars - ${#truncation_suffix} ))
-              if (( available_chars < 1 )); then
-                check_summary="${truncation_suffix:0:max_summary_chars}"
-              else
-                check_summary="${check_summary:0:available_chars}${truncation_suffix}"
+            pr_author="$(jq -r '.data.repository.pullRequest.author.login' <<< "$pr_response")"
+            pr_author_type="$(jq -r '.data.repository.pullRequest.author.__typename' <<< "$pr_response")"
+            base_ref="$(jq -r '.data.repository.pullRequest.baseRefName' <<< "$pr_response")"
+            head_repository="$(jq -r '.data.repository.pullRequest.headRepository.nameWithOwner // ""' <<< "$pr_response")"
+            head_ref_oid="$(jq -r '.data.repository.pullRequest.headRefOid' <<< "$pr_response")"
+            pr_url="$(jq -r '.data.repository.pullRequest.url' <<< "$pr_response")"
+
+            find_existing_head_check() {
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "repos/$OWNER/$REPO/commits/$head_ref_oid/check-runs?check_name=Check%20unresolved%20comments&per_page=100" \
+                --jq '
+                  [
+                    .check_runs[]
+                    | select(.output.title == "Review Thread Resolution")
+                    | .id
+                  ]
+                  | first // empty
+                '
+            }
+
+            should_publish_head_check() {
+              if [[ -z "$head_repository" ]]; then
+                echo "::warning::Skipping synthetic check-run publication because PR head repository metadata is unavailable." >&2
+                return 1
               fi
-            fi
 
-            create_payload="$(
-              jq -n \
-                --arg name "Check unresolved comments" \
-                --arg head_sha "$head_ref_oid" \
-                --arg conclusion "$conclusion" \
-                --arg details_url "$RUN_URL" \
-                --arg title "Review Thread Resolution" \
-                --arg summary "$check_summary" \
-                '{
-                  name: $name,
-                  head_sha: $head_sha,
-                  status: "completed",
-                  conclusion: $conclusion,
-                  details_url: $details_url,
-                  output: {
-                    title: $title,
-                    summary: $summary
-                  }
-                }'
-            )"
-            update_payload="$(
-              jq -n \
-                --arg name "Check unresolved comments" \
-                --arg conclusion "$conclusion" \
-                --arg details_url "$RUN_URL" \
-                --arg title "Review Thread Resolution" \
-                --arg summary "$check_summary" \
-                '{
-                  name: $name,
-                  status: "completed",
-                  conclusion: $conclusion,
-                  details_url: $details_url,
-                  output: {
-                    title: $title,
-                    summary: $summary
-                  }
-                }'
-            )"
+              if [[ "$head_repository" != "$OWNER/$REPO" ]]; then
+                echo "::notice::Skipping synthetic check-run publication for fork PR head ($head_repository)." >&2
+                return 1
+              fi
+
+              return 0
+            }
+
+            refresh_head_ref_oid() {
+              local latest_head_ref_oid
+
+              latest_head_ref_oid="$(
+                gh pr view "$PR_NUMBER" \
+                  --repo "$OWNER/$REPO" \
+                  --json headRefOid \
+                  --jq '.headRefOid'
+              )"
+
+              if [[ -z "$latest_head_ref_oid" || "$latest_head_ref_oid" == "null" ]]; then
+                echo "::error::Failed to refresh PR head SHA before publishing the synthetic check." >&2
+                return 1
+              fi
+
+              if [[ "$latest_head_ref_oid" != "$head_ref_oid" ]]; then
+                echo "::notice::PR head changed from $head_ref_oid to $latest_head_ref_oid before publishing the synthetic check; aborting stale publication." >&2
+                return 2
+              fi
+            }
+
+            publish_head_check() {
+              local conclusion="$1"
+              local summary="$2"
+              local check_summary="$summary"
+              local max_summary_chars=60000
+              local truncation_suffix
+              local available_chars
+              local create_payload
+              local update_payload
+              local check_run_response
+              local check_run_error
+              local existing_check_run_id
+              local check_run_url
+              local create_if_missing="false"
+
+              if [[ "$EVENT_NAME" == "issue_comment" || "$EVENT_NAME" == "schedule" || "$EVENT_NAME" == "workflow_dispatch" ]]; then
+                create_if_missing="true"
+              fi
+
+              if (( ${#check_summary} > max_summary_chars )); then
+                truncation_suffix=$'\n\n... truncated for GitHub Checks API summary limit ...'
+                available_chars=$(( max_summary_chars - ${#truncation_suffix} ))
+                if (( available_chars < 1 )); then
+                  check_summary="${truncation_suffix:0:max_summary_chars}"
+                else
+                  check_summary="${check_summary:0:available_chars}${truncation_suffix}"
+                fi
+              fi
+
+              create_payload="$(
+                jq -n \
+                  --arg name "Check unresolved comments" \
+                  --arg head_sha "$head_ref_oid" \
+                  --arg conclusion "$conclusion" \
+                  --arg details_url "$RUN_URL" \
+                  --arg title "Review Thread Resolution" \
+                  --arg summary "$check_summary" \
+                  '{
+                    name: $name,
+                    head_sha: $head_sha,
+                    status: "completed",
+                    conclusion: $conclusion,
+                    details_url: $details_url,
+                    output: {
+                      title: $title,
+                      summary: $summary
+                    }
+                  }'
+              )"
+              update_payload="$(
+                jq -n \
+                  --arg name "Check unresolved comments" \
+                  --arg conclusion "$conclusion" \
+                  --arg details_url "$RUN_URL" \
+                  --arg title "Review Thread Resolution" \
+                  --arg summary "$check_summary" \
+                  '{
+                    name: $name,
+                    status: "completed",
+                    conclusion: $conclusion,
+                    details_url: $details_url,
+                    output: {
+                      title: $title,
+                      summary: $summary
+                    }
+                  }'
+              )"
 
             existing_check_run_id="$(find_existing_head_check)"
 
             check_run_error="$(mktemp)"
-            trap 'rm -f "$check_run_error"; trap - RETURN' RETURN
-            if [[ -n "$existing_check_run_id" ]]; then
-              if ! check_run_response="$(
-                gh api \
-                  --method PATCH \
-                  -H "Accept: application/vnd.github+json" \
-                  -H "X-GitHub-Api-Version: 2022-11-28" \
-                  "repos/$OWNER/$REPO/check-runs/$existing_check_run_id" \
-                  --input - \
-                  2> "$check_run_error" <<< "$update_payload"
-              )"; then
-                echo "::error::Failed to update check run via GitHub API."
+              trap 'rm -f "$check_run_error"; trap - RETURN' RETURN
+              if [[ -n "$existing_check_run_id" ]]; then
+                if ! check_run_response="$(
+                  gh api \
+                    --method PATCH \
+                    -H "Accept: application/vnd.github+json" \
+                    -H "X-GitHub-Api-Version: 2022-11-28" \
+                    "repos/$OWNER/$REPO/check-runs/$existing_check_run_id" \
+                    --input - \
+                    2> "$check_run_error" <<< "$update_payload"
+                )"; then
+                  echo "::error::Failed to update check run via GitHub API."
+                  cat "$check_run_error" >&2
+                  return 1
+                fi
+              else
+                if [[ "$create_if_missing" != "true" ]]; then
+                  echo "No existing synthetic check run to update."
+                  return 0
+                fi
+
+                if ! check_run_response="$(
+                  gh api \
+                    --method POST \
+                    -H "Accept: application/vnd.github+json" \
+                    -H "X-GitHub-Api-Version: 2022-11-28" \
+                    "repos/$OWNER/$REPO/check-runs" \
+                    --input - \
+                    2> "$check_run_error" <<< "$create_payload"
+                )"; then
+                  echo "::error::Failed to create check run via GitHub API."
+                  cat "$check_run_error" >&2
+                  return 1
+                fi
+              fi
+              if [[ -s "$check_run_error" ]]; then
                 cat "$check_run_error" >&2
+              fi
+
+              if jq -e '(.errors? // []) | length > 0' <<< "$check_run_response" > /dev/null; then
+                echo "::error::GitHub API returned errors while creating check run."
+                jq -r '.errors[]?.message // empty' <<< "$check_run_response" >&2
                 return 1
               fi
-            else
-              if [[ "$create_if_missing" != "true" ]]; then
-                echo "No existing synthetic check run to update."
-                return 0
-              fi
-
-              if ! check_run_response="$(
-                gh api \
-                  --method POST \
-                  -H "Accept: application/vnd.github+json" \
-                  -H "X-GitHub-Api-Version: 2022-11-28" \
-                  "repos/$OWNER/$REPO/check-runs" \
-                  --input - \
-                  2> "$check_run_error" <<< "$create_payload"
-              )"; then
-                echo "::error::Failed to create check run via GitHub API."
-                cat "$check_run_error" >&2
+              if jq -e '.message? // empty' <<< "$check_run_response" > /dev/null; then
+                echo "::error::GitHub API returned an error message while creating check run."
+                jq -r '.message' <<< "$check_run_response" >&2
                 return 1
               fi
-            fi
-            if [[ -s "$check_run_error" ]]; then
-              cat "$check_run_error" >&2
-            fi
-
-            if jq -e '(.errors? // []) | length > 0' <<< "$check_run_response" > /dev/null; then
-              echo "::error::GitHub API returned errors while creating check run."
-              jq -r '.errors[]?.message // empty' <<< "$check_run_response" >&2
-              return 1
-            fi
-            if jq -e '.message? // empty' <<< "$check_run_response" > /dev/null; then
-              echo "::error::GitHub API returned an error message while creating check run."
-              jq -r '.message' <<< "$check_run_response" >&2
-              return 1
-            fi
-            if ! jq -e '.id and (.html_url // .url)' <<< "$check_run_response" > /dev/null; then
-              echo "::error::GitHub API response did not include check-run metadata."
-              jq -c '.' <<< "$check_run_response" >&2
-              return 1
-            fi
-
-            check_run_url="$(jq -r '.html_url // .url' <<< "$check_run_response")"
-            echo "Published check run: $check_run_url"
-          }
-
-          build_summary() {
-            local unresolved_count="$1"
-            local unacknowledged_top_level_count="$2"
-            local unresolved="$3"
-            local unacknowledged_top_level="$4"
-            local summary_pr_url="$5"
-
-            {
-              echo "PR: $summary_pr_url"
-              echo
-              echo "$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) or review summary comment(s) remain."
-              echo
-              if [[ "$unresolved_count" -gt 0 ]]; then
-                echo "### Unresolved PR review threads"
-                echo
-                jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0]?.author.login // "unknown"): \(.comments.nodes[0]?.url // "no comment URL")"' \
-                  <<< "$unresolved"
-                echo
+              if ! jq -e '.id and (.html_url // .url)' <<< "$check_run_response" > /dev/null; then
+                echo "::error::GitHub API response did not include check-run metadata."
+                jq -c '.' <<< "$check_run_response" >&2
+                return 1
               fi
-              if [[ "$unacknowledged_top_level_count" -gt 0 ]]; then
-                echo "### Unacknowledged top-level PR comments or review summaries"
-                echo
-                jq -r '.[] | "- by \(.author.login // "unknown") updated at \((.updatedAt // .createdAt)): \(.url // "no comment URL")"' \
-                  <<< "$unacknowledged_top_level"
-              fi
+
+              check_run_url="$(jq -r '.html_url // .url' <<< "$check_run_response")"
+              echo "Published check run: $check_run_url"
             }
-          }
 
-          if [[ "$base_ref" != "main" ]]; then
-            echo "Skipping PR #$PR_NUMBER because base branch is $base_ref, not main."
-            exit 0
-          fi
+            build_summary() {
+              local unresolved_count="$1"
+              local unacknowledged_top_level_count="$2"
+              local unresolved="$3"
+              local unacknowledged_top_level="$4"
+              local summary_pr_url="$5"
 
-          max_attempts=60
-          initial_sleep_seconds=5
-          max_sleep_seconds=30
-          sleep_seconds="$initial_sleep_seconds"
-          attempt=0
-          while [[ "$attempt" -lt "$max_attempts" ]]; do
-            attempt=$((attempt + 1))
-            status_response="$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json headRefOid,statusCheckRollup)" || {
+              {
+                echo "PR: $summary_pr_url"
+                echo
+                echo "$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) or review summary comment(s) remain."
+                echo
+                if [[ "$unresolved_count" -gt 0 ]]; then
+                  echo "### Unresolved PR review threads"
+                  echo
+                  jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0]?.author.login // "unknown"): \(.comments.nodes[0]?.url // "no comment URL")"' \
+                    <<< "$unresolved"
+                  echo
+                fi
+                if [[ "$unacknowledged_top_level_count" -gt 0 ]]; then
+                  echo "### Unacknowledged top-level PR comments or review summaries"
+                  echo
+                  jq -r '.[] | "- by \(.author.login // "unknown") updated at \((.updatedAt // .createdAt)): \(.url // "no comment URL")"' \
+                    <<< "$unacknowledged_top_level"
+                fi
+              }
+            }
+
+            if [[ "$base_ref" != "main" ]]; then
+              echo "Skipping PR #$PR_NUMBER because base branch is $base_ref, not main."
+              exit 0
+            fi
+
+            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+              max_attempts=3
+            else
+              max_attempts=60
+            fi
+            initial_sleep_seconds=5
+            max_sleep_seconds=30
+            sleep_seconds="$initial_sleep_seconds"
+            attempt=0
+            while [[ "$attempt" -lt "$max_attempts" ]]; do
+              attempt=$((attempt + 1))
+              status_response="$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json headRefOid,statusCheckRollup)" || {
+                if [[ "$attempt" -eq "$max_attempts" ]]; then
+                  echo "::error::Failed to fetch PR status after $max_attempts attempts."
+                  exit 1
+                fi
+                echo "::warning::Failed to fetch PR status on attempt $attempt; retrying."
+                sleep "$sleep_seconds"
+                if [[ "$sleep_seconds" -lt "$max_sleep_seconds" ]]; then
+                  sleep_seconds=$((sleep_seconds * 2))
+                  if [[ "$sleep_seconds" -gt "$max_sleep_seconds" ]]; then
+                    sleep_seconds="$max_sleep_seconds"
+                  fi
+                fi
+                continue
+              }
+              current_head_ref_oid="$(jq -r '.headRefOid' <<< "$status_response")"
+              if [[ "$current_head_ref_oid" != "$head_ref_oid" ]]; then
+                if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+                  echo "::notice::PR head changed from $head_ref_oid to $current_head_ref_oid while waiting for checks; continuing scheduled refresh on the latest head."
+                  head_ref_oid="$current_head_ref_oid"
+                else
+                  echo "::error::PR head changed from $head_ref_oid to $current_head_ref_oid while waiting for checks."
+                  exit 1
+                fi
+              fi
+
+              pending_checks="$(
+                jq -r '
+                  .statusCheckRollup[]
+                  | select(
+                      if .__typename == "CheckRun" then
+                        (.name != "Check unresolved comments"
+                          and .workflowName != "Review Thread Resolution"
+                          and (.status != "COMPLETED"))
+                      elif .__typename == "StatusContext" then
+                        (.state == "PENDING" or .state == "EXPECTED")
+                      else
+                        false
+                      end
+                    )
+                  | if .__typename == "CheckRun" then
+                      "\(.workflowName // "unknown") / \(.name // "unknown")"
+                    else
+                      "\(.context // "unknown")"
+                    end
+                ' <<< "$status_response"
+              )"
+
+              if [[ -z "$pending_checks" ]]; then
+                echo "All other PR checks have reached a terminal state."
+                break
+              fi
+
               if [[ "$attempt" -eq "$max_attempts" ]]; then
-                echo "::error::Failed to fetch PR status after $max_attempts attempts."
+                if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+                  echo "::notice::Other PR checks are still pending; refreshing review-thread state without waiting."
+                  echo "$pending_checks"
+                  break
+                fi
+                echo "::error::Timed out waiting for other PR checks to finish before evaluating review comments."
+                echo "$pending_checks" >&2
                 exit 1
               fi
-              echo "::warning::Failed to fetch PR status on attempt $attempt; retrying."
+
+              echo "Waiting for other PR checks to finish before evaluating review comments:"
+              echo "$pending_checks"
               sleep "$sleep_seconds"
               if [[ "$sleep_seconds" -lt "$max_sleep_seconds" ]]; then
                 sleep_seconds=$((sleep_seconds * 2))
@@ -325,92 +402,43 @@ jobs:
                   sleep_seconds="$max_sleep_seconds"
                 fi
               fi
-              continue
-            }
-            current_head_ref_oid="$(jq -r '.headRefOid' <<< "$status_response")"
-            if [[ "$current_head_ref_oid" != "$head_ref_oid" ]]; then
-              echo "::error::PR head changed from $head_ref_oid to $current_head_ref_oid while waiting for checks."
-              exit 1
-            fi
+            done
 
-            pending_checks="$(
-              jq -r '
-                .statusCheckRollup[]
-                | select(
-                    if .__typename == "CheckRun" then
-                      (.name != "Check unresolved comments"
-                        and .workflowName != "Review Thread Resolution"
-                        and (.status != "COMPLETED"))
-                    elif .__typename == "StatusContext" then
-                      (.state == "PENDING" or .state == "EXPECTED")
-                    else
-                      false
-                    end
-                  )
-                | if .__typename == "CheckRun" then
-                    "\(.workflowName // "unknown") / \(.name // "unknown")"
-                  else
-                    "\(.context // "unknown")"
-                  end
-              ' <<< "$status_response"
-            )"
+            unresolved='[]'
+            cursor=''
+            page=1
 
-            if [[ -z "$pending_checks" ]]; then
-              echo "All other PR checks have reached a terminal state."
-              break
-            fi
-
-            if [[ "$attempt" -eq "$max_attempts" ]]; then
-              echo "::error::Timed out waiting for other PR checks to finish before evaluating review comments."
-              echo "$pending_checks" >&2
-              exit 1
-            fi
-
-            echo "Waiting for other PR checks to finish before evaluating review comments:"
-            echo "$pending_checks"
-            sleep "$sleep_seconds"
-            if [[ "$sleep_seconds" -lt "$max_sleep_seconds" ]]; then
-              sleep_seconds=$((sleep_seconds * 2))
-              if [[ "$sleep_seconds" -gt "$max_sleep_seconds" ]]; then
-                sleep_seconds="$max_sleep_seconds"
+            while :; do
+              cursor_args=()
+              if [[ -n "$cursor" ]]; then
+                cursor_args=(-F cursor="$cursor")
               fi
-            fi
-          done
 
-          unresolved='[]'
-          cursor=''
-          page=1
-
-          while :; do
-            cursor_args=()
-            if [[ -n "$cursor" ]]; then
-              cursor_args=(-F cursor="$cursor")
-            fi
-
-            response="$(
-              gh api graphql \
-                -F owner="$OWNER" \
-                -F name="$REPO" \
-                -F number="$PR_NUMBER" \
-                "${cursor_args[@]}" \
-                -f query='
-                  query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
-                    repository(owner: $owner, name: $name) {
-                      pullRequest(number: $number) {
-                        reviewThreads(first: 100, after: $cursor) {
-                          pageInfo {
-                            hasNextPage
-                            endCursor
-                          }
-                          nodes {
-                            isResolved
-                            path
-                            line
-                            comments(first: 1) {
-                              nodes {
-                                url
-                                author {
-                                  login
+              response="$(
+                gh api graphql \
+                  -F owner="$OWNER" \
+                  -F name="$REPO" \
+                  -F number="$PR_NUMBER" \
+                  "${cursor_args[@]}" \
+                  -f query='
+                    query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+                      repository(owner: $owner, name: $name) {
+                        pullRequest(number: $number) {
+                          reviewThreads(first: 100, after: $cursor) {
+                            pageInfo {
+                              hasNextPage
+                              endCursor
+                            }
+                            nodes {
+                              isResolved
+                              path
+                              line
+                              comments(first: 1) {
+                                nodes {
+                                  url
+                                  author {
+                                    login
+                                  }
                                 }
                               }
                             }
@@ -418,262 +446,347 @@ jobs:
                         }
                       }
                     }
-                  }
-                '
-            )"
+                  '
+              )"
 
-            if jq -e '.errors? | length > 0' <<< "$response" > /dev/null; then
-              echo "::error::GitHub GraphQL returned errors while fetching PR review threads on page $page."
-              jq -r '.errors[]?.message' <<< "$response" >&2
-              exit 1
+              if jq -e '.errors? | length > 0' <<< "$response" > /dev/null; then
+                echo "::error::GitHub GraphQL returned errors while fetching PR review threads on page $page."
+                jq -r '.errors[]?.message' <<< "$response" >&2
+                exit 1
+              fi
+
+              if ! jq -e '.data.repository.pullRequest.reviewThreads.nodes
+                and .data.repository.pullRequest.reviewThreads.pageInfo' \
+                <<< "$response" > /dev/null; then
+                echo "::error::GitHub GraphQL response did not include PR review thread data on page $page."
+                jq -c '.' <<< "$response" >&2
+                exit 1
+              fi
+
+              page_unresolved="$(
+                jq -c '.data.repository.pullRequest.reviewThreads.nodes
+                  | map(select(.isResolved == false))' <<< "$response"
+              )"
+              unresolved="$(
+                jq -c -n --argjson current "$unresolved" --argjson page "$page_unresolved" \
+                  '$current + $page'
+              )"
+
+              has_next="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<< "$response")"
+              if [[ "$has_next" != "true" ]]; then
+                break
+              fi
+              cursor="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor' <<< "$response")"
+              page=$((page + 1))
+            done
+
+            unresolved_count="$(jq 'length' <<< "$unresolved")"
+            if [[ "$unresolved_count" -eq 0 ]]; then
+              echo "No unresolved PR review threads."
             fi
 
-            if ! jq -e '.data.repository.pullRequest.reviewThreads.nodes
-              and .data.repository.pullRequest.reviewThreads.pageInfo' \
-              <<< "$response" > /dev/null; then
-              echo "::error::GitHub GraphQL response did not include PR review thread data on page $page."
-              jq -c '.' <<< "$response" >&2
-              exit 1
-            fi
+            top_level_comments='[]'
+            cursor=''
+            page=1
 
-            page_unresolved="$(
-              jq -c '.data.repository.pullRequest.reviewThreads.nodes
-                | map(select(.isResolved == false))' <<< "$response"
-            )"
-            unresolved="$(
-              jq -c -n --argjson current "$unresolved" --argjson page "$page_unresolved" \
-                '$current + $page'
-            )"
+            while :; do
+              cursor_args=()
+              if [[ -n "$cursor" ]]; then
+                cursor_args=(-F cursor="$cursor")
+              fi
 
-            has_next="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<< "$response")"
-            if [[ "$has_next" != "true" ]]; then
-              break
-            fi
-            cursor="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor' <<< "$response")"
-            page=$((page + 1))
-          done
-
-          unresolved_count="$(jq 'length' <<< "$unresolved")"
-          if [[ "$unresolved_count" -eq 0 ]]; then
-            echo "No unresolved PR review threads."
-          fi
-
-          top_level_comments='[]'
-          cursor=''
-          page=1
-
-          while :; do
-            cursor_args=()
-            if [[ -n "$cursor" ]]; then
-              cursor_args=(-F cursor="$cursor")
-            fi
-
-            response="$(
-              gh api graphql \
-                -F owner="$OWNER" \
-                -F name="$REPO" \
-                -F number="$PR_NUMBER" \
-                "${cursor_args[@]}" \
-                -f query='
-                  query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
-                    repository(owner: $owner, name: $name) {
-                      pullRequest(number: $number) {
-                        comments(first: 100, after: $cursor) {
-                          pageInfo {
-                            hasNextPage
-                            endCursor
-                          }
-                          nodes {
-                            url
-                            createdAt
-                            updatedAt
-                            authorAssociation
-                            author {
-                              login
+              response="$(
+                gh api graphql \
+                  -F owner="$OWNER" \
+                  -F name="$REPO" \
+                  -F number="$PR_NUMBER" \
+                  "${cursor_args[@]}" \
+                  -f query='
+                    query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+                      repository(owner: $owner, name: $name) {
+                        pullRequest(number: $number) {
+                          comments(first: 100, after: $cursor) {
+                            pageInfo {
+                              hasNextPage
+                              endCursor
+                            }
+                            nodes {
+                              url
+                              createdAt
+                              updatedAt
+                              authorAssociation
+                              author {
+                                login
+                              }
                             }
                           }
                         }
                       }
                     }
-                  }
-                '
-            )"
+                  '
+              )"
 
-            if jq -e '.errors? | length > 0' <<< "$response" > /dev/null; then
-              echo "::error::GitHub GraphQL returned errors while fetching top-level PR comments on page $page."
-              jq -r '.errors[]?.message' <<< "$response" >&2
-              exit 1
-            fi
+              if jq -e '.errors? | length > 0' <<< "$response" > /dev/null; then
+                echo "::error::GitHub GraphQL returned errors while fetching top-level PR comments on page $page."
+                jq -r '.errors[]?.message' <<< "$response" >&2
+                exit 1
+              fi
 
-            if ! jq -e '.data.repository.pullRequest.comments.nodes
-              and .data.repository.pullRequest.comments.pageInfo' \
-              <<< "$response" > /dev/null; then
-              echo "::error::GitHub GraphQL response did not include top-level PR comments on page $page."
-              jq -c '.' <<< "$response" >&2
-              exit 1
-            fi
+              if ! jq -e '.data.repository.pullRequest.comments.nodes
+                and .data.repository.pullRequest.comments.pageInfo' \
+                <<< "$response" > /dev/null; then
+                echo "::error::GitHub GraphQL response did not include top-level PR comments on page $page."
+                jq -c '.' <<< "$response" >&2
+                exit 1
+              fi
 
-            page_comments="$(jq -c '.data.repository.pullRequest.comments.nodes' <<< "$response")"
-            top_level_comments="$(
-              jq -c -n --argjson current "$top_level_comments" --argjson page "$page_comments" \
-                '$current + $page'
-            )"
+              page_comments="$(jq -c '.data.repository.pullRequest.comments.nodes' <<< "$response")"
+              top_level_comments="$(
+                jq -c -n --argjson current "$top_level_comments" --argjson page "$page_comments" \
+                  '$current + $page'
+              )"
 
-            has_next="$(jq -r '.data.repository.pullRequest.comments.pageInfo.hasNextPage' <<< "$response")"
-            if [[ "$has_next" != "true" ]]; then
-              break
-            fi
-            cursor="$(jq -r '.data.repository.pullRequest.comments.pageInfo.endCursor' <<< "$response")"
-            page=$((page + 1))
-          done
+              has_next="$(jq -r '.data.repository.pullRequest.comments.pageInfo.hasNextPage' <<< "$response")"
+              if [[ "$has_next" != "true" ]]; then
+                break
+              fi
+              cursor="$(jq -r '.data.repository.pullRequest.comments.pageInfo.endCursor' <<< "$response")"
+              page=$((page + 1))
+            done
 
-          cursor=''
-          page=1
+            cursor=''
+            page=1
 
-          while :; do
-            cursor_args=()
-            if [[ -n "$cursor" ]]; then
-              cursor_args=(-F cursor="$cursor")
-            fi
+            while :; do
+              cursor_args=()
+              if [[ -n "$cursor" ]]; then
+                cursor_args=(-F cursor="$cursor")
+              fi
 
-            response="$(
-              gh api graphql \
-                -F owner="$OWNER" \
-                -F name="$REPO" \
-                -F number="$PR_NUMBER" \
-                "${cursor_args[@]}" \
-                -f query='
-                  query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
-                    repository(owner: $owner, name: $name) {
-                      pullRequest(number: $number) {
-                        reviews(first: 100, after: $cursor) {
-                          pageInfo {
-                            hasNextPage
-                            endCursor
-                          }
-                          nodes {
-                            url
-                            body
-                            state
-                            submittedAt
-                            updatedAt
-                            authorAssociation
-                            author {
-                              login
+              response="$(
+                gh api graphql \
+                  -F owner="$OWNER" \
+                  -F name="$REPO" \
+                  -F number="$PR_NUMBER" \
+                  "${cursor_args[@]}" \
+                  -f query='
+                    query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+                      repository(owner: $owner, name: $name) {
+                        pullRequest(number: $number) {
+                          reviews(first: 100, after: $cursor) {
+                            pageInfo {
+                              hasNextPage
+                              endCursor
+                            }
+                            nodes {
+                              url
+                              body
+                              state
+                              submittedAt
+                              updatedAt
+                              authorAssociation
+                              author {
+                                login
+                              }
                             }
                           }
                         }
                       }
                     }
-                  }
-                '
-            )"
+                  '
+              )"
 
-            if jq -e '.errors? | length > 0' <<< "$response" > /dev/null; then
-              echo "::error::GitHub GraphQL returned errors while fetching PR reviews on page $page."
-              jq -r '.errors[]?.message' <<< "$response" >&2
-              exit 1
-            fi
+              if jq -e '.errors? | length > 0' <<< "$response" > /dev/null; then
+                echo "::error::GitHub GraphQL returned errors while fetching PR reviews on page $page."
+                jq -r '.errors[]?.message' <<< "$response" >&2
+                exit 1
+              fi
 
-            if ! jq -e '.data.repository.pullRequest.reviews.nodes
-              and .data.repository.pullRequest.reviews.pageInfo' \
-              <<< "$response" > /dev/null; then
-              echo "::error::GitHub GraphQL response did not include PR review data on page $page."
-              jq -c '.' <<< "$response" >&2
-              exit 1
-            fi
+              if ! jq -e '.data.repository.pullRequest.reviews.nodes
+                and .data.repository.pullRequest.reviews.pageInfo' \
+                <<< "$response" > /dev/null; then
+                echo "::error::GitHub GraphQL response did not include PR review data on page $page."
+                jq -c '.' <<< "$response" >&2
+                exit 1
+              fi
 
-            page_review_comments="$(
-              jq -c '.data.repository.pullRequest.reviews.nodes
-                | map(select((.body // "") != "" and .state != "DISMISSED"))
-                | map({
-                    url,
-                    createdAt: .submittedAt,
-                    updatedAt: (.updatedAt // .submittedAt),
-                    authorAssociation,
-                    author
-                  })' <<< "$response"
-            )"
-            top_level_comments="$(
-              jq -c -n --argjson current "$top_level_comments" --argjson page "$page_review_comments" \
-                '$current + $page'
-            )"
+              page_review_comments="$(
+                jq -c '.data.repository.pullRequest.reviews.nodes
+                  | map(select((.body // "") != "" and .state != "DISMISSED"))
+                  | map({
+                      url,
+                      createdAt: .submittedAt,
+                      updatedAt: (.updatedAt // .submittedAt),
+                      authorAssociation,
+                      author
+                    })' <<< "$response"
+              )"
+              top_level_comments="$(
+                jq -c -n --argjson current "$top_level_comments" --argjson page "$page_review_comments" \
+                  '$current + $page'
+              )"
 
-            has_next="$(jq -r '.data.repository.pullRequest.reviews.pageInfo.hasNextPage' <<< "$response")"
-            if [[ "$has_next" != "true" ]]; then
-              break
-            fi
-            cursor="$(jq -r '.data.repository.pullRequest.reviews.pageInfo.endCursor' <<< "$response")"
-            page=$((page + 1))
-          done
+              has_next="$(jq -r '.data.repository.pullRequest.reviews.pageInfo.hasNextPage' <<< "$response")"
+              if [[ "$has_next" != "true" ]]; then
+                break
+              fi
+              cursor="$(jq -r '.data.repository.pullRequest.reviews.pageInfo.endCursor' <<< "$response")"
+              page=$((page + 1))
+            done
 
-          unacknowledged_top_level="$(
-            jq -c --arg pr_author "$pr_author" --arg pr_author_type "$pr_author_type" '
-              . as $comments
-              | [
-                  $comments[]
-                  | select(
-                      ((.author.login // "") != $pr_author)
-                      and (
-                        $pr_author_type != "Bot"
-                        or (
-                          .authorAssociation != "OWNER"
-                          and .authorAssociation != "MEMBER"
-                          and .authorAssociation != "COLLABORATOR"
-                        )
-                      )
-                    )
-                  | . as $comment
-                  | select([
-                      $comments[]
-                      # Human-authored PRs require the PR author to acknowledge.
-                      # Bot-authored PRs allow maintainers to acknowledge on behalf of the bot.
-                      | select(
-                          (.author.login // "") == $pr_author
+            unacknowledged_top_level="$(
+              jq -c --arg pr_author "$pr_author" --arg pr_author_type "$pr_author_type" '
+                . as $comments
+                | [
+                    $comments[]
+                    | select(
+                        ((.author.login // "") != $pr_author)
+                        and (
+                          $pr_author_type != "Bot"
                           or (
-                            $pr_author_type == "Bot"
-                            and (
-                              .authorAssociation == "OWNER"
-                              or .authorAssociation == "MEMBER"
-                              or .authorAssociation == "COLLABORATOR"
-                            )
+                            .authorAssociation != "OWNER"
+                            and .authorAssociation != "MEMBER"
+                            and .authorAssociation != "COLLABORATOR"
                           )
                         )
-                      | select(.createdAt > ($comment.updatedAt // $comment.createdAt))
-                    ] | length == 0)
-                ]
-            ' <<< "$top_level_comments"
-          )"
+                      )
+                    | . as $comment
+                    | select([
+                        $comments[]
+                        # Human-authored PRs require the PR author to acknowledge.
+                        # Bot-authored PRs allow maintainers to acknowledge on behalf of the bot.
+                        | select(
+                            (.author.login // "") == $pr_author
+                            or (
+                              $pr_author_type == "Bot"
+                              and (
+                                .authorAssociation == "OWNER"
+                                or .authorAssociation == "MEMBER"
+                                or .authorAssociation == "COLLABORATOR"
+                              )
+                            )
+                          )
+                        | select(.createdAt > ($comment.updatedAt // $comment.createdAt))
+                      ] | length == 0)
+                  ]
+              ' <<< "$top_level_comments"
+            )"
 
-          unacknowledged_top_level_count="$(jq 'length' <<< "$unacknowledged_top_level")"
-          if [[ "$unacknowledged_top_level_count" -eq 0 ]]; then
-            echo "No unacknowledged top-level PR comments or review summaries."
-          fi
-
-          summary="$(build_summary \
-            "$unresolved_count" \
-            "$unacknowledged_top_level_count" \
-            "$unresolved" \
-            "$unacknowledged_top_level" \
-            "$pr_url")"
-          printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
-
-          refresh_head_ref_oid
-
-          if [[ "$unresolved_count" -eq 0 && "$unacknowledged_top_level_count" -eq 0 ]]; then
-            # issue_comment runs may create a synthetic head check. Other events
-            # only update one if it already exists, clearing stale conclusions.
-            if should_publish_head_check; then
-              publish_head_check "success" "$summary"
+            unacknowledged_top_level_count="$(jq 'length' <<< "$unacknowledged_top_level")"
+            if [[ "$unacknowledged_top_level_count" -eq 0 ]]; then
+              echo "No unacknowledged top-level PR comments or review summaries."
             fi
-            exit 0
+
+            summary="$(build_summary \
+              "$unresolved_count" \
+              "$unacknowledged_top_level_count" \
+              "$unresolved" \
+              "$unacknowledged_top_level" \
+              "$pr_url")"
+            printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
+
+            if ! refresh_head_ref_oid; then
+              exit 1
+            fi
+
+            if [[ "$unresolved_count" -eq 0 && "$unacknowledged_top_level_count" -eq 0 ]]; then
+              # Non-PR-head events need a synthetic head check so branch protection
+              # sees the latest review-thread state on the PR commit.
+              if should_publish_head_check; then
+                publish_head_check "success" "$summary"
+              fi
+              exit 0
+            fi
+
+            # Non-comment events update an existing synthetic check so a previous
+            # issue_comment failure cannot remain stale on the PR head.
+            if should_publish_head_check; then
+              publish_head_check "failure" "$summary"
+            fi
+
+            echo "::error::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) or review summary comment(s) remain. Resolve or acknowledge all review conversations before merging."
+            exit 1
+
+
+          )
+
+          dispatch_refresh_for_open_prs() {
+            local pr_list_response
+            local listed_pr_number
+            local dispatch_payload
+            local dispatch_errors=0
+            local pr_number
+            local pr_numbers=()
+
+            pr_list_response="$(
+              gh pr list \
+                --repo "$OWNER/$REPO" \
+                --base main \
+                --state open \
+                --limit 1000 \
+                --json number \
+                --jq '.[].number'
+            )" || {
+              echo "::error::Failed to list open PRs targeting main."
+              return 1
+            }
+
+            while IFS= read -r listed_pr_number; do
+              if [[ -n "$listed_pr_number" ]]; then
+                pr_numbers+=("$listed_pr_number")
+              fi
+            done <<< "$pr_list_response"
+
+            if [[ "${#pr_numbers[@]}" -eq 0 ]]; then
+              echo "No open PRs targeting main."
+              return 0
+            fi
+
+            for pr_number in "${pr_numbers[@]}"; do
+              dispatch_payload="$(
+                jq -n \
+                  --arg ref "main" \
+                  --arg pr_number "$pr_number" \
+                  '{ref: $ref, inputs: {pr_number: $pr_number}}'
+              )"
+              if gh api \
+                --method POST \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "repos/$OWNER/$REPO/actions/workflows/review-thread-resolution.yml/dispatches" \
+                --input - <<< "$dispatch_payload"; then
+                echo "Dispatched review-thread refresh for PR #$pr_number."
+              else
+                echo "::error::Failed to dispatch review-thread refresh for PR #$pr_number."
+                dispatch_errors=$((dispatch_errors + 1))
+              fi
+            done
+
+            if [[ "$dispatch_errors" -gt 0 ]]; then
+              echo "::error::Failed to dispatch review-thread refresh for $dispatch_errors PR(s)."
+              return 1
+            fi
+
+            return 0
+          }
+
+          if [[ "$EVENT_NAME" == "schedule" ]]; then
+            dispatch_refresh_for_open_prs
+            exit $?
           fi
 
-          # Non-comment events update an existing synthetic check so a previous
-          # issue_comment failure cannot remain stale on the PR head.
-          if should_publish_head_check; then
-            publish_head_check "failure" "$summary"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && -z "${PR_NUMBER:-}" ]]; then
+            dispatch_refresh_for_open_prs
+            exit $?
           fi
 
-          echo "::error::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) or review summary comment(s) remain. Resolve or acknowledge all review conversations before merging."
-          exit 1
+          if [[ -z "${PR_NUMBER:-}" ]]; then
+            echo "::error::PR number is required for $EVENT_NAME."
+            exit 1
+          fi
+          if [[ ! "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::PR number must be numeric: $PR_NUMBER"
+            exit 1
+          fi
+
+          check_pr "$PR_NUMBER"
