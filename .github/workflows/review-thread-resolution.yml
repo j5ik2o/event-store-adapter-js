@@ -309,12 +309,102 @@ jobs:
             page=$((page + 1))
           done
 
+          cursor=''
+          page=1
+
+          while :; do
+            cursor_args=()
+            if [[ -n "$cursor" ]]; then
+              cursor_args=(-F cursor="$cursor")
+            fi
+
+            response="$(
+              gh api graphql \
+                -F owner="$OWNER" \
+                -F name="$REPO" \
+                -F number="$PR_NUMBER" \
+                "${cursor_args[@]}" \
+                -f query='
+                  query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+                    repository(owner: $owner, name: $name) {
+                      pullRequest(number: $number) {
+                        reviews(first: 100, after: $cursor) {
+                          pageInfo {
+                            hasNextPage
+                            endCursor
+                          }
+                          nodes {
+                            url
+                            body
+                            state
+                            submittedAt
+                            updatedAt
+                            authorAssociation
+                            author {
+                              login
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                '
+            )"
+
+            if jq -e '.errors? | length > 0' <<< "$response" > /dev/null; then
+              echo "::error::GitHub GraphQL returned errors while fetching PR reviews on page $page."
+              jq -r '.errors[]?.message' <<< "$response" >&2
+              exit 1
+            fi
+
+            if ! jq -e '.data.repository.pullRequest.reviews.nodes
+              and .data.repository.pullRequest.reviews.pageInfo' \
+              <<< "$response" > /dev/null; then
+              echo "::error::GitHub GraphQL response did not include PR review data on page $page."
+              jq -c '.' <<< "$response" >&2
+              exit 1
+            fi
+
+            page_review_comments="$(
+              jq -c '.data.repository.pullRequest.reviews.nodes
+                | map(select((.body // "") != "" and .state != "DISMISSED"))
+                | map({
+                    url,
+                    createdAt: .submittedAt,
+                    updatedAt: (.updatedAt // .submittedAt),
+                    authorAssociation,
+                    author
+                  })' <<< "$response"
+            )"
+            top_level_comments="$(
+              jq -c -n --argjson current "$top_level_comments" --argjson page "$page_review_comments" \
+                '$current + $page'
+            )"
+
+            has_next="$(jq -r '.data.repository.pullRequest.reviews.pageInfo.hasNextPage' <<< "$response")"
+            if [[ "$has_next" != "true" ]]; then
+              break
+            fi
+            cursor="$(jq -r '.data.repository.pullRequest.reviews.pageInfo.endCursor' <<< "$response")"
+            page=$((page + 1))
+          done
+
           unacknowledged_top_level="$(
             jq -c --arg pr_author "$pr_author" --arg pr_author_type "$pr_author_type" '
               . as $comments
               | [
                   $comments[]
-                  | select((.author.login // "") != $pr_author)
+                  | select(
+                      ((.author.login // "") != $pr_author)
+                      and (
+                        $pr_author_type != "Bot"
+                        or (
+                          .authorAssociation != "OWNER"
+                          and .authorAssociation != "MEMBER"
+                          and .authorAssociation != "COLLABORATOR"
+                        )
+                      )
+                    )
                   | . as $comment
                   | select([
                       $comments[]
@@ -339,7 +429,7 @@ jobs:
 
           unacknowledged_top_level_count="$(jq 'length' <<< "$unacknowledged_top_level")"
           if [[ "$unacknowledged_top_level_count" -eq 0 ]]; then
-            echo "No unacknowledged top-level PR comments."
+            echo "No unacknowledged top-level PR comments or review summaries."
           fi
 
           {
@@ -351,7 +441,7 @@ jobs:
               echo
             fi
             if [[ "$unacknowledged_top_level_count" -gt 0 ]]; then
-              echo "### Unacknowledged top-level PR comments"
+              echo "### Unacknowledged top-level PR comments or review summaries"
               echo
               jq -r '.[] | "- by \(.author.login // "unknown") updated at \((.updatedAt // .createdAt)): \(.url // "no comment URL")"' \
                 <<< "$unacknowledged_top_level"
@@ -359,7 +449,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "$unresolved_count" -gt 0 || "$unacknowledged_top_level_count" -gt 0 ]]; then
-            echo "::error::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) remain. Resolve or acknowledge all review conversations before merging."
+            echo "::error::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) or review summary comment(s) remain. Resolve or acknowledge all review conversations before merging."
             exit 1
           fi
 

@@ -19,6 +19,8 @@ jobs:
   changes:
     name: Detect CI-relevant changes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       run_code_checks: ${{ steps.filter.outputs.run_code_checks }}
     steps:
@@ -26,6 +28,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Detect changed paths
         id: filter
         env:
@@ -42,7 +45,7 @@ jobs:
           fi
 
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            base="${BASE_SHA}"
+            base="$(git merge-base "${BASE_SHA}" "${HEAD_SHA}")"
             head="${HEAD_SHA}"
           else
             base="${BEFORE_SHA}"
@@ -98,12 +101,16 @@ jobs:
   lint:
     name: Run lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     needs:
       - changes
     if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -167,7 +174,7 @@ jobs:
   codecov-status:
     name: Codecov Status
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     needs:
       - changes
       - test
@@ -231,7 +238,7 @@ jobs:
                       throw new Error(`${checkName} failed with state=${status.state}`);
                     }
                   } else {
-                    core.info(`${checkName}: waiting for Codecov status (${attempt}/60)`);
+                    core.info(`${checkName}: waiting for Codecov status (${attempt}/90)`);
                   }
                 }
 
