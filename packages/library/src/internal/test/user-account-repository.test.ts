@@ -6,8 +6,10 @@ import {
   Wait,
 } from "testcontainers";
 import { ulid } from "ulid";
-import type { EventStore as EventStoreType } from "../../event-store";
-import { EventStore } from "../../event-store";
+import {
+  EventStore,
+  type EventStore as EventStoreType,
+} from "../../event-store";
 import {
   createDynamoDBClient,
   createJournalTable,
