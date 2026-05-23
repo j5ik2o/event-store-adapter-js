@@ -37,6 +37,11 @@ jobs:
         run: |
           set -euo pipefail
 
+          if [[ -z "${PR_NUMBER:-}" ]]; then
+            echo "::error::PR_NUMBER is empty."
+            exit 1
+          fi
+
           pr_response="$(
             gh api graphql \
               -F owner="$OWNER" \
