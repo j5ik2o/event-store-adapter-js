@@ -12,7 +12,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           run_install: false
       - uses: actions/setup-node@v6
