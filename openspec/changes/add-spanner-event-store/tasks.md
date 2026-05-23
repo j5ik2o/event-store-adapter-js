@@ -6,7 +6,7 @@
 - [x] 1.4 既存の hash distribution 方針を使う internal `DefaultShardSelector` を追加する。
 - [x] 1.5 caller-managed `Database`、table names、shard count、converters、optional serializers、optional shard selector、optional retention、optional logger を持つ `SpannerEventStoreInput` を追加する。
 - [x] 1.6 新しい public Spanner input、shard selector、shard ID types を `src/index.ts` から export する。
-- [x] 1.7 既存の DynamoDB / memory factory behavior を変えずに `EventStoreFactory.ofSpanner(...)` を追加する。
+- [x] 1.7 既存の DynamoDB / memory construction behavior を変えずに `EventStore.ofSpanner(...)` を追加する。
 
 ## 2. Spanner Core Implementation
 
@@ -42,6 +42,6 @@
 
 - [x] 5.1 Spanner GoogleSQL schema documentation を追加する。
 - [x] 5.2 Change Streams は初期 scope 外であり、将来の downstream integration では `snapshot` ではなく `journal` を監視対象にすることを document する。
-- [x] 5.3 `EventStoreFactory.ofSpanner(...)` の README usage を追加する。
+- [x] 5.3 `EventStore.ofSpanner(...)` の README usage を追加する。
 - [x] 5.4 formatter、lint、typecheck/build、relevant Jest tests を実行する。
 - [x] 5.5 prohibited vague suffixes と swallowed `Result`-like promises がないか implementation を review する。

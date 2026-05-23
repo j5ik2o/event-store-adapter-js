@@ -9,7 +9,7 @@ Cloud Spanner 対応でもこの契約を再利用しつつ、Spanner のリレ�
 **Goals:**
 
 - 既存 adapter と同じ4つの public operation を持つ Spanner-backed `EventStore` を追加する。
-- `EventStoreFactory.ofSpanner(...)` から Spanner 実装を作成できるようにする。
+- `EventStore.ofSpanner(...)` から Spanner 実装を作成できるようにする。
 - DynamoDB 版が caller-managed client を受け取る方針に合わせ、caller-managed Spanner `Database` を受け取る。
 - serializer が生成した bytes を Spanner に保存し、payload 処理を DynamoDB と共有する。
 - `ShardId` と共通 `ShardSelector` を使い、DynamoDB / Spanner の shard 選択を明示的かつ VO-oriented にする。
@@ -29,7 +29,7 @@ Cloud Spanner 対応でもこの契約を再利用しつつ、Spanner のリレ�
 
 ### 既存 EventStore 契約の背後に Spanner 専用 adapter を追加する
 
-`SpannerEventStore` は `EventStore` を実装し、`EventStoreFactory.ofSpanner(...)` から構築する。これにより repository code は storage-neutral のままになり、既存の `ofDynamoDB(...)` / `ofMemory(...)` とも揃う。
+`SpannerEventStore` は `EventStore` を実装し、`EventStore.ofSpanner(...)` から構築する。これにより repository code は storage-neutral のままになり、既存の `ofDynamoDB(...)` / `ofMemory(...)` とも揃う。
 
 代替案として generic SQL adapter も考えられるが、2つ目の SQL backend がない段階で抽象化すると、最初の Spanner 実装の検証が難しくなる。
 

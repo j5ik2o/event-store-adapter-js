@@ -61,7 +61,7 @@ class UserAccountRepository {
 The following is an example of the repository usage.
 
 ```typescript
-const eventStore = EventStoreFactory.ofDynamoDB<
+const eventStore = EventStore.ofDynamoDB<
     UserAccountId,
     UserAccount,
     UserAccountEvent
@@ -77,9 +77,9 @@ const eventStore = EventStoreFactory.ofDynamoDB<
     snapshotConverter: convertJSONToUserAccount,
 });
 // if you want to use in-memory event store, use the following code.
-// const eventStore = EventStoreFactory.ofMemory<UserAccountId, UserAccount, UserAccountEvent>({});
+// const eventStore = EventStore.ofMemory<UserAccountId, UserAccount, UserAccountEvent>({});
 // if you want to use Cloud Spanner, pass a caller-managed Database.
-// const eventStore = EventStoreFactory.ofSpanner<UserAccountId, UserAccount, UserAccountEvent>({
+// const eventStore = EventStore.ofSpanner<UserAccountId, UserAccount, UserAccountEvent>({
 //     database: spannerDatabase,
 //     journalTableName: "journal",
 //     snapshotTableName: "snapshot",
