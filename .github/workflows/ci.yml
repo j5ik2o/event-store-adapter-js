@@ -1,28 +1,131 @@
 name: CI
+
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
   pull_request:
-    branches: [ "main" ]
+    branches:
+      - main
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  lint:
+  changes:
+    name: Detect CI-relevant changes
     runs-on: ubuntu-latest
-    name: "Run lint"
+    outputs:
+      run_code_checks: ${{ steps.filter.outputs.run_code_checks }}
     steps:
-    - uses: actions/checkout@v6
-    - uses: pnpm/action-setup@v4
-      with:
-        run_install: false
-    - uses: actions/setup-node@v6
-      with:
-        node-version: 24.x
-        cache: 'pnpm'
-    - run: corepack enable
-    - run: pnpm install --frozen-lockfile
-    - run: pnpm run lint
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Detect changed paths
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${EVENT_NAME}" == "schedule" || "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            base="${BASE_SHA}"
+            head="${HEAD_SHA}"
+          else
+            base="${BEFORE_SHA}"
+            head="${HEAD_SHA}"
+          fi
+
+          if [[ -z "${base}" ]]; then
+            echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${base}" =~ ^0{40}$ ]]; then
+            echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          changed_entries="$(git diff --name-status -M "${base}" "${head}")"
+          if [[ -z "${changed_entries}" ]]; then
+            echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          is_docs_only_path() {
+            local path="$1"
+            [[ "${path}" == *.md \
+              || "${path}" == *.rst \
+              || "${path}" == *.txt \
+              || "${path}" == docs/* \
+              || "${path}" == README* \
+              || "${path}" == CHANGELOG* \
+              || "${path}" == LICENSE* ]]
+          }
+
+          run_code_checks=false
+          while IFS=$'\t' read -r status path_a path_b; do
+            paths=("${path_a}")
+            case "${status}" in
+              R* | C*)
+                paths=("${path_a}" "${path_b}")
+                ;;
+            esac
+
+            for path in "${paths[@]}"; do
+              if ! is_docs_only_path "${path}"; then
+                run_code_checks=true
+                break 2
+              fi
+            done
+          done <<< "${changed_entries}"
+
+          echo "run_code_checks=${run_code_checks}" >> "${GITHUB_OUTPUT}"
+
+  lint:
+    name: Run lint
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+    if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          cache: pnpm
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run lint
+        run: pnpm run lint
+
   test:
     runs-on: ubuntu-latest
-    needs: lint
+    needs:
+      - changes
+      - lint
+    if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -32,25 +135,179 @@ jobs:
       matrix:
         node-version: [20.x]
     steps:
-    - uses: actions/checkout@v6
-    - uses: pnpm/action-setup@v4
-      with:
-        run_install: false
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v6
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'pnpm'
-    - run: corepack enable
-    - run: pnpm install --frozen-lockfile
-    - run: pnpm run build
-    - run: pnpm --filter event-store-adapter-js run coverage --runInBand
-    - name: Verify coverage file exists
-      run: test -f "${GITHUB_WORKSPACE}/packages/library/coverage/lcov.info"
-    - name: Upload coverage to Codecov
-      if: success()
-      uses: codecov/codecov-action@v6
-      with:
-        files: ./packages/library/coverage/lcov.info
-        use_oidc: true
-        fail_ci_if_error: true
+      - name: Checkout source
+        uses: actions/checkout@v6
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      - name: Generate coverage
+        run: pnpm --filter event-store-adapter-js run coverage --runInBand
+      - name: Verify coverage file exists
+        run: test -f "${GITHUB_WORKSPACE}/packages/library/coverage/lcov.info"
+      - name: Upload coverage to Codecov
+        if: success()
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2
+        with:
+          files: ./packages/library/coverage/lcov.info
+          use_oidc: true
+          fail_ci_if_error: true
+
+  codecov-status:
+    name: Codecov Status
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - test
+    if: ${{ always() && needs.changes.result == 'success' && needs.changes.outputs.run_code_checks == 'true' }}
+    permissions:
+      contents: read
+      checks: read
+      statuses: read
+    steps:
+      - name: Wait for Codecov status checks
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          COVERAGE_RESULT: ${{ needs.test.result }}
+          CODECOV_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
+        with:
+          script: |
+            const coverageResult = process.env.COVERAGE_RESULT;
+            if (coverageResult !== "success") {
+              throw new Error(`coverage failed or was skipped: ${coverageResult}`);
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const ref = process.env.CODECOV_SHA;
+            const requiredChecks = ["codecov/project"];
+
+            if (process.env.IS_PULL_REQUEST === "true") {
+              requiredChecks.push("codecov/patch");
+            } else {
+              core.info("Skipping codecov/patch outside pull_request events");
+            }
+
+            for (const checkName of requiredChecks) {
+              await waitForCheck(checkName);
+            }
+
+            async function waitForCheck(checkName) {
+              for (let attempt = 1; attempt <= 60; attempt += 1) {
+                const run = await latestCheckRun(checkName);
+
+                if (run) {
+                  core.info(`${checkName}: status=${run.status} conclusion=${run.conclusion || ""} url=${run.html_url}`);
+
+                  if (run.status === "completed") {
+                    if (run.conclusion === "success") {
+                      return;
+                    }
+
+                    throw new Error(`${checkName} failed with conclusion=${run.conclusion}`);
+                  }
+                } else {
+                  const status = await latestCommitStatus(checkName);
+                  if (status) {
+                    core.info(`${checkName}: state=${status.state} url=${status.target_url || ""}`);
+
+                    if (status.state === "success") {
+                      return;
+                    }
+                    if (status.state === "failure" || status.state === "error") {
+                      throw new Error(`${checkName} failed with state=${status.state}`);
+                    }
+                  } else {
+                    core.info(`${checkName}: waiting for Codecov status (${attempt}/60)`);
+                  }
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 10000));
+              }
+
+              core.warning(`${checkName} did not report within timeout; coverage upload already succeeded`);
+            }
+
+            async function latestCheckRun(checkName) {
+              const response = await github.rest.checks.listForRef({
+                owner,
+                repo,
+                ref,
+                check_name: checkName,
+                per_page: 100,
+              });
+              return response.data.check_runs
+                .filter((checkRun) => checkRun.name === checkName)
+                .sort((left, right) => {
+                  const rightTime = Date.parse(right.started_at || right.created_at);
+                  const leftTime = Date.parse(left.started_at || left.created_at);
+                  return rightTime - leftTime;
+                })[0];
+            }
+
+            async function latestCommitStatus(checkName) {
+              const response = await github.rest.repos.getCombinedStatusForRef({ owner, repo, ref });
+              return response.data.statuses.find((status) => status.context === checkName);
+            }
+
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - lint
+      - test
+      - codecov-status
+    if: always()
+    steps:
+      - name: All checks passed
+        env:
+          RUN_CODE_CHECKS: ${{ needs.changes.outputs.run_code_checks }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "changes failed"
+            exit 1
+          fi
+
+          run_code_checks="${RUN_CODE_CHECKS}"
+          case "${run_code_checks}" in
+            true)
+              expected_code_job_result="success"
+              ;;
+            false)
+              expected_code_job_result="skipped"
+              ;;
+            *)
+              echo "changes did not report valid run_code_checks: ${run_code_checks}"
+              exit 1
+              ;;
+          esac
+
+          require_result() {
+            local name="$1"
+            local actual="$2"
+            local expected="$3"
+            if [[ "${actual}" != "${expected}" ]]; then
+              echo "${name} was ${actual}; expected ${expected}"
+              exit 1
+            fi
+          }
+
+          require_result "lint" "${{ needs.lint.result }}" "${expected_code_job_result}"
+          require_result "test" "${{ needs.test.result }}" "${expected_code_job_result}"
+          require_result "codecov-status" "${{ needs['codecov-status'].result }}" "${expected_code_job_result}"
+          echo "All CI checks passed successfully"
