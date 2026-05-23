@@ -24,7 +24,7 @@ concurrency:
 jobs:
   unresolved-comments:
     name: Check unresolved comments
-    if: ${{ github.event.pull_request != null || github.event.issue.pull_request != null }}
+    if: ${{ github.event.pull_request != null || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
