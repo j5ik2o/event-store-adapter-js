@@ -92,11 +92,22 @@ jobs:
           head_ref_oid="$(jq -r '.data.repository.pullRequest.headRefOid' <<< "$pr_response")"
           pr_url="$(jq -r '.data.repository.pullRequest.url' <<< "$pr_response")"
 
-          should_publish_head_check() {
-            if [[ "$EVENT_NAME" != "issue_comment" ]]; then
-              return 1
-            fi
+          find_existing_head_check() {
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "repos/$OWNER/$REPO/commits/$head_ref_oid/check-runs?check_name=Check%20unresolved%20comments&per_page=100" \
+              --jq '
+                [
+                  .check_runs[]
+                  | select(.output.title == "Review Thread Resolution")
+                  | .id
+                ]
+                | first // empty
+              '
+          }
 
+          should_publish_head_check() {
             if [[ -z "$head_repository" ]]; then
               echo "::warning::Skipping synthetic check-run publication because PR head repository metadata is unavailable." >&2
               return 1
@@ -123,6 +134,11 @@ jobs:
             local check_run_error
             local existing_check_run_id
             local check_run_url
+            local create_if_missing="false"
+
+            if [[ "$EVENT_NAME" == "issue_comment" ]]; then
+              create_if_missing="true"
+            fi
 
             if (( ${#check_summary} > max_summary_chars )); then
               truncation_suffix=$'\n\n... truncated for GitHub Checks API summary limit ...'
@@ -173,20 +189,7 @@ jobs:
                 }'
             )"
 
-            existing_check_run_id="$(
-              gh api \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                "repos/$OWNER/$REPO/commits/$head_ref_oid/check-runs?check_name=Check%20unresolved%20comments&per_page=100" \
-                --jq '
-                  [
-                    .check_runs[]
-                    | select(.output.title == "Review Thread Resolution")
-                    | .id
-                  ]
-                  | first // empty
-                '
-            )"
+            existing_check_run_id="$(find_existing_head_check)"
 
             check_run_error="$(mktemp)"
             trap 'rm -f "$check_run_error"; trap - RETURN' RETURN
@@ -205,6 +208,11 @@ jobs:
                 return 1
               fi
             else
+              if [[ "$create_if_missing" != "true" ]]; then
+                echo "No existing synthetic check run to update."
+                return 0
+              fi
+
               if ! check_run_response="$(
                 gh api \
                   --method POST \
@@ -630,15 +638,16 @@ jobs:
           printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "$unresolved_count" -eq 0 && "$unacknowledged_top_level_count" -eq 0 ]]; then
-            # Top-level PR comments arrive as issue_comment and need a synthetic
-            # head check because that event is not naturally attached to the PR head.
+            # issue_comment runs may create a synthetic head check. Other events
+            # only update one if it already exists, clearing stale conclusions.
             if should_publish_head_check; then
               publish_head_check "success" "$summary"
             fi
             exit 0
           fi
 
-          # Other review events already create their own PR-head workflow check.
+          # Non-comment events update an existing synthetic check so a previous
+          # issue_comment failure cannot remain stale on the PR head.
           if should_publish_head_check; then
             publish_head_check "failure" "$summary"
           fi
