@@ -12,8 +12,8 @@ on:
     types: [created, edited, deleted]
 
 permissions:
-  checks: read
   contents: read
+  checks: write
   issues: read
   pull-requests: read
 
@@ -34,6 +34,8 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
           PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
 
@@ -56,7 +58,11 @@ jobs:
                         login
                       }
                       baseRefName
+                      headRepository {
+                        nameWithOwner
+                      }
                       headRefOid
+                      url
                     }
                   }
                 }
@@ -70,7 +76,9 @@ jobs:
           fi
 
           if ! jq -e '.data.repository.pullRequest.author.login
-            and .data.repository.pullRequest.baseRefName' \
+            and .data.repository.pullRequest.baseRefName
+            and .data.repository.pullRequest.headRefOid
+            and .data.repository.pullRequest.url' \
             <<< "$pr_response" > /dev/null; then
             echo "::error::GitHub GraphQL response did not include PR metadata."
             jq -c '.' <<< "$pr_response" >&2
@@ -80,7 +88,142 @@ jobs:
           pr_author="$(jq -r '.data.repository.pullRequest.author.login' <<< "$pr_response")"
           pr_author_type="$(jq -r '.data.repository.pullRequest.author.__typename' <<< "$pr_response")"
           base_ref="$(jq -r '.data.repository.pullRequest.baseRefName' <<< "$pr_response")"
+          head_repository="$(jq -r '.data.repository.pullRequest.headRepository.nameWithOwner // ""' <<< "$pr_response")"
           head_ref_oid="$(jq -r '.data.repository.pullRequest.headRefOid' <<< "$pr_response")"
+          pr_url="$(jq -r '.data.repository.pullRequest.url' <<< "$pr_response")"
+
+          should_publish_head_check() {
+            if [[ "$EVENT_NAME" != "issue_comment" ]]; then
+              return 1
+            fi
+
+            if [[ -z "$head_repository" ]]; then
+              echo "::warning::Skipping synthetic check-run publication because PR head repository metadata is unavailable." >&2
+              return 1
+            fi
+
+            if [[ "$head_repository" != "$OWNER/$REPO" ]]; then
+              echo "::notice::Skipping synthetic check-run publication for fork PR head ($head_repository)." >&2
+              return 1
+            fi
+
+            if [[ "$pr_author" == "dependabot[bot]" ]]; then
+              echo "::warning::Skipping synthetic check-run publication for Dependabot PR author." >&2
+              return 1
+            fi
+
+            return 0
+          }
+
+          publish_head_check() {
+            local conclusion="$1"
+            local summary="$2"
+            local check_summary="$summary"
+            local max_summary_chars=60000
+            local truncation_suffix
+            local available_chars
+            local request_payload
+            local check_run_response
+            local check_run_error
+            local check_run_url
+
+            if (( ${#check_summary} > max_summary_chars )); then
+              truncation_suffix=$'\n\n... truncated for GitHub Checks API summary limit ...'
+              available_chars=$(( max_summary_chars - ${#truncation_suffix} ))
+              if (( available_chars < 1 )); then
+                check_summary="${truncation_suffix:0:max_summary_chars}"
+              else
+                check_summary="${check_summary:0:available_chars}${truncation_suffix}"
+              fi
+            fi
+
+            request_payload="$(
+              jq -n \
+                --arg name "Check unresolved comments" \
+                --arg head_sha "$head_ref_oid" \
+                --arg conclusion "$conclusion" \
+                --arg details_url "$RUN_URL" \
+                --arg title "Review Thread Resolution" \
+                --arg summary "$check_summary" \
+                '{
+                  name: $name,
+                  head_sha: $head_sha,
+                  status: "completed",
+                  conclusion: $conclusion,
+                  details_url: $details_url,
+                  output: {
+                    title: $title,
+                    summary: $summary
+                  }
+                }'
+            )"
+
+            check_run_error="$(mktemp)"
+            trap 'rm -f "$check_run_error"; trap - RETURN' RETURN
+            if ! check_run_response="$(
+              gh api \
+                --method POST \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "repos/$OWNER/$REPO/check-runs" \
+                --input - \
+                2> "$check_run_error" <<< "$request_payload"
+            )"; then
+              echo "::error::Failed to create check run via GitHub API."
+              cat "$check_run_error" >&2
+              return 1
+            fi
+            if [[ -s "$check_run_error" ]]; then
+              cat "$check_run_error" >&2
+            fi
+
+            if jq -e '(.errors? // []) | length > 0' <<< "$check_run_response" > /dev/null; then
+              echo "::error::GitHub API returned errors while creating check run."
+              jq -r '.errors[]?.message // empty' <<< "$check_run_response" >&2
+              return 1
+            fi
+            if jq -e '.message? // empty' <<< "$check_run_response" > /dev/null; then
+              echo "::error::GitHub API returned an error message while creating check run."
+              jq -r '.message' <<< "$check_run_response" >&2
+              return 1
+            fi
+            if ! jq -e '.id and (.html_url // .url)' <<< "$check_run_response" > /dev/null; then
+              echo "::error::GitHub API response did not include check-run metadata."
+              jq -c '.' <<< "$check_run_response" >&2
+              return 1
+            fi
+
+            check_run_url="$(jq -r '.html_url // .url' <<< "$check_run_response")"
+            echo "Published check run: $check_run_url"
+          }
+
+          build_summary() {
+            local unresolved_count="$1"
+            local unacknowledged_top_level_count="$2"
+            local unresolved="$3"
+            local unacknowledged_top_level="$4"
+            local summary_pr_url="$5"
+
+            {
+              echo "PR: $summary_pr_url"
+              echo
+              echo "$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) or review summary comment(s) remain."
+              echo
+              if [[ "$unresolved_count" -gt 0 ]]; then
+                echo "### Unresolved PR review threads"
+                echo
+                jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0]?.author.login // "unknown"): \(.comments.nodes[0]?.url // "no comment URL")"' \
+                  <<< "$unresolved"
+                echo
+              fi
+              if [[ "$unacknowledged_top_level_count" -gt 0 ]]; then
+                echo "### Unacknowledged top-level PR comments or review summaries"
+                echo
+                jq -r '.[] | "- by \(.author.login // "unknown") updated at \((.updatedAt // .createdAt)): \(.url // "no comment URL")"' \
+                  <<< "$unacknowledged_top_level"
+              fi
+            }
+          }
 
           if [[ "$base_ref" != "main" ]]; then
             echo "Skipping PR #$PR_NUMBER because base branch is $base_ref, not main."
@@ -432,25 +575,27 @@ jobs:
             echo "No unacknowledged top-level PR comments or review summaries."
           fi
 
-          {
-            if [[ "$unresolved_count" -gt 0 ]]; then
-              echo "### Unresolved PR review threads"
-              echo
-              jq -r '.[] | "- \(.path):\(.line // "n/a") by \(.comments.nodes[0]?.author.login // "unknown"): \(.comments.nodes[0]?.url // "no comment URL")"' \
-                <<< "$unresolved"
-              echo
-            fi
-            if [[ "$unacknowledged_top_level_count" -gt 0 ]]; then
-              echo "### Unacknowledged top-level PR comments or review summaries"
-              echo
-              jq -r '.[] | "- by \(.author.login // "unknown") updated at \((.updatedAt // .createdAt)): \(.url // "no comment URL")"' \
-                <<< "$unacknowledged_top_level"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          summary="$(build_summary \
+            "$unresolved_count" \
+            "$unacknowledged_top_level_count" \
+            "$unresolved" \
+            "$unacknowledged_top_level" \
+            "$pr_url")"
+          printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
 
-          if [[ "$unresolved_count" -gt 0 || "$unacknowledged_top_level_count" -gt 0 ]]; then
-            echo "::error::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) or review summary comment(s) remain. Resolve or acknowledge all review conversations before merging."
-            exit 1
+          if [[ "$unresolved_count" -eq 0 && "$unacknowledged_top_level_count" -eq 0 ]]; then
+            # Top-level PR comments arrive as issue_comment and need a synthetic
+            # head check because that event is not naturally attached to the PR head.
+            if should_publish_head_check; then
+              publish_head_check "success" "$summary"
+            fi
+            exit 0
           fi
 
-          exit 0
+          # Other review events already create their own PR-head workflow check.
+          if should_publish_head_check; then
+            publish_head_check "failure" "$summary"
+          fi
+
+          echo "::error::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) or review summary comment(s) remain. Resolve or acknowledge all review conversations before merging."
+          exit 1
