@@ -6,7 +6,10 @@ import {
   Wait,
 } from "testcontainers";
 import { ulid } from "ulid";
-import { type EventStore, EventStoreFactory } from "../../event-store";
+import {
+  EventStore,
+  type EventStore as EventStoreType,
+} from "../../event-store";
 import {
   createDynamoDBClient,
   createJournalTable,
@@ -32,7 +35,7 @@ describe("UserAccountRepository", () => {
 
   let container: TestContainer;
   let startedContainer: StartedTestContainer;
-  let eventStore: EventStore<UserAccountId, UserAccount, UserAccountEvent>;
+  let eventStore: EventStoreType<UserAccountId, UserAccount, UserAccountEvent>;
 
   const JOURNAL_TABLE_NAME = "journal";
   const SNAPSHOT_TABLE_NAME = "snapshot";
@@ -42,12 +45,8 @@ describe("UserAccountRepository", () => {
 
   function createEventStore(
     dynamodbClient: DynamoDBClient,
-  ): EventStore<UserAccountId, UserAccount, UserAccountEvent> {
-    return EventStoreFactory.ofDynamoDB<
-      UserAccountId,
-      UserAccount,
-      UserAccountEvent
-    >({
+  ): EventStoreType<UserAccountId, UserAccount, UserAccountEvent> {
+    return EventStore.ofDynamoDB<UserAccountId, UserAccount, UserAccountEvent>({
       client: dynamodbClient,
       journalTableName: JOURNAL_TABLE_NAME,
       snapshotTableName: SNAPSHOT_TABLE_NAME,

@@ -1,12 +1,12 @@
 ## ADDED Requirements
 
-### Requirement: Spanner factory construction
-MUST: `EventStoreFactory.ofSpanner(...)` から Cloud Spanner 用 `EventStore` adapter を構築できること。
-システムは `EventStoreFactory.ofSpanner(...)` から Cloud Spanner 用 `EventStore` adapter を公開しなければならない。
+### Requirement: Spanner EventStore construction
+MUST: `EventStore.ofSpanner(...)` から Cloud Spanner 用 `EventStore` adapter を構築できること。
+システムは `EventStore.ofSpanner(...)` から Cloud Spanner 用 `EventStore` adapter を公開しなければならない。
 
 #### Scenario: Construct Spanner EventStore
 - **WHEN** 呼び出し側が valid な `SpannerEventStoreInput` を渡す
-- **THEN** `EventStoreFactory.ofSpanner(...)` は、渡された Spanner `Database` を使う `EventStore` implementation を返す
+- **THEN** `EventStore.ofSpanner(...)` は、渡された Spanner `Database` を使う `EventStore` implementation を返す
 
 ### Requirement: Caller-managed Spanner database
 MUST: Spanner `Database` のライフサイクルは呼び出し側が管理すること。

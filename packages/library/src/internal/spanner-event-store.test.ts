@@ -6,7 +6,7 @@ import {
   Wait,
 } from "testcontainers";
 import { ulid } from "ulid";
-import { EventStoreFactory } from "../event-store";
+import { EventStore } from "../event-store";
 import { createShardId } from "../shard-id";
 import {
   type EventSerializer,
@@ -498,9 +498,9 @@ describe("SpannerEventStore", () => {
     createEventStore: () => createFakeEventStore(),
   });
 
-  test("creates SpannerEventStore through EventStoreFactory", async () => {
+  test("creates SpannerEventStore through EventStore", async () => {
     const database = new FakeSpannerDatabase().asDatabase();
-    const eventStore = EventStoreFactory.ofSpanner<
+    const eventStore = EventStore.ofSpanner<
       UserAccountId,
       UserAccount,
       UserAccountEvent
