@@ -1,70 +1,46 @@
 # AGENTS.md
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+## 言語
 
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+- 日本語でやりとりすること。
 
-## 1. Think Before Coding
+## GitHub Pull Request のモニタリング
 
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
+PR を作成したらモニタリングすること。
+PRを監視・対応する際は、以下をすべて守ること。
 
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
+- **コメントへの対応**
+    - 監視待機中も定期的に新しいコメントが投稿されていないか確認する。
+    - すべてのコメントを無視せず、必ず適切に対処する。
+    - 対処方法としては、コメントの指摘内容をコードに反映した上でその旨をコメントに返信する。コメントの指摘内容が妥当でない場合は、非対応である旨をコメントに返信する。
+- **テストカバレッジ**
+    - カバレッジエラーを無視せず、必ず適切に対処する。（解決方法としてcodecov.ymlを変更しないこと)
+- **マージ準備**
+    - マージに必要な作業はすべて実施する。
+- **マージの実行**
+    - マージ操作自体は実行せず、人間に委譲する。
 
-## 2. Simplicity First
+## `$grill-me` 実行時の作業判断
 
-**Minimum code that solves the problem. Nothing speculative.**
+`$grill-me` で実施すべき作業内容が決まったら、その規模に応じて以下のいずれかを選択すること。
 
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
+### 軽い作業の場合
+- プランモードを用いず、そのまま作業に着手する。
 
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+### 複雑または重い作業の場合
 
-## 3. Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
-
-## 4. Goal-Driven Execution
-
-**Define success criteria. Loop until verified.**
-
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-```
-
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
-
-## 5. Rules
+- `$openspec-propose` を呼び出して change を作成する。
+- 単一の change では大きすぎる場合は、複数の change に分割する。
+- 分割した場合は、以下の成果物を生成すること。
+    - `docs/plan/${date}_${epic-name}.md`
+        - 各 change の概要をまとめたインデックスドキュメント
+    - 各 change ファイル
+        - 分割した change それぞれを個別に生成
 
 Read these rules before implementing:
 
-.agents/rules/**/*.md
+- COMMON.md
+- .agents/rules/**/*.md
 
 ---
 
