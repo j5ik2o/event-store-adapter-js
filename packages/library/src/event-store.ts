@@ -53,8 +53,8 @@ export const EventStore: EventStoreConstructors = Object.freeze({
     AID extends AggregateId,
     A extends Aggregate<A, AID>,
     E extends Event<AID>,
-  >(input: MemoryEventStoreInput<AID, A, E> = {}): EventStore<AID, A, E> {
-    return new MemoryEventStore(input);
+  >(input?: MemoryEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
+    return new MemoryEventStore(input ?? {});
   },
 
   ofSpanner<
