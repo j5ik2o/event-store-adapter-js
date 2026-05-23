@@ -20,7 +20,27 @@ export interface EventStore<
   getLatestSnapshotById(id: AID): Promise<A | undefined>;
 }
 
-export const EventStore = Object.freeze({
+type EventStoreConstructors = Readonly<{
+  ofDynamoDB<
+    AID extends AggregateId,
+    A extends Aggregate<A, AID>,
+    E extends Event<AID>,
+  >(input: DynamoDBEventStoreInput<AID, A, E>): EventStore<AID, A, E>;
+
+  ofMemory<
+    AID extends AggregateId,
+    A extends Aggregate<A, AID>,
+    E extends Event<AID>,
+  >(input?: MemoryEventStoreInput<AID, A, E>): EventStore<AID, A, E>;
+
+  ofSpanner<
+    AID extends AggregateId,
+    A extends Aggregate<A, AID>,
+    E extends Event<AID>,
+  >(input: SpannerEventStoreInput<AID, A, E>): EventStore<AID, A, E>;
+}>;
+
+export const EventStore: EventStoreConstructors = Object.freeze({
   ofDynamoDB<
     AID extends AggregateId,
     A extends Aggregate<A, AID>,
@@ -44,4 +64,4 @@ export const EventStore = Object.freeze({
   >(input: SpannerEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
     return new SpannerEventStore<AID, A, E>(input);
   },
-} as const);
+});
