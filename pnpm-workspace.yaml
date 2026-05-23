@@ -1,2 +1,9 @@
 packages:
   - "packages/*"
+allowBuilds:
+  aws-sdk: false
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
+  unrs-resolver: false
+minimumReleaseAge: 0
