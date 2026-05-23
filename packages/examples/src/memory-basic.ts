@@ -1,11 +1,11 @@
-import { EventStoreFactory } from "event-store-adapter-js";
+import { EventStore } from "event-store-adapter-js";
 import type { UserAccount } from "./domain/user-account";
 import type { UserAccountEvent } from "./domain/user-account-event";
 import type { UserAccountId } from "./domain/user-account-id";
 import { runUserAccountExample } from "./run-user-account-example";
 
 async function main(): Promise<void> {
-  const eventStore = EventStoreFactory.ofMemory<
+  const eventStore = EventStore.ofMemory<
     UserAccountId,
     UserAccount,
     UserAccountEvent

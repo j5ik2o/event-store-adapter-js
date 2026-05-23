@@ -1,4 +1,4 @@
-import { EventStoreFactory } from "event-store-adapter-js";
+import { EventStore } from "event-store-adapter-js";
 import {
   convertJSONToUserAccount,
   type UserAccount,
@@ -35,7 +35,7 @@ async function main(): Promise<void> {
       SNAPSHOT_AID_INDEX_NAME,
       SNAPSHOT_ACTIVE_TTL_INDEX_NAME,
     );
-    const eventStore = EventStoreFactory.ofDynamoDB<
+    const eventStore = EventStore.ofDynamoDB<
       UserAccountId,
       UserAccount,
       UserAccountEvent

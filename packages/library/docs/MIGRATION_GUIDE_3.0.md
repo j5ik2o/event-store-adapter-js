@@ -18,7 +18,7 @@ const keyResolver: KeyResolver<UserAccountId> = {
     `${aggregateId.typeName}-${aggregateId.value}-${sequenceNumber}`,
 };
 
-const eventStore = EventStoreFactory.ofDynamoDB({
+const eventStore = EventStore.ofDynamoDB({
   // ...
   keyResolver,
 });
@@ -34,17 +34,17 @@ const shardSelector: ShardSelector<UserAccountId> = {
     createShardId(hash(aggregateId.asString()) % shardCount),
 };
 
-const eventStore = EventStoreFactory.ofDynamoDB({
+const eventStore = EventStore.ofDynamoDB({
   // ...
   shardSelector,
 });
 ```
 
-The same `ShardSelector` type is used by `EventStoreFactory.ofSpanner(...)`.
+The same `ShardSelector` type is used by `EventStore.ofSpanner(...)`.
 `shardCount` remains a `number` in EventStore input objects, but the adapter parses it into a validated `ShardCount` before calling your selector.
 
 ```ts
-const eventStore = EventStoreFactory.ofSpanner({
+const eventStore = EventStore.ofSpanner({
   // ...
   shardSelector,
 });

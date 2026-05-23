@@ -6,7 +6,7 @@ import type { MemoryEventStoreInput } from "./memory-event-store-input";
 import type { SpannerEventStoreInput } from "./spanner-event-store-input";
 import type { Aggregate, AggregateId, Event } from "./types";
 
-interface EventStore<
+export interface EventStore<
   AID extends AggregateId,
   A extends Aggregate<A, AID>,
   E extends Event<AID>,
@@ -20,30 +20,28 @@ interface EventStore<
   getLatestSnapshotById(id: AID): Promise<A | undefined>;
 }
 
-class EventStoreFactory {
-  static ofDynamoDB<
+export const EventStore = Object.freeze({
+  ofDynamoDB<
     AID extends AggregateId,
     A extends Aggregate<A, AID>,
     E extends Event<AID>,
   >(input: DynamoDBEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
     return new DynamoDBEventStore<AID, A, E>(input);
-  }
+  },
 
-  static ofMemory<
+  ofMemory<
     AID extends AggregateId,
     A extends Aggregate<A, AID>,
     E extends Event<AID>,
   >(input: MemoryEventStoreInput<AID, A, E> = {}): EventStore<AID, A, E> {
     return new MemoryEventStore(input);
-  }
+  },
 
-  static ofSpanner<
+  ofSpanner<
     AID extends AggregateId,
     A extends Aggregate<A, AID>,
     E extends Event<AID>,
   >(input: SpannerEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
     return new SpannerEventStore<AID, A, E>(input);
-  }
-}
-
-export { type EventStore, EventStoreFactory };
+  },
+});

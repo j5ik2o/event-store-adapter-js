@@ -1,4 +1,4 @@
-import { EventStoreFactory } from "event-store-adapter-js";
+import { EventStore } from "event-store-adapter-js";
 import {
   convertJSONToUserAccount,
   type UserAccount,
@@ -22,7 +22,7 @@ async function main(): Promise<void> {
     snapshotTableName: SNAPSHOT_TABLE_NAME,
   });
   try {
-    const eventStore = EventStoreFactory.ofSpanner<
+    const eventStore = EventStore.ofSpanner<
       UserAccountId,
       UserAccount,
       UserAccountEvent
