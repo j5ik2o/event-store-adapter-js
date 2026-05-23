@@ -238,7 +238,7 @@ jobs:
                 await new Promise((resolve) => setTimeout(resolve, 10000));
               }
 
-              core.warning(`${checkName} did not report within timeout; coverage upload already succeeded`);
+              throw new Error(`${checkName} did not report within timeout`);
             }
 
             async function latestCheckRun(checkName) {
