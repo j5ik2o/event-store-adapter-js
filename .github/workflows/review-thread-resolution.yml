@@ -121,6 +121,27 @@ jobs:
             return 0
           }
 
+          refresh_head_ref_oid() {
+            local latest_head_ref_oid
+
+            latest_head_ref_oid="$(
+              gh pr view "$PR_NUMBER" \
+                --repo "$OWNER/$REPO" \
+                --json headRefOid \
+                --jq '.headRefOid'
+            )"
+
+            if [[ -z "$latest_head_ref_oid" || "$latest_head_ref_oid" == "null" ]]; then
+              echo "::error::Failed to refresh PR head SHA before publishing the synthetic check." >&2
+              return 1
+            fi
+
+            if [[ "$latest_head_ref_oid" != "$head_ref_oid" ]]; then
+              echo "::notice::PR head changed from $head_ref_oid to $latest_head_ref_oid before publishing the synthetic check." >&2
+              head_ref_oid="$latest_head_ref_oid"
+            fi
+          }
+
           publish_head_check() {
             local conclusion="$1"
             local summary="$2"
@@ -636,6 +657,8 @@ jobs:
             "$unacknowledged_top_level" \
             "$pr_url")"
           printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
+
+          refresh_head_ref_oid
 
           if [[ "$unresolved_count" -eq 0 && "$unacknowledged_top_level_count" -eq 0 ]]; then
             # issue_comment runs may create a synthetic head check. Other events
