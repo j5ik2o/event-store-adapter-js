@@ -6,4 +6,9 @@ allowBuilds:
   protobufjs: false
   ssh2: false
   unrs-resolver: false
-minimumReleaseAge: 0
+minimumReleaseAgeExclude:
+  - "@aws-sdk/client-dynamodb"
+  - "@protobufjs/eventemitter"
+  - "electron-to-chromium"
+  - "node-releases"
+  - "protobufjs"
