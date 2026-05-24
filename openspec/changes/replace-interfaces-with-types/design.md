@@ -18,7 +18,7 @@
 - `import type { EventStore }` などの型 import が動くよう、エクスポート名は維持する。
 - `EventStore` ランタイムファクトリオブジェクトは維持しつつ、構築メソッドを `createDynamoDB`、`createMemory`、`createSpanner` へ改名する。
 - `createShardId(...)`、`createShardCount(...)` を同名ファクトリオブジェクトの `ShardId.create(...)`、`ShardCount.create(...)` へ置き換える。
-- `createAggregateIdValue(...)` とライブラリ定義の集約 ID 値ファクトリは削除し、集約 ID の具象化はユーザー側コードの AID ファクトリに委ねる。
+- `AggregateIdValue` と `createAggregateIdValue(...)` は削除し、`AggregateId.value` を plain `string` にする。集約 ID の検証と具象化はユーザー側コードの AID ファクトリに委ねる。
 - 楽観ロック失敗などの回復可能なエラーを、例外ではなく `EventStoreError` のような判別共用体と `Result` 型で表す。
 - 製品コード、サンプル、ライブラリ内テスト用データから、本ライブラリ定義クラスを取り除く。
 - サンプルと内部テスト用データを、クラスベースのドメインオブジェクトと `instanceof` によるイベント分岐から移行する。
@@ -63,9 +63,9 @@
 
 従来の自由関数は互換用置き換えなしで削除する。これは破壊的変更だが、二重 API を避け、新しいドメインサンプルと公開 API スタイルを揃えられる。
 
-`AggregateIdValue.create(value)` は提供しない。ライブラリは `AID extends AggregateId` を受け取る側であり、集約 ID の具象型を所有しない。集約 ID の生成は、ユーザー側コードの `UserAccountId.create(value)` のようなドメイン固有ファクトリが担い、ライブラリは `AggregateId` の構造的契約と `asString()` による安定表現だけに依存する。
+`AggregateIdValue.create(value)` は提供しない。さらに既存の `AggregateIdValue` branded primitive と `createAggregateIdValue(value)` も削除する。ライブラリは `AID extends AggregateId` を受け取る側であり、集約 ID の具象型を所有しない。`AggregateId.value` はユーザー側 AID が保持する plain `string` とし、空文字禁止などの検証は `UserAccountId.create(value)` のようなドメイン固有ファクトリが担う。ライブラリは `AggregateId` の構造的契約と `asString()` による安定表現だけに依存する。
 
-代替案として、`createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` を非推奨別名として残す案がある。この案は移行を楽にするが、未リリース API の整理において2つの構築経路を同時に残してしまう。特に `createAggregateIdValue(...)` は、ライブラリが集約 ID の具象値を所有しているように見せるため採用しない。
+代替案として、`AggregateIdValue` と `createAggregateIdValue(...)` を残し、ユーザー側 `UserAccountId.create(...)` の内部で使わせる案がある。この案は現行コードからの移行量を減らせるが、ライブラリが集約 ID の値オブジェクトを所有しているように見せ続けるため採用しない。`createShardId(...)`、`createShardCount(...)` についても非推奨別名は残さず、未リリース API の整理として二重 API を避ける。
 
 ### 本ライブラリ定義クラスを削除する
 

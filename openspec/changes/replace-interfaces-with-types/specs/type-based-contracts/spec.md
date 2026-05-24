@@ -62,6 +62,12 @@
 - **WHEN** 呼び出し側がライブラリのランタイム値を取り込む
 - **THEN** `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` は公開 API に含まれない
 
+#### Scenario: ライブラリ所有の集約 ID 値型は削除される
+
+- **WHEN** 呼び出し側が `AggregateId` を実装または構築する
+- **THEN** `AggregateId.value` はライブラリ固有の `AggregateIdValue` ではなく plain `string` として扱える
+- **AND** `AggregateIdValue` は公開型として提供されない
+
 #### Scenario: 集約 ID の具象生成は利用側が所有する
 
 - **WHEN** 呼び出し側が集約 ID を構築する
