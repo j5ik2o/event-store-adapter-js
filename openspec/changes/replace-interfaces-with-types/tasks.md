@@ -23,6 +23,8 @@
 - [ ] 3.3 README のサンプルを更新し、ライブラリが構造的な値だけを要求する箇所では `class` ではなく不変オブジェクト値と同名ファクトリオブジェクトを示す。
 - [ ] 3.4 `interface` 宣言マージが互換契約の対象外になる意図的な破壊的変更を文書化する。
 - [ ] 3.5 旧ファクトリ名から `create` メソッドへの意図的な破壊的変更を文書化する。
+- [ ] 3.6 既存の `packages/library/docs/MIGRATION_GUIDE_3.0.md` / `MIGRATION_GUIDE_3.0.ja.md` とは別に、4.0.0 向けの移行ガイドを英日で追加し、旧ファクトリ名、`interface` 宣言マージ、クラスベースのサンプルからの移行手順を明記する。
+- [ ] 3.7 互換用置き換えを提供しない公開 API 破壊を含むため、リリース計画では 3.x 維持ではなく 4.0.0 として扱うことを明記する。
 
 ## 4. 検証
 
@@ -33,4 +35,5 @@
 - [ ] 4.5 `rg "createShardId|createShardCount|createAggregateIdValue|ofMemory|ofDynamoDB|ofSpanner" packages/library/src packages/examples/src` で、コード / export 面に旧ファクトリ名が残っていないことを確認する。
 - [ ] 4.6 `rg "instanceof (UserAccount|.*Event)" packages/library/src/internal/test packages/examples/src/domain` で、サンプルとライブラリ内テスト用データのイベント分岐に `instanceof` が残っていないことを確認する。
 - [ ] 4.7 `OptimisticLockError` と外部 SDK 利用を除き、本ライブラリ定義 `class` が残っていないことを確認する。
-- [ ] 4.8 `replace-interfaces-with-types` の OpenSpec 状態確認を実行し、change が適用可能なままであることを確認する。
+- [ ] 4.8 4.0.0 向け移行ガイドに、`EventStore.ofX(...)` から `EventStore.createX(...)`、`createShardId(...)` から `ShardId.create(...)` などの before / after が含まれていることを確認する。
+- [ ] 4.9 `replace-interfaces-with-types` の OpenSpec 状態確認を実行し、change が適用可能なままであることを確認する。
