@@ -81,7 +81,7 @@
 
 公開エラーは TypeScript の `enum` ではなく、文字列リテラルの `type` フィールドを持つ判別共用体にする。`enum` はランタイム値を増やし、今回の「型とデータで表す」方針とずれやすい。たとえば楽観ロック失敗は `type: "optimistic-lock-conflict"` のようなデータで識別する。
 
-`Result` も外部ライブラリに依存せず、このライブラリ内の小さな型エイリアスとして定義する。必要なら同名ファクトリオブジェクト `Result.ok(...)` / `Result.err(...)` または `EventStoreError.optimisticLockConflict(...)` のような関数を公開する。
+`Result` も外部ライブラリに依存せず、このライブラリ内の小さな型エイリアスとして定義する。同名ファクトリオブジェクト `Result.ok(...)` / `Result.err(...)` と、`EventStoreError.optimisticLockConflict(...)` のようなエラーファクトリを公開する。
 
 回復不能なプログラミング上の欠陥や外部 SDK が投げる予期しない失敗は、境界で `EventStoreError` に変換できる場合は変換し、変換できないものは通常の `Error` として扱う。ただし、楽観ロックのような契約上想定される失敗を例外制御フローにしない。
 

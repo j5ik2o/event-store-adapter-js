@@ -27,7 +27,7 @@
 
 ### 変更される能力
 
-- `spanner-event-store`: Cloud Spanner 用 `EventStore` の構築ファクトリを `EventStore.ofSpanner(...)` から `EventStore.createSpanner(...)` へ変更する。
+- `spanner-event-store`: Cloud Spanner 用 `EventStore` の構築ファクトリを `EventStore.ofSpanner(...)` から `EventStore.createSpanner(...)` へ変更し、楽観ロック失敗を `OptimisticLockError` ではなく `Result.err(EventStoreError.*)` で返す。
 
 ## 影響
 

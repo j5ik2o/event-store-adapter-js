@@ -9,8 +9,8 @@
 
 ## 2. Result と判別共用体によるエラー契約への移行
 
-- [ ] 2.1 `Result<T, E>` を型エイリアスで定義し、必要に応じて `Result.ok(...)` / `Result.err(...)` の同名ファクトリオブジェクトを公開する。
-- [ ] 2.2 楽観ロック失敗、設定不備、シリアライズ失敗、ストレージ失敗など、呼び出し側が判断すべき回復可能な失敗を `EventStoreError` の判別共用体として定義する。
+- [ ] 2.1 `Result<T, E>` を型エイリアスで定義し、`Result.ok(...)` / `Result.err(...)` の同名ファクトリオブジェクトを公開する。
+- [ ] 2.2 楽観ロック失敗、設定不備、シリアライズ失敗、ストレージ失敗など、呼び出し側が判断すべき回復可能な失敗を `EventStoreError` の判別共用体として定義し、`EventStoreError.*(...)` の同名ファクトリオブジェクトを公開する。
 - [ ] 2.3 `OptimisticLockError` の公開 `Error` サブクラスと例外送出を削除し、楽観ロック失敗を `EventStoreError` の `type` で識別できるようにする。
 - [ ] 2.4 EventStore の公開非同期操作を、契約上想定される失敗について `throw` ではなく `Promise<Result<..., EventStoreError>>` で返す形に更新する。
 - [ ] 2.5 呼び出し側サンプルとテストを、`try/catch` と `instanceof OptimisticLockError` ではなく `result.type` / `result.error.type` による分岐へ移行する。
@@ -43,6 +43,8 @@
 - [ ] 5.5 `sh -c 'rg "createShardId|createShardCount|createAggregateIdValue|ofMemory|ofDynamoDB|ofSpanner" packages/library/src packages/examples/src; test $? -eq 1'` で、コード / export 面に旧ファクトリ名が残っていないことを確認する。
 - [ ] 5.6 `sh -c 'rg "instanceof" packages/library/src/internal/test packages/examples/src/domain; test $? -eq 1'` で、サンプルとライブラリ内テスト用データのイベント分岐に `instanceof` が残っていないことを確認する。
 - [ ] 5.7 `sh -c 'rg "OptimisticLockError" packages/library/src packages/examples/src; test $? -eq 1'` で、旧公開エラークラス名と `instanceof OptimisticLockError` 分岐がコード / export 面に残っていないことを確認する。
-- [ ] 5.8 `sh -c 'rg "(^|[[:space:]])class [A-Z]|extends Error" packages/library/src packages/examples/src --glob "!**/*.test.ts"; test $? -eq 1'` で、製品コード、サンプル、ライブラリ内テスト用データに本ライブラリ定義クラスとエラーサブクラスが残っていないことを確認する。
-- [ ] 5.9 4.0.0 向け移行ガイドに、`EventStore.ofX(...)` から `EventStore.createX(...)`、`createShardId(...)` から `ShardId.create(...)`、`try/catch` から `Result` 分岐への before / after が含まれていることを確認する。
-- [ ] 5.10 `replace-interfaces-with-types` の OpenSpec 状態確認を実行し、change が適用可能なままであることを確認する。
+- [ ] 5.8 `sh -c 'rg "(^|[[:space:]])class[[:space:]]+|extends Error" packages/library/src packages/examples/src --glob "!**/*.test.ts"; test $? -eq 1'` で、製品コード、サンプル、ライブラリ内テスト用データに本ライブラリ定義クラスとエラーサブクラスが残っていないことを確認する。
+- [ ] 5.9 `Result.ok(...)` / `Result.err(...)` と `EventStoreError.*(...)` がランタイム API として export され、生成された宣言ファイルにも含まれることを確認する。
+- [ ] 5.10 公開 API オブジェクトと値ファクトリオブジェクトが、サポート対象の使い方では外部からメソッド表を変更できないことをテストで確認する。
+- [ ] 5.11 4.0.0 向け移行ガイドに、`EventStore.ofX(...)` から `EventStore.createX(...)`、`createShardId(...)` から `ShardId.create(...)`、`try/catch` から `Result` 分岐への before / after が含まれていることを確認する。
+- [ ] 5.12 `replace-interfaces-with-types` の OpenSpec 状態確認を実行し、change が適用可能なままであることを確認する。
