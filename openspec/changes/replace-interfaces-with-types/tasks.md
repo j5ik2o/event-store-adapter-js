@@ -43,6 +43,6 @@
 - [ ] 5.5 `sh -c 'rg "createShardId|createShardCount|createAggregateIdValue|ofMemory|ofDynamoDB|ofSpanner" packages/library/src packages/examples/src; test $? -eq 1'` で、コード / export 面に旧ファクトリ名が残っていないことを確認する。
 - [ ] 5.6 `sh -c 'rg "instanceof" packages/library/src/internal/test packages/examples/src/domain; test $? -eq 1'` で、サンプルとライブラリ内テスト用データのイベント分岐に `instanceof` が残っていないことを確認する。
 - [ ] 5.7 `sh -c 'rg "OptimisticLockError" packages/library/src packages/examples/src; test $? -eq 1'` で、旧公開エラークラス名と `instanceof OptimisticLockError` 分岐がコード / export 面に残っていないことを確認する。
-- [ ] 5.8 `sh -c 'rg "(^|[[:space:]])class [A-Z]|extends Error" packages/library/src packages/examples/src --glob "!**/*.test.ts"; test $? -eq 1'` で、製品コード、サンプル、ライブラリ内テスト用データに本ライブラリ定義クラスとエラーサブクラスが残っていないことを確認する。外部 SDK クラス、組み込み `AggregateError`、テスト環境の外部代替クラスは対象外として個別に扱う。
+- [ ] 5.8 `sh -c 'rg "(^|[[:space:]])class [A-Z]|extends Error" packages/library/src packages/examples/src --glob "!**/*.test.ts"; test $? -eq 1'` で、製品コード、サンプル、ライブラリ内テスト用データに本ライブラリ定義クラスとエラーサブクラスが残っていないことを確認する。
 - [ ] 5.9 4.0.0 向け移行ガイドに、`EventStore.ofX(...)` から `EventStore.createX(...)`、`createShardId(...)` から `ShardId.create(...)`、`try/catch` から `Result` 分岐への before / after が含まれていることを確認する。
 - [ ] 5.10 `replace-interfaces-with-types` の OpenSpec 状態確認を実行し、change が適用可能なままであることを確認する。
