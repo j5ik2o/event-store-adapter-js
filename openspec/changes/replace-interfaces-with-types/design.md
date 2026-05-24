@@ -17,7 +17,8 @@
 - 構造的な公開契約を `interface` ではなく型エイリアスとして定義する。
 - `import type { EventStore }` などの型 import が動くよう、エクスポート名は維持する。
 - `EventStore` ランタイムファクトリオブジェクトは維持しつつ、構築メソッドを `createDynamoDB`、`createMemory`、`createSpanner` へ改名する。
-- `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` を同名ファクトリオブジェクトの `AggregateIdValue.create(...)`、`ShardId.create(...)`、`ShardCount.create(...)` へ置き換える。
+- `createShardId(...)`、`createShardCount(...)` を同名ファクトリオブジェクトの `ShardId.create(...)`、`ShardCount.create(...)` へ置き換える。
+- `createAggregateIdValue(...)` とライブラリ定義の集約 ID 値ファクトリは削除し、集約 ID の具象化はユーザー側コードの AID ファクトリに委ねる。
 - 楽観ロック失敗などの回復可能なエラーを、例外ではなく `EventStoreError` のような判別共用体と `Result` 型で表す。
 - 製品コード、サンプル、ライブラリ内テスト用データから、本ライブラリ定義クラスを取り除く。
 - サンプルと内部テスト用データを、クラスベースのドメインオブジェクトと `instanceof` によるイベント分岐から移行する。
@@ -49,21 +50,22 @@
 - 永続化契約を表す型エイリアス
 - `createDynamoDB`、`createMemory`、`createSpanner` を持つ凍結済みランタイムオブジェクト
 
-ランタイムオブジェクトは単一の公開構築境界として残す。ただしファクトリメソッド名は、`UserAccountId.create(...)`、`ShardId.create(...)`、`AggregateIdValue.create(...)` のような値ファクトリと揃えるため `create` に寄せる。同じファイルで型とランタイム値の両方を使う場合は、`import type` を明示する。
+ランタイムオブジェクトは単一の公開構築境界として残す。ただしファクトリメソッド名は、`UserAccountId.create(...)`、`ShardId.create(...)` のような値ファクトリと揃えるため `create` に寄せる。同じファイルで型とランタイム値の両方を使う場合は、`import type` を明示する。
 
 代替案として、`EventStore.ofX(...)` だけを例外として残す案がある。この案は呼び出し側の変更量を減らせるが、「ファクトリ語彙を1つにする」というルールを弱め、不要な命名の分裂を残してしまう。
 
-### 公開値ファクトリを同名 create オブジェクトにする
+### ライブラリが所有する公開値ファクトリを同名 create オブジェクトにする
 
-公開値ファクトリは同名ランタイムオブジェクトへ移行する。
+ライブラリが具象値を所有する公開値ファクトリは同名ランタイムオブジェクトへ移行する。
 
-- `AggregateIdValue.create(value)`
 - `ShardId.create(value)`
 - `ShardCount.create(value)`
 
 従来の自由関数は互換用置き換えなしで削除する。これは破壊的変更だが、二重 API を避け、新しいドメインサンプルと公開 API スタイルを揃えられる。
 
-代替案として、`createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` を非推奨別名として残す案がある。この案は移行を楽にするが、未リリース API の整理において2つの構築経路を同時に残してしまう。
+`AggregateIdValue.create(value)` は提供しない。ライブラリは `AID extends AggregateId` を受け取る側であり、集約 ID の具象型を所有しない。集約 ID の生成は、ユーザー側コードの `UserAccountId.create(value)` のようなドメイン固有ファクトリが担い、ライブラリは `AggregateId` の構造的契約と `asString()` による安定表現だけに依存する。
+
+代替案として、`createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` を非推奨別名として残す案がある。この案は移行を楽にするが、未リリース API の整理において2つの構築経路を同時に残してしまう。特に `createAggregateIdValue(...)` は、ライブラリが集約 ID の具象値を所有しているように見せるため採用しない。
 
 ### 本ライブラリ定義クラスを削除する
 

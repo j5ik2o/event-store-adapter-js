@@ -14,7 +14,8 @@
 - サンプルのイベント分岐を `instanceof` ではなく、`typeName` のような判別用データで行う。
 - 公開ファクトリ関数 / メソッドを、同名ファクトリオブジェクトの `create` メソッドへ揃える。
 - **破壊的変更**: `EventStore.ofDynamoDB(...)`、`EventStore.ofMemory(...)`、`EventStore.ofSpanner(...)` を `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)` へ置き換える。
-- **破壊的変更**: `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` を `AggregateIdValue.create(...)`、`ShardId.create(...)`、`ShardCount.create(...)` へ置き換える。
+- **破壊的変更**: `createShardId(...)`、`createShardCount(...)` を `ShardId.create(...)`、`ShardCount.create(...)` へ置き換える。
+- **破壊的変更**: `createAggregateIdValue(...)` とライブラリ定義の集約 ID 値ファクトリは提供しない。集約 ID の具象化は、ユーザー側コードの `UserAccountId.create(...)` のようなドメイン固有 AID ファクトリに委ねる。
 - **破壊的変更**: `OptimisticLockError` の例外送出と `instanceof OptimisticLockError` による分岐をやめ、`Result` の `err` 側と `EventStoreError.type` による分岐へ置き換える。
 - **破壊的変更**: 旧ファクトリ名の互換用置き換えは提供しない。
 - **破壊的変更**: エクスポートされた `interface` に対する宣言マージはサポート対象外にする。
@@ -32,6 +33,6 @@
 ## 影響
 
 - 公開 API: `Aggregate`、`AggregateId`、`Event`、`EventStore`、入力契約、シリアライザ、ロガー、シャードセレクタは同じ型名でエクスポートし続けるが、該当するものは型エイリアスになる。
-- ランタイム API: `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)`、`AggregateIdValue.create(...)`、`ShardId.create(...)`、`ShardCount.create(...)`、`Result.ok(...)`、`Result.err(...)`、`EventStoreError.*(...)`。
+- ランタイム API: `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)`、`ShardId.create(...)`、`ShardCount.create(...)`、`Result.ok(...)`、`Result.err(...)`、`EventStoreError.*(...)`。
 - サンプル / テスト: ドメイン用データはクラスベースの `implements` / `instanceof` パターンから、不変なファクトリ生成値へ移行する。
 - ドキュメント: README のサンプルは、ライブラリがクラスを要求していない箇所ではクラスではなく不変オブジェクト値と同名ファクトリオブジェクトを示す。

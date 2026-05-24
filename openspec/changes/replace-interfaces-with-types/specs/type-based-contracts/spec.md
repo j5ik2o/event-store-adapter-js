@@ -47,11 +47,6 @@
 
 ライブラリは、値の構築を同名ランタイムファクトリオブジェクトの `create` メソッドとして公開する。
 
-#### Scenario: AggregateIdValue を構築する
-
-- **WHEN** 呼び出し側が集約 ID 値を構築する
-- **THEN** 呼び出し側は `AggregateIdValue.create(...)` を使う
-
 #### Scenario: ShardId を構築する
 
 - **WHEN** 呼び出し側がシャード ID を構築する
@@ -66,6 +61,12 @@
 
 - **WHEN** 呼び出し側がライブラリのランタイム値を取り込む
 - **THEN** `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` は公開 API に含まれない
+
+#### Scenario: 集約 ID の具象生成は利用側が所有する
+
+- **WHEN** 呼び出し側が集約 ID を構築する
+- **THEN** ライブラリは `AggregateIdValue.create(...)` のような具象集約 ID 値ファクトリを提供しない
+- **AND** 呼び出し側はユーザー側コードの `UserAccountId.create(...)` のようなドメイン固有 AID ファクトリで集約 ID を構築する
 
 ### Requirement: 回復可能なエラーは Result と判別共用体で返す
 

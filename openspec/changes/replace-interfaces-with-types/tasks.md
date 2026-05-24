@@ -3,9 +3,10 @@
 - [ ] 1.1 `Aggregate`、`AggregateId`、`Event`、`EventStore`、入力契約、シリアライザ、`Logger`、`ShardSelector` を、`interface` 宣言からオブジェクト形状の型エイリアスへ変換する。
 - [ ] 1.2 `src/index.ts` と `src/types.ts` からエクスポートされる既存の型名を維持する。
 - [ ] 1.3 同名の `EventStore` ランタイムファクトリオブジェクトを維持し、構築メソッドを `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)` へ改名する。
-- [ ] 1.4 `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` を `AggregateIdValue.create(...)`、`ShardId.create(...)`、`ShardCount.create(...)` へ置き換える。
-- [ ] 1.5 旧ファクトリ名を互換用置き換えなしで削除する。
-- [ ] 1.6 プレーンオブジェクト値が `class` 宣言なしで `Aggregate`、`AggregateId`、`Event`、`EventStore` を満たすことを確認する型レベルテストを追加または更新する。
+- [ ] 1.4 `createShardId(...)`、`createShardCount(...)` を `ShardId.create(...)`、`ShardCount.create(...)` へ置き換える。
+- [ ] 1.5 `createAggregateIdValue(...)` とライブラリ定義の集約 ID 値ファクトリを互換用置き換えなしで削除し、集約 ID の具象生成をユーザー側コードの AID ファクトリへ移す。
+- [ ] 1.6 旧ファクトリ名を互換用置き換えなしで削除する。
+- [ ] 1.7 プレーンオブジェクト値が `class` 宣言なしで `Aggregate`、`AggregateId`、`Event`、`EventStore` を満たすことを確認する型レベルテストを追加または更新する。
 
 ## 2. Result と判別共用体によるエラー契約への移行
 
@@ -40,11 +41,11 @@
 - [ ] 5.2 ライブラリのビルドを実行し、生成された宣言ファイルがエクスポート名を維持していることを確認する。
 - [ ] 5.3 EventStore 契約テストを含む関連 Jest テスト群を実行する。
 - [ ] 5.4 生成された `dist/*.d.ts` を確認し、ランタイム export の意図しない削除や型 export の欠落がないことを確認する。
-- [ ] 5.5 `sh -c 'rg "createShardId|createShardCount|createAggregateIdValue|ofMemory|ofDynamoDB|ofSpanner" packages/library/src packages/examples/src; test $? -eq 1'` で、コード / export 面に旧ファクトリ名が残っていないことを確認する。
+- [ ] 5.5 `sh -c 'rg "createShardId|createShardCount|createAggregateIdValue|AggregateIdValue\\.create|ofMemory|ofDynamoDB|ofSpanner" packages/library/src packages/examples/src; test $? -eq 1'` で、コード / export 面に旧ファクトリ名と誤った集約 ID 値ファクトリが残っていないことを確認する。
 - [ ] 5.6 `sh -c 'rg "instanceof" packages/library/src/internal/test packages/examples/src/domain; test $? -eq 1'` で、サンプルとライブラリ内テスト用データのイベント分岐に `instanceof` が残っていないことを確認する。
 - [ ] 5.7 `sh -c 'rg "OptimisticLockError" packages/library/src packages/examples/src; test $? -eq 1'` で、旧公開エラークラス名と `instanceof OptimisticLockError` 分岐がコード / export 面に残っていないことを確認する。
 - [ ] 5.8 `sh -c 'rg "(^|[[:space:]])class[[:space:]]+|extends Error" packages/library/src packages/examples/src --glob "!**/*.test.ts"; test $? -eq 1'` で、製品コード、サンプル、ライブラリ内テスト用データに本ライブラリ定義クラスとエラーサブクラスが残っていないことを確認する。
 - [ ] 5.9 `Result.ok(...)` / `Result.err(...)` と `EventStoreError.*(...)` がランタイム API として export され、生成された宣言ファイルにも含まれることを確認する。
 - [ ] 5.10 公開 API オブジェクトと値ファクトリオブジェクトが、サポート対象の使い方では外部からメソッド表を変更できないことをテストで確認する。
-- [ ] 5.11 4.0.0 向け移行ガイドに、`EventStore.ofX(...)` から `EventStore.createX(...)`、`createShardId(...)` から `ShardId.create(...)`、`try/catch` から `Result` 分岐への before / after が含まれていることを確認する。
+- [ ] 5.11 4.0.0 向け移行ガイドに、`EventStore.ofX(...)` から `EventStore.createX(...)`、`createShardId(...)` から `ShardId.create(...)`、`createAggregateIdValue(...)` からユーザー側コードの `UserAccountId.create(...)`、`try/catch` から `Result` 分岐への before / after が含まれていることを確認する。
 - [ ] 5.12 `replace-interfaces-with-types` の OpenSpec 状態確認を実行し、change が適用可能なままであることを確認する。
