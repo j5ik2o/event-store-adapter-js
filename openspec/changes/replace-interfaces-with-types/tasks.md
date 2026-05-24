@@ -41,11 +41,12 @@
 - [ ] 5.2 ライブラリのビルドを実行し、生成された宣言ファイルがエクスポート名を維持していることを確認する。
 - [ ] 5.3 EventStore 契約テストを含む関連 Jest テスト群を実行する。
 - [ ] 5.4 生成された `dist/*.d.ts` を確認し、ランタイム export の意図しない削除や型 export の欠落がないことを確認する。
-- [ ] 5.5 `sh -c 'rg "createShardId|createShardCount|createAggregateIdValue|AggregateIdValue\\.create|ofMemory|ofDynamoDB|ofSpanner" packages/library/src packages/examples/src; test $? -eq 1'` で、コード / export 面に旧ファクトリ名と誤った集約 ID 値ファクトリが残っていないことを確認する。
-- [ ] 5.6 `sh -c 'rg "instanceof" packages/library/src/internal/test packages/examples/src/domain; test $? -eq 1'` で、サンプルとライブラリ内テスト用データのイベント分岐に `instanceof` が残っていないことを確認する。
-- [ ] 5.7 `sh -c 'rg "OptimisticLockError" packages/library/src packages/examples/src; test $? -eq 1'` で、旧公開エラークラス名と `instanceof OptimisticLockError` 分岐がコード / export 面に残っていないことを確認する。
-- [ ] 5.8 `sh -c 'rg "(^|[[:space:]])class[[:space:]]+|extends Error" packages/library/src packages/examples/src --glob "!**/*.test.ts"; test $? -eq 1'` で、製品コード、サンプル、ライブラリ内テスト用データに本ライブラリ定義クラスとエラーサブクラスが残っていないことを確認する。
-- [ ] 5.9 `Result.ok(...)` / `Result.err(...)` と `EventStoreError.*(...)` がランタイム API として export され、生成された宣言ファイルにも含まれることを確認する。
-- [ ] 5.10 公開 API オブジェクトと値ファクトリオブジェクトが、サポート対象の使い方では外部からメソッド表を変更できないことをテストで確認する。
-- [ ] 5.11 4.0.0 向け移行ガイドに、`EventStore.ofX(...)` から `EventStore.createX(...)`、`createShardId(...)` から `ShardId.create(...)`、`createAggregateIdValue(...)` からユーザー側コードの `UserAccountId.create(...)`、`try/catch` から `Result` 分岐への before / after が含まれていることを確認する。
-- [ ] 5.12 `replace-interfaces-with-types` の OpenSpec 状態確認を実行し、change が適用可能なままであることを確認する。
+- [ ] 5.5 Spanner adapter の未回復 `ABORTED` を楽観ロック失敗ではなくストレージ失敗の `EventStoreError` として返す Jest テストを追加または更新する。
+- [ ] 5.6 `sh -c 'rg "createShardId|createShardCount|createAggregateIdValue|AggregateIdValue\\.create|ofMemory|ofDynamoDB|ofSpanner" packages/library/src packages/examples/src; test $? -eq 1'` で、コード / export 面に旧ファクトリ名と誤った集約 ID 値ファクトリが残っていないことを確認する。
+- [ ] 5.7 `sh -c 'rg "instanceof" packages/library/src/internal/test packages/examples/src/domain; test $? -eq 1'` で、サンプルとライブラリ内テスト用データのイベント分岐に `instanceof` が残っていないことを確認する。
+- [ ] 5.8 `sh -c 'rg "OptimisticLockError" packages/library/src packages/examples/src; test $? -eq 1'` で、旧公開エラークラス名と `instanceof OptimisticLockError` 分岐がコード / export 面に残っていないことを確認する。
+- [ ] 5.9 `sh -c 'rg "(^|[[:space:]])class[[:space:]]+|extends Error" packages/library/src packages/examples/src --glob "!**/*.test.ts"; test $? -eq 1'` で、製品コード、サンプル、ライブラリ内テスト用データに本ライブラリ定義クラスとエラーサブクラスが残っていないことを確認する。
+- [ ] 5.10 `Result.ok(...)` / `Result.err(...)` と `EventStoreError.*(...)` がランタイム API として export され、生成された宣言ファイルにも含まれることを確認する。
+- [ ] 5.11 公開 API オブジェクトと値ファクトリオブジェクトが、サポート対象の使い方では外部からメソッド表を変更できないことをテストで確認する。
+- [ ] 5.12 4.0.0 向け移行ガイドに、`EventStore.ofX(...)` から `EventStore.createX(...)`、`createShardId(...)` から `ShardId.create(...)`、`createAggregateIdValue(...)` からユーザー側コードの `UserAccountId.create(...)`、`try/catch` から `Result` 分岐への before / after が含まれていることを確認する。
+- [ ] 5.13 `replace-interfaces-with-types` の OpenSpec 状態確認を実行し、change が適用可能なままであることを確認する。
