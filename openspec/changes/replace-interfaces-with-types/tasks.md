@@ -32,8 +32,8 @@
 - [ ] 4.2 ライブラリのビルドを実行し、生成された宣言ファイルがエクスポート名を維持していることを確認する。
 - [ ] 4.3 EventStore 契約テストを含む関連 Jest テスト群を実行する。
 - [ ] 4.4 生成された `dist/*.d.ts` を確認し、ランタイム export の意図しない削除や型 export の欠落がないことを確認する。
-- [ ] 4.5 `rg "createShardId|createShardCount|createAggregateIdValue|ofMemory|ofDynamoDB|ofSpanner" packages/library/src packages/examples/src` で、コード / export 面に旧ファクトリ名が残っていないことを確認する。
-- [ ] 4.6 `rg "instanceof" packages/library/src/internal/test packages/examples/src/domain` で、サンプルとライブラリ内テスト用データのイベント分岐に `instanceof` が残っていないことを確認する。
+- [ ] 4.5 `! rg "createShardId|createShardCount|createAggregateIdValue|ofMemory|ofDynamoDB|ofSpanner" packages/library/src packages/examples/src` で、コード / export 面に旧ファクトリ名が残っていないことを確認する。
+- [ ] 4.6 `! rg "instanceof" packages/library/src/internal/test packages/examples/src/domain` で、サンプルとライブラリ内テスト用データのイベント分岐に `instanceof` が残っていないことを確認する。
 - [ ] 4.7 `OptimisticLockError` と外部 SDK 利用を除き、本ライブラリ定義 `class` が残っていないことを確認する。
 - [ ] 4.8 4.0.0 向け移行ガイドに、`EventStore.ofX(...)` から `EventStore.createX(...)`、`createShardId(...)` から `ShardId.create(...)` などの before / after が含まれていることを確認する。
 - [ ] 4.9 `replace-interfaces-with-types` の OpenSpec 状態確認を実行し、change が適用可能なままであることを確認する。
