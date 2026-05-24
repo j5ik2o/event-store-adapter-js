@@ -1,4 +1,4 @@
-import type { Event } from "event-store-adapter-js";
+import type { Event } from "../../types";
 import type { UserAccountId } from "./user-account-id";
 
 export type UserAccountRenamed = Event<UserAccountId> & {
@@ -18,7 +18,10 @@ export namespace UserAccountRenamed {
     requireAggregateId("UserAccountRenamed aggregateId", input.aggregateId);
     requireNonEmptyString("UserAccountRenamed id", input.id);
     requireNonEmptyString("UserAccountRenamed name", input.name);
-    requireSequenceNumber("UserAccountRenamed sequenceNumber", input.sequenceNumber);
+    requireSequenceNumber(
+      "UserAccountRenamed sequenceNumber",
+      input.sequenceNumber,
+    );
     requireValidDate("UserAccountRenamed occurredAt", input.occurredAt);
     return Object.freeze({
       ...input,

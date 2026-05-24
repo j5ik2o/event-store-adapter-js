@@ -1,25 +1,32 @@
-import {
-  type AggregateId,
-  type AggregateIdValue,
-  createAggregateIdValue,
-} from "../../types";
+import type { AggregateId } from "../../types";
 
-class UserAccountId implements AggregateId {
-  public readonly typeName = "user-account";
-  public readonly value: AggregateIdValue;
+export type UserAccountId = AggregateId & {
+  typeName: "user-account";
+};
 
-  constructor(value: string) {
-    this.value = createAggregateIdValue(value);
-  }
-
-  asString(): string {
-    return `${this.typeName}-${this.value}`;
+export namespace UserAccountId {
+  export function create(value: string): UserAccountId {
+    if (typeof value !== "string" || value.length === 0) {
+      throw new Error("UserAccountId value must be a non-empty string");
+    }
+    return Object.freeze({
+      typeName: "user-account",
+      value,
+      asString: () => `user-account-${value}`,
+    });
   }
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
-function convertJSONToUserAccountId(json: any): UserAccountId {
-  return new UserAccountId(json.value);
+Object.freeze(UserAccountId);
+
+function convertJSONToUserAccountId(json: unknown): UserAccountId {
+  if (typeof json !== "object" || json === null || !("value" in json)) {
+    throw new Error("Invalid UserAccountId JSON");
+  }
+  if (typeof json.value !== "string") {
+    throw new Error("UserAccountId value must be a non-empty string");
+  }
+  return UserAccountId.create(json.value);
 }
 
-export { convertJSONToUserAccountId, UserAccountId };
+export { convertJSONToUserAccountId };

@@ -1,67 +1,61 @@
 import type { DynamoDBEventStoreInput } from "./dynamodb-event-store-input";
-import { DynamoDBEventStore } from "./internal/dynamodb-event-store";
-import { MemoryEventStore } from "./internal/memory-event-store";
-import { SpannerEventStore } from "./internal/spanner-event-store";
+import { createDynamoDBEventStore } from "./internal/dynamodb-event-store";
+import { createMemoryEventStore } from "./internal/memory-event-store";
+import { createSpannerEventStore } from "./internal/spanner-event-store";
 import type { MemoryEventStoreInput } from "./memory-event-store-input";
 import type { SpannerEventStoreInput } from "./spanner-event-store-input";
-import type { Aggregate, AggregateId, Event } from "./types";
+import type {
+  Aggregate,
+  AggregateId,
+  Event,
+  EventStoreError,
+  Result,
+} from "./types";
 
-export interface EventStore<
+export type EventStore<
   AID extends AggregateId,
   A extends Aggregate<A, AID>,
   E extends Event<AID>,
-> {
-  persistEvent(event: E, expectedVersion: number): Promise<void>;
-  persistEventAndSnapshot(event: E, aggregate: A): Promise<void>;
+> = {
+  persistEvent(
+    event: E,
+    expectedVersion: number,
+  ): Promise<Result<void, EventStoreError>>;
+  persistEventAndSnapshot(
+    event: E,
+    aggregate: A,
+  ): Promise<Result<void, EventStoreError>>;
   getEventsByIdSinceSequenceNumber(
     id: AID,
     sequenceNumber: number,
   ): Promise<E[]>;
   getLatestSnapshotById(id: AID): Promise<A | undefined>;
-}
+};
 
-type EventStoreConstructors = Readonly<{
-  ofDynamoDB<
-    AID extends AggregateId,
-    A extends Aggregate<A, AID>,
-    E extends Event<AID>,
-  >(input: DynamoDBEventStoreInput<AID, A, E>): EventStore<AID, A, E>;
-
-  ofMemory<
-    AID extends AggregateId,
-    A extends Aggregate<A, AID>,
-    E extends Event<AID>,
-  >(input?: MemoryEventStoreInput<AID, A, E>): EventStore<AID, A, E>;
-
-  ofSpanner<
-    AID extends AggregateId,
-    A extends Aggregate<A, AID>,
-    E extends Event<AID>,
-  >(input: SpannerEventStoreInput<AID, A, E>): EventStore<AID, A, E>;
-}>;
-
-export const EventStore: EventStoreConstructors = Object.freeze({
-  ofDynamoDB<
+export namespace EventStore {
+  export function createDynamoDB<
     AID extends AggregateId,
     A extends Aggregate<A, AID>,
     E extends Event<AID>,
   >(input: DynamoDBEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
-    return new DynamoDBEventStore<AID, A, E>(input);
-  },
+    return createDynamoDBEventStore<AID, A, E>(input);
+  }
 
-  ofMemory<
+  export function createMemory<
     AID extends AggregateId,
     A extends Aggregate<A, AID>,
     E extends Event<AID>,
   >(input?: MemoryEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
-    return new MemoryEventStore(input ?? {});
-  },
+    return createMemoryEventStore(input ?? {});
+  }
 
-  ofSpanner<
+  export function createSpanner<
     AID extends AggregateId,
     A extends Aggregate<A, AID>,
     E extends Event<AID>,
   >(input: SpannerEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
-    return new SpannerEventStore<AID, A, E>(input);
-  },
-});
+    return createSpannerEventStore<AID, A, E>(input);
+  }
+}
+
+Object.freeze(EventStore);

@@ -1,27 +1,29 @@
-import {
-  type AggregateId,
-  type AggregateIdValue,
-  createAggregateIdValue,
-} from "event-store-adapter-js";
+import type { AggregateId } from "event-store-adapter-js";
 
-class UserAccountId implements AggregateId {
-  public readonly typeName = "user-account";
-  public readonly value: AggregateIdValue;
+export type UserAccountId = AggregateId & {
+  typeName: "user-account";
+};
 
-  constructor(value: string) {
-    this.value = createAggregateIdValue(value);
-  }
-
-  asString(): string {
-    return `${this.typeName}-${this.value}`;
+export namespace UserAccountId {
+  export function create(value: string): UserAccountId {
+    if (value.length === 0) {
+      throw new Error("UserAccountId value must not be empty");
+    }
+    return Object.freeze({
+      typeName: "user-account",
+      value,
+      asString: () => `user-account-${value}`,
+    });
   }
 }
+
+Object.freeze(UserAccountId);
 
 function convertJSONToUserAccountId(json: unknown): UserAccountId {
   if (!isUserAccountIdJson(json)) {
     throw new Error("Invalid UserAccountId JSON");
   }
-  return new UserAccountId(json.value);
+  return UserAccountId.create(json.value);
 }
 
 function isUserAccountIdJson(json: unknown): json is { value: string } {
@@ -33,4 +35,4 @@ function isUserAccountIdJson(json: unknown): json is { value: string } {
   );
 }
 
-export { convertJSONToUserAccountId, UserAccountId };
+export { convertJSONToUserAccountId };

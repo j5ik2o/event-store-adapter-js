@@ -1,4 +1,4 @@
-interface Logger {
+type Logger = {
   // biome-ignore lint/suspicious/noExplicitAny: Logger accepts any content type
   trace?: (...content: any[]) => void;
   // biome-ignore lint/suspicious/noExplicitAny: Logger accepts any content type
@@ -9,6 +9,6 @@ interface Logger {
   warn: (...content: any[]) => void;
   // biome-ignore lint/suspicious/noExplicitAny: Logger accepts any content type
   error: (...content: any[]) => void;
-}
+};
 
 export type { Logger };

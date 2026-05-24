@@ -1,7 +1,7 @@
 ## EventStore が利用する Cloud Spanner のテーブル構成
 
 Spanner adapter は GoogleSQL の `journal` と `snapshot` を使います。
-`Database` のライフサイクルは呼び出し側が管理し、`EventStore.ofSpanner(...)` に渡します。
+`Database` のライフサイクルは呼び出し側が管理し、`EventStore.createSpanner(...)` に渡します。
 
 ```sql
 CREATE TABLE journal (

@@ -5,25 +5,22 @@ import {
   QueryCommand,
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
-import {
-  type AggregateId,
-  type AggregateIdValue,
-  createAggregateIdValue,
-} from "../types";
-import { DynamoDBSnapshotRetentionExecutor } from "./dynamodb-snapshot-retention-executor";
+import type { AggregateId } from "../types";
+import { createDynamoDBSnapshotRetentionExecutor } from "./dynamodb-snapshot-retention-executor";
 
-class TestAggregateId implements AggregateId {
-  readonly typeName = "test";
-  readonly value: AggregateIdValue;
+type TestAggregateId = AggregateId & {
+  typeName: "test";
+};
 
-  constructor(value: string) {
-    this.value = createAggregateIdValue(value);
-  }
-
-  asString(): string {
-    return `${this.typeName}-${this.value}`;
-  }
-}
+const TestAggregateId = Object.freeze({
+  create(value: string): TestAggregateId {
+    return Object.freeze({
+      typeName: "test",
+      value,
+      asString: () => `test-${value}`,
+    });
+  },
+});
 
 describe("DynamoDBSnapshotRetentionExecutor", () => {
   const originalAggregateError = globalThis.AggregateError;
@@ -55,14 +52,18 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
       "snapshot-active-ttl-index",
     );
 
-    await executor.purgeExcessSnapshots(new TestAggregateId("1"), 1, undefined);
+    await executor.purgeExcessSnapshots(
+      TestAggregateId.create("1"),
+      1,
+      undefined,
+    );
 
     const deleteCommands = sentCommands.filter((command) => {
       return command instanceof BatchWriteItemCommand;
@@ -132,14 +133,18 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
       "snapshot-active-ttl-index",
     );
 
-    await executor.purgeExcessSnapshots(new TestAggregateId("1"), 1, undefined);
+    await executor.purgeExcessSnapshots(
+      TestAggregateId.create("1"),
+      1,
+      undefined,
+    );
 
     const deleteCommand = sentCommands.find((command) => {
       return command instanceof BatchWriteItemCommand;
@@ -200,14 +205,18 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
       "snapshot-active-ttl-index",
     );
 
-    await executor.purgeExcessSnapshots(new TestAggregateId("1"), 1, undefined);
+    await executor.purgeExcessSnapshots(
+      TestAggregateId.create("1"),
+      1,
+      undefined,
+    );
 
     const snapshotKeyQueries = sentCommands.filter((command) => {
       return command instanceof QueryCommand;
@@ -265,7 +274,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
@@ -274,7 +283,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
 
     await expect(
       executor.purgeExcessSnapshots(
-        new TestAggregateId("1"),
+        TestAggregateId.create("1"),
         keepSnapshotCount,
         undefined,
       ),
@@ -291,7 +300,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     const dynamodbClient = {
       send: jest.fn(),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
@@ -300,7 +309,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
 
     await expect(
       executor.purgeExcessSnapshots(
-        new TestAggregateId("1"),
+        TestAggregateId.create("1"),
         1,
         deleteTtlMillis,
       ),
@@ -350,14 +359,18 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
       "snapshot-active-ttl-index",
     );
 
-    await executor.purgeExcessSnapshots(new TestAggregateId("1"), 1, undefined);
+    await executor.purgeExcessSnapshots(
+      TestAggregateId.create("1"),
+      1,
+      undefined,
+    );
 
     const deleteCommands = sentCommands.filter((command) => {
       return command instanceof BatchWriteItemCommand;
@@ -394,7 +407,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
@@ -402,7 +415,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     );
 
     await executor.purgeExcessSnapshots(
-      new TestAggregateId("1"),
+      TestAggregateId.create("1"),
       1,
       60 * 60 * 1000,
     );
@@ -459,14 +472,14 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
       "snapshot-active-ttl-index",
     );
 
-    await executor.purgeExcessSnapshots(new TestAggregateId("1"), 1, 1);
+    await executor.purgeExcessSnapshots(TestAggregateId.create("1"), 1, 1);
 
     const updateCommand = sentCommands.find((command) => {
       return command instanceof UpdateItemCommand;
@@ -501,7 +514,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
@@ -509,7 +522,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     );
 
     await executor.purgeExcessSnapshots(
-      new TestAggregateId("1"),
+      TestAggregateId.create("1"),
       1,
       60 * 60 * 1000,
     );
@@ -563,7 +576,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
@@ -571,7 +584,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     );
 
     await executor.purgeExcessSnapshots(
-      new TestAggregateId("1"),
+      TestAggregateId.create("1"),
       1,
       60 * 60 * 1000,
     );
@@ -610,7 +623,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
@@ -619,7 +632,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
 
     await expect(
       executor.purgeExcessSnapshots(
-        new TestAggregateId("1"),
+        TestAggregateId.create("1"),
         1,
         60 * 60 * 1000,
       ),
@@ -657,7 +670,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
@@ -665,7 +678,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     );
 
     await executor.purgeExcessSnapshots(
-      new TestAggregateId("1"),
+      TestAggregateId.create("1"),
       1,
       60 * 60 * 1000,
     );
@@ -699,7 +712,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
@@ -707,7 +720,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     );
 
     const retention = executor.purgeExcessSnapshots(
-      new TestAggregateId("1"),
+      TestAggregateId.create("1"),
       0,
       60 * 60 * 1000,
     );
@@ -757,7 +770,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
@@ -765,7 +778,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     );
 
     const retention = executor.purgeExcessSnapshots(
-      new TestAggregateId("1"),
+      TestAggregateId.create("1"),
       0,
       60 * 60 * 1000,
     );
@@ -815,7 +828,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
         return {};
       }),
     } as unknown as DynamoDBClient;
-    const executor = new DynamoDBSnapshotRetentionExecutor(
+    const executor = createDynamoDBSnapshotRetentionExecutor(
       dynamodbClient,
       "snapshot",
       "snapshot-aid-index",
@@ -824,7 +837,7 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
 
     await expect(
       executor.purgeExcessSnapshots(
-        new TestAggregateId("1"),
+        TestAggregateId.create("1"),
         1,
         60 * 60 * 1000,
       ),

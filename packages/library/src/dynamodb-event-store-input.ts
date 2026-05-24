@@ -9,11 +9,11 @@ import type {
   SnapshotSerializer,
 } from "./types";
 
-interface DynamoDBEventStoreInput<
+type DynamoDBEventStoreInput<
   AID extends AggregateId,
   A extends Aggregate<A, AID>,
   E extends Event<AID>,
-> {
+> = {
   client: DynamoDBClient;
   journalTableName: string;
   snapshotTableName: string;
@@ -31,6 +31,6 @@ interface DynamoDBEventStoreInput<
   eventSerializer?: EventSerializer<AID, E>;
   snapshotSerializer?: SnapshotSerializer<AID, A>;
   logger?: Logger;
-}
+};
 
 export type { DynamoDBEventStoreInput };

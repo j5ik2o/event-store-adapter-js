@@ -1,104 +1,122 @@
 import { ulid } from "ulid";
-import type { Aggregate } from "../../types";
-import {
-  UserAccountCreated,
-  type UserAccountEvent,
-  UserAccountRenamed,
-} from "./user-account-event";
+import { UserAccountCreated } from "./user-account-created";
+import type { UserAccountEvent } from "./user-account-event";
 import {
   convertJSONToUserAccountId,
   type UserAccountId,
 } from "./user-account-id";
+import { UserAccountRenamed } from "./user-account-renamed";
 
-class UserAccount implements Aggregate<UserAccount, UserAccountId> {
-  public readonly typeName: string = "UserAccount";
-  constructor(
-    public readonly id: UserAccountId,
-    public readonly name: string,
-    public readonly sequenceNumber: number,
-    public readonly version: number,
-  ) {}
+export type UserAccount = {
+  typeName: "UserAccount";
+  id: UserAccountId;
+  name: string;
+  sequenceNumber: number;
+  version: number;
+  withVersion(version: number): UserAccount;
+  updateVersion(version: (value: number) => number): UserAccount;
+  incrementSequenceNumber(): UserAccount;
+  rename(name: string): [UserAccount, UserAccountEvent];
+};
 
-  incrementSequenceNumber(): UserAccount {
-    return new UserAccount(
-      this.id,
-      this.name,
-      this.sequenceNumber + 1,
-      this.version,
-    );
+export namespace UserAccount {
+  export function createSnapshot(
+    id: UserAccountId,
+    name: string,
+    sequenceNumber: number,
+    version: number,
+  ): UserAccount {
+    return createUserAccount(id, name, sequenceNumber, version);
   }
 
-  withVersion(version: number): UserAccount {
-    return new UserAccount(this.id, this.name, this.sequenceNumber, version);
-  }
-
-  updateVersion(version: (value: number) => number): UserAccount {
-    return new UserAccount(
-      this.id,
-      this.name,
-      this.sequenceNumber,
-      version(this.version),
-    );
-  }
-
-  rename(name: string): [UserAccount, UserAccountEvent] {
-    const ua = new UserAccount(
-      this.id,
-      name,
-      this.sequenceNumber + 1,
-      this.version,
-    );
-    const eventId = ulid();
-    const event = new UserAccountRenamed(
-      eventId,
-      this.id,
-      name,
-      ua.sequenceNumber,
-      new Date(),
-    );
-    return [ua, event];
-  }
-
-  public static create(
+  export function create(
     id: UserAccountId,
     name: string,
   ): [UserAccount, UserAccountEvent] {
-    const ua = new UserAccount(id, name, 0, 1).incrementSequenceNumber();
-    const eventId = ulid();
-    const event = new UserAccountCreated(
-      eventId,
-      id,
+    const initialUserAccount = createUserAccount(id, name, 0, 1);
+    const userAccount = initialUserAccount.incrementSequenceNumber();
+    const event = UserAccountCreated.create({
+      id: ulid(),
+      aggregateId: id,
       name,
-      ua.sequenceNumber,
-      new Date(),
-    );
-    return [ua, event];
+      sequenceNumber: userAccount.sequenceNumber,
+      occurredAt: new Date(),
+    });
+    return [userAccount, event];
   }
 
-  public static replay(
+  export function replay(
     events: UserAccountEvent[],
     snapshot: UserAccount,
   ): UserAccount {
-    let acc = snapshot;
-    for (const event of events) {
-      acc = acc.applyEvent(event);
-    }
-    return acc;
+    return events.reduce(applyEvent, snapshot);
   }
+}
 
-  private applyEvent(event: UserAccountEvent): UserAccount {
-    if (event instanceof UserAccountRenamed) {
-      const [result] = this.rename(event.name);
-      return result;
+Object.freeze(UserAccount);
+
+function createUserAccount(
+  id: UserAccountId,
+  name: string,
+  sequenceNumber: number,
+  version: number,
+): UserAccount {
+  return Object.freeze({
+    typeName: "UserAccount",
+    id,
+    name,
+    sequenceNumber,
+    version,
+    incrementSequenceNumber: () =>
+      createUserAccount(id, name, sequenceNumber + 1, version),
+    withVersion: (newVersion: number) =>
+      createUserAccount(id, name, sequenceNumber, newVersion),
+    updateVersion: (update: (value: number) => number) =>
+      createUserAccount(id, name, sequenceNumber, update(version)),
+    rename: (newName: string): [UserAccount, UserAccountEvent] => {
+      const userAccount = createUserAccount(
+        id,
+        newName,
+        sequenceNumber + 1,
+        version,
+      );
+      const event = UserAccountRenamed.create({
+        id: ulid(),
+        aggregateId: id,
+        name: newName,
+        sequenceNumber: userAccount.sequenceNumber,
+        occurredAt: new Date(),
+      });
+      return [userAccount, event];
+    },
+  });
+}
+
+function applyEvent(
+  userAccount: UserAccount,
+  event: UserAccountEvent,
+): UserAccount {
+  switch (event.typeName) {
+    case "UserAccountRenamed":
+      return createUserAccount(
+        userAccount.id,
+        event.name,
+        event.sequenceNumber,
+        userAccount.version,
+      );
+    case "UserAccountCreated":
+      return userAccount;
+    default: {
+      const exhaustiveCheck: never = event;
+      throw new Error(`Unknown event type: ${exhaustiveCheck}`);
     }
-    throw new Error("Unknown event type");
   }
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
 function convertJSONToUserAccount(json: any): UserAccount {
   const id = convertJSONToUserAccountId(json.data.id);
-  return new UserAccount(
+  return UserAccount.createSnapshot(
     id,
     json.data.name,
     json.data.sequenceNumber,
@@ -106,4 +124,4 @@ function convertJSONToUserAccount(json: any): UserAccount {
   );
 }
 
-export { convertJSONToUserAccount, UserAccount };
+export { convertJSONToUserAccount };

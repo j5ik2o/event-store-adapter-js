@@ -1,4 +1,3 @@
-import type { Aggregate } from "event-store-adapter-js";
 import { ulid } from "ulid";
 import { UserAccountCreated } from "./user-account-created";
 import type { UserAccountEvent } from "./user-account-event";
@@ -15,130 +14,146 @@ type UserAccountSnapshotData = {
   version: number;
 };
 
-class UserAccount implements Aggregate<UserAccount, UserAccountId> {
-  public readonly typeName = "UserAccount";
+export type UserAccount = {
+  typeName: "UserAccount";
+  id: UserAccountId;
+  name: string;
+  sequenceNumber: number;
+  version: number;
+  withVersion(version: number): UserAccount;
+  updateVersion(version: (value: number) => number): UserAccount;
+  rename(name: string): [UserAccount, UserAccountEvent];
+};
 
-  constructor(
-    public readonly id: UserAccountId,
-    public readonly name: string,
-    public readonly sequenceNumber: number,
-    public readonly version: number,
-  ) {}
-
-  withVersion(version: number): UserAccount {
-    return new UserAccount(this.id, this.name, this.sequenceNumber, version);
+export namespace UserAccount {
+  export function createSnapshot(
+    id: UserAccountId,
+    name: string,
+    sequenceNumber: number,
+    version: number,
+  ): UserAccount {
+    return createUserAccount(id, name, sequenceNumber, version);
   }
 
-  updateVersion(version: (value: number) => number): UserAccount {
-    return new UserAccount(
-      this.id,
-      this.name,
-      this.sequenceNumber,
-      version(this.version),
-    );
-  }
-
-  rename(name: string): [UserAccount, UserAccountEvent] {
-    const renamedName = requireUserAccountName(name);
-    const renamed = new UserAccount(
-      this.id,
-      renamedName,
-      this.sequenceNumber + 1,
-      this.version,
-    );
-    return [
-      renamed,
-      new UserAccountRenamed(
-        ulid(),
-        this.id,
-        renamedName,
-        renamed.sequenceNumber,
-        new Date(),
-      ),
-    ];
-  }
-
-  static create(
+  export function create(
     id: UserAccountId,
     name: string,
   ): [UserAccount, UserAccountEvent] {
     const createdName = requireUserAccountName(name);
-    const created = new UserAccount(id, createdName, 1, 1);
+    const created = createUserAccount(id, createdName, 1, 1);
     return [
       created,
-      new UserAccountCreated(
-        ulid(),
-        id,
-        createdName,
-        created.sequenceNumber,
-        new Date(),
-      ),
+      UserAccountCreated.create({
+        id: ulid(),
+        aggregateId: id,
+        name: createdName,
+        sequenceNumber: created.sequenceNumber,
+        occurredAt: new Date(),
+      }),
     ];
   }
 
-  static replay(
+  export function replay(
     events: readonly UserAccountEvent[],
     snapshot: UserAccount,
   ): UserAccount {
     return events.reduce(
-      (account, event) => account.applySnapshotEvent(event),
+      (account, event) => applyEvent(account, event, account.version + 1),
       snapshot,
     );
   }
 
-  static replayFromEvents(
+  export function replayFromEvents(
     events: readonly UserAccountEvent[],
   ): UserAccount | undefined {
     const [firstEvent, ...remainingEvents] = events;
     if (firstEvent === undefined) {
       return undefined;
     }
-    if (!(firstEvent instanceof UserAccountCreated)) {
+    if (firstEvent.typeName !== "UserAccountCreated") {
       throw new Error("UserAccount history must start with UserAccountCreated");
     }
     if (firstEvent.sequenceNumber !== 1) {
       throw new Error("UserAccount history must start with sequence number 1");
     }
-    const initial = new UserAccount(
+    const initial = createUserAccount(
       firstEvent.aggregateId,
       firstEvent.name,
       firstEvent.sequenceNumber,
       1,
     );
     return remainingEvents.reduce(
-      (account, event) => account.applyStoredEvent(event),
+      (account, event) => applyEvent(account, event, account.version + 1),
       initial,
     );
   }
+}
 
-  private applySnapshotEvent(event: UserAccountEvent): UserAccount {
-    return this.applyEvent(event, this.version);
-  }
+Object.freeze(UserAccount);
 
-  private applyStoredEvent(event: UserAccountEvent): UserAccount {
-    return this.applyEvent(event, this.version + 1);
-  }
+function createUserAccount(
+  id: UserAccountId,
+  name: string,
+  sequenceNumber: number,
+  version: number,
+): UserAccount {
+  return Object.freeze({
+    typeName: "UserAccount",
+    id,
+    name,
+    sequenceNumber,
+    version,
+    withVersion: (newVersion: number) =>
+      createUserAccount(id, name, sequenceNumber, newVersion),
+    updateVersion: (update: (value: number) => number) =>
+      createUserAccount(id, name, sequenceNumber, update(version)),
+    rename: (newName: string): [UserAccount, UserAccountEvent] => {
+      const renamedName = requireUserAccountName(newName);
+      const renamed = createUserAccount(
+        id,
+        renamedName,
+        sequenceNumber + 1,
+        version,
+      );
+      return [
+        renamed,
+        UserAccountRenamed.create({
+          id: ulid(),
+          aggregateId: id,
+          name: renamedName,
+          sequenceNumber: renamed.sequenceNumber,
+          occurredAt: new Date(),
+        }),
+      ];
+    },
+  });
+}
 
-  private applyEvent(event: UserAccountEvent, version: number): UserAccount {
-    if (event instanceof UserAccountRenamed) {
-      return new UserAccount(
-        this.id,
+function applyEvent(
+  account: UserAccount,
+  event: UserAccountEvent,
+  version: number,
+): UserAccount {
+  switch (event.typeName) {
+    case "UserAccountRenamed":
+      return createUserAccount(
+        account.id,
         event.name,
         event.sequenceNumber,
         version,
       );
+    case "UserAccountCreated":
+      return account;
+    default: {
+      const exhaustiveCheck: never = event;
+      throw new Error(`Unexpected event type: ${exhaustiveCheck}`);
     }
-    if (event instanceof UserAccountCreated) {
-      return this;
-    }
-    const exhaustiveCheck: never = event;
-    throw new Error(`Unexpected event type: ${exhaustiveCheck}`);
   }
 }
 
 function convertJSONToUserAccount(json: unknown): UserAccount {
   const payload = parseSnapshotPayload(json);
-  return new UserAccount(
+  return createUserAccount(
     convertJSONToUserAccountId(payload.data.id),
     payload.data.name,
     payload.data.sequenceNumber,
@@ -157,9 +172,8 @@ function parseSnapshotPayload(json: unknown): {
   ) {
     throw new Error("Invalid UserAccount JSON");
   }
-  const data: UserAccountSnapshotData = json.data;
   return {
-    data,
+    data: json.data,
   };
 }
 
@@ -194,4 +208,4 @@ function requireUserAccountName(name: string): string {
   return name;
 }
 
-export { convertJSONToUserAccount, UserAccount };
+export { convertJSONToUserAccount };

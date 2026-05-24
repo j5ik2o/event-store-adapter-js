@@ -1,34 +1,37 @@
-import type { Event } from "event-store-adapter-js";
+import type { Event } from "../../types";
 import type { UserAccountId } from "./user-account-id";
 
-export type UserAccountRenamed = Event<UserAccountId> & {
-  typeName: "UserAccountRenamed";
-  isCreated: false;
+export type UserAccountCreated = Event<UserAccountId> & {
+  typeName: "UserAccountCreated";
+  isCreated: true;
   name: string;
 };
 
-export namespace UserAccountRenamed {
+export namespace UserAccountCreated {
   export function create(input: {
     id: string;
     aggregateId: UserAccountId;
     name: string;
     sequenceNumber: number;
     occurredAt: Date;
-  }): UserAccountRenamed {
-    requireAggregateId("UserAccountRenamed aggregateId", input.aggregateId);
-    requireNonEmptyString("UserAccountRenamed id", input.id);
-    requireNonEmptyString("UserAccountRenamed name", input.name);
-    requireSequenceNumber("UserAccountRenamed sequenceNumber", input.sequenceNumber);
-    requireValidDate("UserAccountRenamed occurredAt", input.occurredAt);
+  }): UserAccountCreated {
+    requireAggregateId("UserAccountCreated aggregateId", input.aggregateId);
+    requireNonEmptyString("UserAccountCreated id", input.id);
+    requireNonEmptyString("UserAccountCreated name", input.name);
+    requireSequenceNumber(
+      "UserAccountCreated sequenceNumber",
+      input.sequenceNumber,
+    );
+    requireValidDate("UserAccountCreated occurredAt", input.occurredAt);
     return Object.freeze({
       ...input,
-      typeName: "UserAccountRenamed",
-      isCreated: false,
+      typeName: "UserAccountCreated",
+      isCreated: true,
     });
   }
 }
 
-Object.freeze(UserAccountRenamed);
+Object.freeze(UserAccountCreated);
 
 function requireAggregateId(fieldName: string, value: UserAccountId): void {
   if (value === undefined || value === null) {

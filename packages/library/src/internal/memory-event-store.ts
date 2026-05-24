@@ -4,142 +4,143 @@ import {
   type Aggregate,
   type AggregateId,
   type Event,
-  OptimisticLockError,
+  EventStoreError,
+  Result,
 } from "../types";
 import {
   assertEventMatchesAggregate,
-  assertExpectedVersion,
   assertPersistableUpdateEvent,
+  toExpectedVersionError,
 } from "./event-store-assertions";
 
-class SnapshotCopyContractError extends Error {
-  constructor(aggregateId: string) {
-    super(
-      `Aggregate.withVersion must return a new instance for aggregate ${aggregateId}`,
-    );
-    this.name = "SnapshotCopyContractError";
-  }
-}
-
-class InvalidSeededSnapshotError extends Error {
-  constructor(aggregateId: string, cause: unknown) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    super(`Invalid seeded snapshot for aggregate ${aggregateId}: ${message}`);
-    this.name = "InvalidSeededSnapshotError";
-    this.cause = cause;
-  }
-}
-
-class MemoryEventStore<
+function createMemoryEventStore<
   AID extends AggregateId,
   A extends Aggregate<A, AID>,
   E extends Event<AID>,
-> implements EventStore<AID, A, E>
-{
-  private readonly events: Map<string, E[]>;
-  private readonly snapshots: Map<string, A>;
+>(input: MemoryEventStoreInput<AID, A, E> = {}): EventStore<AID, A, E> {
+  const events = new Map(
+    Array.from(input.events ?? new Map<AID, E[]>()).map(([key, values]) => {
+      return [key.asString(), [...values]];
+    }),
+  );
+  const snapshots = new Map(
+    Array.from(input.snapshots ?? new Map<AID, A>()).map(([key, value]) => {
+      return [key.asString(), copySeededSnapshot(key, value)];
+    }),
+  );
 
-  constructor(input: MemoryEventStoreInput<AID, A, E> = {}) {
-    const events = input.events ?? new Map<AID, E[]>();
-    const snapshots = input.snapshots ?? new Map<AID, A>();
-    this.events = new Map(
-      Array.from(events).map(([key, values]) => {
-        return [key.asString(), [...values]];
-      }),
-    );
-    this.snapshots = new Map(
-      Array.from(snapshots).map(([key, value]) => {
-        return [key.asString(), this.copySeededSnapshot(key, value)];
-      }),
-    );
+  function appendEvent(aggregateIdString: string, event: E): void {
+    const aggregateEvents = events.get(aggregateIdString) ?? [];
+    events.set(aggregateIdString, [...aggregateEvents, event]);
   }
 
-  async persistEvent(event: E, expectedVersion: number): Promise<void> {
-    assertPersistableUpdateEvent(event);
-    const aggregateIdString = event.aggregateId.asString();
-    const snapshot = this.snapshots.get(aggregateIdString);
-    if (snapshot === undefined) {
-      throw new OptimisticLockError(
-        `Aggregate does not exist: ${aggregateIdString}`,
+  function assertSnapshotCopy(snapshot: A, copiedSnapshot: A): void {
+    if (copiedSnapshot === snapshot) {
+      throw new Error(
+        `Aggregate.withVersion must return a new instance for aggregate ${snapshot.id.asString()}`,
       );
     }
-    assertEventMatchesAggregate(event, snapshot);
-    assertExpectedVersion(snapshot.version, expectedVersion);
-    const newVersion = snapshot.version + 1;
-    // Event-only updates advance version while keeping the latest snapshot point.
-    const newSnapshot = snapshot.withVersion(newVersion);
-    this.assertSnapshotCopy(snapshot, newSnapshot);
-    this.appendEvent(aggregateIdString, event);
-    this.snapshots.set(aggregateIdString, newSnapshot);
   }
 
-  async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
-    assertEventMatchesAggregate(event, aggregate);
-    const aggregateIdString = event.aggregateId.asString();
-    const events = this.events.get(aggregateIdString) ?? [];
-    const snapshot = this.snapshots.get(aggregateIdString);
-
-    let newVersion = 1;
-    if (event.isCreated) {
-      if (snapshot !== undefined || events.length > 0) {
-        throw new OptimisticLockError("Aggregate already exists");
-      }
-    } else {
-      if (snapshot === undefined) {
-        throw new OptimisticLockError(
-          `Aggregate does not exist: ${aggregateIdString}`,
-        );
-      }
-      assertExpectedVersion(snapshot.version, aggregate.version);
-      newVersion = snapshot.version + 1;
-    }
-    const newSnapshot = aggregate.withVersion(newVersion);
-    this.assertSnapshotCopy(aggregate, newSnapshot);
-    this.appendEvent(aggregateIdString, event);
-    this.snapshots.set(aggregateIdString, newSnapshot);
-  }
-
-  async getEventsByIdSinceSequenceNumber(
-    id: AID,
-    sequenceNumber: number,
-  ): Promise<E[]> {
-    const aggregateIdString = id.asString();
-    const events = this.events.get(aggregateIdString) ?? [];
-    return events.filter((event) => event.sequenceNumber >= sequenceNumber);
-  }
-
-  async getLatestSnapshotById(id: AID): Promise<A | undefined> {
-    const aggregateIdString = id.asString();
-    const snapshot = this.snapshots.get(aggregateIdString);
-    return snapshot === undefined ? undefined : this.copySnapshot(snapshot);
-  }
-
-  private appendEvent(aggregateIdString: string, event: E): void {
-    const events = this.events.get(aggregateIdString) ?? [];
-    // Keep histories immutable so callers that seeded the store cannot observe internal array mutation.
-    this.events.set(aggregateIdString, [...events, event]);
-  }
-
-  private copySnapshot(snapshot: A): A {
-    // Aggregate.withVersion must be pure and return a fresh instance; the memory store verifies that contract after the call.
+  function copySnapshot(snapshot: A): A {
     const copiedSnapshot = snapshot.withVersion(snapshot.version);
-    this.assertSnapshotCopy(snapshot, copiedSnapshot);
+    assertSnapshotCopy(snapshot, copiedSnapshot);
     return copiedSnapshot;
   }
 
-  private assertSnapshotCopy(snapshot: A, copiedSnapshot: A): void {
-    if (copiedSnapshot === snapshot) {
-      throw new SnapshotCopyContractError(snapshot.id.asString());
+  function copySeededSnapshot(key: AID, snapshot: A): A {
+    try {
+      return copySnapshot(snapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Invalid seeded snapshot for aggregate ${key.asString()}: ${message}`,
+      );
     }
   }
 
-  private copySeededSnapshot(key: AID, snapshot: A): A {
-    try {
-      return this.copySnapshot(snapshot);
-    } catch (error) {
-      throw new InvalidSeededSnapshotError(key.asString(), error);
-    }
-  }
+  return Object.freeze({
+    async persistEvent(event: E, expectedVersion: number) {
+      assertPersistableUpdateEvent(event);
+      const aggregateIdString = event.aggregateId.asString();
+      const snapshot = snapshots.get(aggregateIdString);
+      if (snapshot === undefined) {
+        return Result.err(
+          EventStoreError.optimisticLockConflict(
+            `Aggregate does not exist: ${aggregateIdString}`,
+          ),
+        );
+      }
+      assertEventMatchesAggregate(event, snapshot);
+      const versionError = toExpectedVersionError(
+        snapshot.version,
+        expectedVersion,
+      );
+      if (versionError !== undefined) {
+        return Result.err(versionError);
+      }
+      const newVersion = snapshot.version + 1;
+      const newSnapshot = snapshot.withVersion(newVersion);
+      assertSnapshotCopy(snapshot, newSnapshot);
+      appendEvent(aggregateIdString, event);
+      snapshots.set(aggregateIdString, newSnapshot);
+      return Result.ok(undefined);
+    },
+
+    async persistEventAndSnapshot(event: E, aggregate: A) {
+      assertEventMatchesAggregate(event, aggregate);
+      const aggregateIdString = event.aggregateId.asString();
+      const aggregateEvents = events.get(aggregateIdString) ?? [];
+      const snapshot = snapshots.get(aggregateIdString);
+
+      let newVersion = 1;
+      if (event.isCreated) {
+        if (snapshot !== undefined || aggregateEvents.length > 0) {
+          return Result.err(
+            EventStoreError.optimisticLockConflict("Aggregate already exists"),
+          );
+        }
+      } else {
+        if (snapshot === undefined) {
+          return Result.err(
+            EventStoreError.optimisticLockConflict(
+              `Aggregate does not exist: ${aggregateIdString}`,
+            ),
+          );
+        }
+        const versionError = toExpectedVersionError(
+          snapshot.version,
+          aggregate.version,
+        );
+        if (versionError !== undefined) {
+          return Result.err(versionError);
+        }
+        newVersion = snapshot.version + 1;
+      }
+      const newSnapshot = aggregate.withVersion(newVersion);
+      assertSnapshotCopy(aggregate, newSnapshot);
+      appendEvent(aggregateIdString, event);
+      snapshots.set(aggregateIdString, newSnapshot);
+      return Result.ok(undefined);
+    },
+
+    async getEventsByIdSinceSequenceNumber(
+      id: AID,
+      sequenceNumber: number,
+    ): Promise<E[]> {
+      const aggregateIdString = id.asString();
+      const aggregateEvents = events.get(aggregateIdString) ?? [];
+      return aggregateEvents.filter(
+        (event) => event.sequenceNumber >= sequenceNumber,
+      );
+    },
+
+    async getLatestSnapshotById(id: AID): Promise<A | undefined> {
+      const aggregateIdString = id.asString();
+      const snapshot = snapshots.get(aggregateIdString);
+      return snapshot === undefined ? undefined : copySnapshot(snapshot);
+    },
+  });
 }
 
-export { MemoryEventStore };
+export { createMemoryEventStore };

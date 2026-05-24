@@ -21,44 +21,33 @@ npm install event-store-adapter-js
 EventStoreを使えば、Event Sourcing対応リポジトリを簡単に実装できます。
 
 ```typescript
-class UserAccountRepository {
-    constructor(
-        private readonly eventStore: EventStore<
-            UserAccountId,
-            UserAccount,
-            UserAccountEvent
-        >,
-    ) {}
-
-    async storeEvent(event: UserAccountEvent, version: number) {
-        await this.eventStore.persistEvent(event, version);
-    }
-
-    async storeEventAndSnapshot(event: UserAccountEvent, snapshot: UserAccount) {
-        await this.eventStore.persistEventAndSnapshot(event, snapshot);
-    }
-
-    async findById(id: UserAccountId): Promise<UserAccount | undefined> {
-        const snapshot = await this.eventStore.getLatestSnapshotById(
-            id,
-        );
-        if (snapshot === undefined) {
-            return undefined;
-        } else {
-            const events = await this.eventStore.getEventsByIdSinceSequenceNumber(
-                id,
-                snapshot.sequenceNumber + 1,
-            );
-            return UserAccount.replay(events, snapshot);
-        }
-    }
-}
+const UserAccountRepository = Object.freeze({
+    create(eventStore: EventStore<UserAccountId, UserAccount, UserAccountEvent>) {
+        return Object.freeze({
+            storeEvent: (event: UserAccountEvent, version: number) =>
+                eventStore.persistEvent(event, version),
+            storeEventAndSnapshot: (event: UserAccountEvent, snapshot: UserAccount) =>
+                eventStore.persistEventAndSnapshot(event, snapshot),
+            async findById(id: UserAccountId): Promise<UserAccount | undefined> {
+                const snapshot = await eventStore.getLatestSnapshotById(id);
+                if (snapshot === undefined) {
+                    return undefined;
+                }
+                const events = await eventStore.getEventsByIdSinceSequenceNumber(
+                    id,
+                    snapshot.sequenceNumber + 1,
+                );
+                return UserAccount.replay(events, snapshot);
+            },
+        });
+    },
+});
 ```
 
 以下はリポジトリの使用例です。
 
 ```typescript
-const eventStore = EventStore.ofDynamoDB<
+const eventStore = EventStore.createDynamoDB<
     UserAccountId,
     UserAccount,
     UserAccountEvent
@@ -74,9 +63,9 @@ const eventStore = EventStore.ofDynamoDB<
     snapshotConverter: convertJSONToUserAccount,
 });
 // if you want to use in-memory event store, use the following code.
-// const eventStore = EventStore.ofMemory<UserAccountId, UserAccount, UserAccountEvent>({});
+// const eventStore = EventStore.createMemory<UserAccountId, UserAccount, UserAccountEvent>({});
 // Cloud Spannerを使う場合は、呼び出し側で管理するDatabaseを渡します。
-// const eventStore = EventStore.ofSpanner<UserAccountId, UserAccount, UserAccountEvent>({
+// const eventStore = EventStore.createSpanner<UserAccountId, UserAccount, UserAccountEvent>({
 //     database: spannerDatabase,
 //     journalTableName: "journal",
 //     snapshotTableName: "snapshot",
@@ -85,17 +74,23 @@ const eventStore = EventStore.ofDynamoDB<
 //     snapshotConverter: convertJSONToUserAccount,
 // });
 
-const userAccountRepository = new UserAccountRepository(eventStore);
+const userAccountRepository = UserAccountRepository.create(eventStore);
 
-const id = new UserAccountId(ulid());
+const id = UserAccountId.create(ulid());
 const name = "Alice";
 const [userAccount1, created] = UserAccount.create(id, name);
 
-await userAccountRepository.storeEventAndSnapshot(created, userAccount1);
+const createdResult = await userAccountRepository.storeEventAndSnapshot(created, userAccount1);
+if (createdResult.type === "err") {
+    throw new Error(createdResult.error.message);
+}
 
 const [userAccount2, renamed] = userAccount1.rename("Bob");
 
-await userAccountRepository.storeEvent(renamed, userAccount2.version);
+const renamedResult = await userAccountRepository.storeEvent(renamed, userAccount2.version);
+if (renamedResult.type === "err") {
+    throw new Error(renamedResult.error.message);
+}
 
 const userAccount3 = await userAccountRepository.findById(id);
 if (userAccount3 === undefined) {

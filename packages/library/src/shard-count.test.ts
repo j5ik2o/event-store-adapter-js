@@ -1,8 +1,8 @@
-import { createShardCount } from "./shard-count";
+import { ShardCount } from "./shard-count";
 
-describe("createShardCount", () => {
+describe("ShardCount.create", () => {
   test("returns a positive safe integer shard count", () => {
-    expect(createShardCount(32)).toBe(32);
+    expect(ShardCount.create(32)).toBe(32);
   });
 
   test.each([
@@ -12,7 +12,7 @@ describe("createShardCount", () => {
     Number.NaN,
     Number.POSITIVE_INFINITY,
   ])("rejects invalid shardCount %s", (value) => {
-    expect(() => createShardCount(value)).toThrow(
+    expect(() => ShardCount.create(value)).toThrow(
       "shardCount must be a positive safe integer",
     );
   });

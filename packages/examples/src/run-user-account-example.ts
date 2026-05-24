@@ -1,5 +1,9 @@
 import { strict as assert } from "node:assert";
-import { type EventStore, OptimisticLockError } from "event-store-adapter-js";
+import type {
+  EventStore,
+  EventStoreError,
+  Result,
+} from "event-store-adapter-js";
 import { ulid } from "ulid";
 import { UserAccount } from "./domain/user-account";
 import type { UserAccountEvent } from "./domain/user-account-event";
@@ -12,15 +16,15 @@ async function runUserAccountExample(
 ): Promise<void> {
   console.log(`[${backendName}] starting example`);
 
-  const userAccountRepository = new UserAccountRepository(eventStore);
-  const id = new UserAccountId(ulid());
+  const userAccountRepository = UserAccountRepository.create(eventStore);
+  const id = UserAccountId.create(ulid());
   const [createdAccount, created] = UserAccount.create(id, "Alice");
 
-  await userAccountRepository.saveWithSnapshot(created, createdAccount);
+  assertOk(await userAccountRepository.saveWithSnapshot(created, createdAccount));
   console.log(`[${backendName}] created user account: Alice`);
 
   const [, renamed] = createdAccount.rename("Bob");
-  await userAccountRepository.save(renamed, createdAccount.version);
+  assertOk(await userAccountRepository.save(renamed, createdAccount.version));
   console.log(`[${backendName}] renamed user account: Bob`);
 
   const replayedAccount = await userAccountRepository.findById(id);
@@ -34,33 +38,22 @@ async function runUserAccountExample(
   );
 
   const [, staleRename] = replayedAccount.rename("Carol");
-  await assertOptimisticLockError(
-    () => userAccountRepository.save(staleRename, 1),
-    backendName,
-  );
+  const staleResult = await userAccountRepository.save(staleRename, 1);
+  if (
+    staleResult.type !== "err" ||
+    staleResult.error.type !== "optimistic-lock-conflict"
+  ) {
+    throw new Error(`[${backendName}] expected optimistic lock conflict`);
+  }
+  console.log(`[${backendName}] detected optimistic lock error`);
 
   console.log(`[${backendName}] done`);
 }
 
-async function assertOptimisticLockError(
-  run: () => Promise<void>,
-  backendName: string,
-): Promise<void> {
-  try {
-    await run();
-  } catch (error) {
-    if (error instanceof OptimisticLockError) {
-      console.log(`[${backendName}] detected optimistic lock error`);
-      return;
-    }
-    if (error instanceof Error) {
-      throw error;
-    }
-    throw new Error(`[${backendName}] unexpected error: ${String(error)}`);
+function assertOk(result: Result<void, EventStoreError>): void {
+  if (result.type === "err") {
+    throw new Error(result.error.message);
   }
-  throw new Error(
-    `[${backendName}] expected OptimisticLockError but none was thrown`,
-  );
 }
 
 export { runUserAccountExample };

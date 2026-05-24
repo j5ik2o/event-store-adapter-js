@@ -2,6 +2,12 @@
 
 This guide covers breaking API changes introduced while aligning DynamoDB and Cloud Spanner shard selection.
 
+> Note: The examples in this guide are kept current with the v4.0 API surface.
+> When migrating legacy v3.0 code, map `KeyResolver` to `ShardSelector`,
+> `resolvePartitionKey` / `resolveSortKey` to `selectShardId`, and use
+> `EventStore.createDynamoDB(...)`, `EventStore.createSpanner(...)`, and
+> `ShardId.create(...)` in the updated code.
+
 ## Shard selection API
 
 `KeyResolver` and `SpannerShardSelector` were replaced by the storage-neutral `ShardSelector`.
@@ -18,7 +24,7 @@ const keyResolver: KeyResolver<UserAccountId> = {
     `${aggregateId.typeName}-${aggregateId.value}-${sequenceNumber}`,
 };
 
-const eventStore = EventStore.ofDynamoDB({
+const eventStore = EventStore.createDynamoDB({
   // ...
   keyResolver,
 });
@@ -27,24 +33,24 @@ const eventStore = EventStore.ofDynamoDB({
 After:
 
 ```ts
-import { createShardId, type ShardSelector } from "event-store-adapter-js";
+import { ShardId, type ShardSelector } from "event-store-adapter-js";
 
 const shardSelector: ShardSelector<UserAccountId> = {
   selectShardId: (aggregateId, shardCount) =>
-    createShardId(hash(aggregateId.asString()) % shardCount),
+    ShardId.create(hash(aggregateId.asString()) % shardCount),
 };
 
-const eventStore = EventStore.ofDynamoDB({
+const eventStore = EventStore.createDynamoDB({
   // ...
   shardSelector,
 });
 ```
 
-The same `ShardSelector` type is used by `EventStore.ofSpanner(...)`.
+The same `ShardSelector` type is used by `EventStore.createSpanner(...)`.
 `shardCount` remains a `number` in EventStore input objects, but the adapter parses it into a validated `ShardCount` before calling your selector.
 
 ```ts
-const eventStore = EventStore.ofSpanner({
+const eventStore = EventStore.createSpanner({
   // ...
   shardSelector,
 });

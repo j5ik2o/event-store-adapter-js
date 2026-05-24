@@ -1,6 +1,6 @@
-import { createShardCount, type ShardCount } from "../shard-count";
-import { createShardId } from "../shard-id";
-import { DefaultShardSelector } from "./default-shard-selector";
+import { ShardCount } from "../shard-count";
+import { ShardId } from "../shard-id";
+import { createDefaultShardSelector } from "./default-shard-selector";
 import { UserAccountId } from "./test/user-account-id";
 
 describe("DefaultShardSelector", () => {
@@ -22,32 +22,35 @@ describe("DefaultShardSelector", () => {
     ["01HZX3D9Z2C4J9V3K9WQ6T8Y7A", 11],
     ["user-account-with-a-long-stable-id-000000000001", 31],
   ])("selects a stable shard for %s", (value, shardId) => {
-    const selector = new DefaultShardSelector<UserAccountId>();
+    const selector = createDefaultShardSelector<UserAccountId>();
 
     expect(
-      selector.selectShardId(new UserAccountId(value), createShardCount(32)),
-    ).toBe(createShardId(shardId));
+      selector.selectShardId(
+        UserAccountId.create(value),
+        ShardCount.create(32),
+      ),
+    ).toBe(ShardId.create(shardId));
   });
 
   test("matches the legacy DynamoDB shard hash coercion", () => {
-    const shardCount = createShardCount(32);
-    const selector = new DefaultShardSelector<UserAccountId>();
+    const shardCount = ShardCount.create(32);
+    const selector = createDefaultShardSelector<UserAccountId>();
     const ids = [
-      new UserAccountId("01HZX3D9Z2C4J9V3K9WQ6T8Y7A"),
-      new UserAccountId("user-account-with-a-long-stable-id-000000000001"),
-      new UserAccountId("x".repeat(1000)),
+      UserAccountId.create("01HZX3D9Z2C4J9V3K9WQ6T8Y7A"),
+      UserAccountId.create("user-account-with-a-long-stable-id-000000000001"),
+      UserAccountId.create("x".repeat(1000)),
     ];
 
     for (const id of ids) {
       expect(selector.selectShardId(id, shardCount)).toBe(
-        createShardId(selectLegacyDynamoDBShardId(id, shardCount)),
+        ShardId.create(selectLegacyDynamoDBShardId(id, shardCount)),
       );
     }
   });
 
   test("rejects invalid inputs before selecting a shard", () => {
-    const selector = new DefaultShardSelector<UserAccountId>();
-    const id = new UserAccountId("user-1");
+    const selector = createDefaultShardSelector<UserAccountId>();
+    const id = UserAccountId.create("user-1");
     const invalidId = {
       typeName: "user-account",
       value: id.value,
@@ -57,14 +60,14 @@ describe("DefaultShardSelector", () => {
     expect(() =>
       selector.selectShardId(
         undefined as unknown as UserAccountId,
-        createShardCount(32),
+        ShardCount.create(32),
       ),
     ).toThrow("aggregateId is undefined or null");
-    expect(() => selector.selectShardId(id, 0 as ShardCount)).toThrow(
-      "shardCount must be a positive safe integer",
-    );
     expect(() =>
-      selector.selectShardId(invalidId, createShardCount(32)),
+      selector.selectShardId(id, 0 as unknown as ShardCount),
+    ).toThrow("shardCount must be a positive safe integer");
+    expect(() =>
+      selector.selectShardId(invalidId, ShardCount.create(32)),
     ).toThrow("str is not a string");
   });
 });

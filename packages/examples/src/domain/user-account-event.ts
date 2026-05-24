@@ -21,21 +21,21 @@ function convertJSONToUserAccountEvent(json: unknown): UserAccountEvent {
 
   switch (payload.type) {
     case "UserAccountCreated":
-      return new UserAccountCreated(
-        payload.data.id,
+      return UserAccountCreated.create({
+        id: payload.data.id,
         aggregateId,
-        payload.data.name,
-        payload.data.sequenceNumber,
+        name: payload.data.name,
+        sequenceNumber: payload.data.sequenceNumber,
         occurredAt,
-      );
+      });
     case "UserAccountRenamed":
-      return new UserAccountRenamed(
-        payload.data.id,
+      return UserAccountRenamed.create({
+        id: payload.data.id,
         aggregateId,
-        payload.data.name,
-        payload.data.sequenceNumber,
+        name: payload.data.name,
+        sequenceNumber: payload.data.sequenceNumber,
         occurredAt,
-      );
+      });
     default: {
       const exhaustiveCheck: never = payload.type;
       throw new Error(`Unknown UserAccountEvent type: ${exhaustiveCheck}`);

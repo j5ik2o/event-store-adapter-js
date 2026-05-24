@@ -3,38 +3,34 @@ import type { ShardId } from "../shard-id";
 import type { ShardSelector } from "../shard-selector";
 import type { AggregateId } from "../types";
 
-class DynamoDBAggregateKey<AID extends AggregateId> {
-  private constructor(
-    readonly shardId: ShardId,
-    readonly aggregateId: AID,
-    readonly sequenceNumber: number,
-  ) {}
+type DynamoDBAggregateKey<AID extends AggregateId> = Readonly<{
+  shardId: ShardId;
+  aggregateId: AID;
+  sequenceNumber: number;
+  partitionKeyValue: string;
+  sortKeyValue: string;
+}>;
 
-  static create<AID extends AggregateId>(
-    aggregateId: AID,
-    sequenceNumber: number,
-    shardSelector: ShardSelector<AID>,
-    shardCount: ShardCount,
-  ): DynamoDBAggregateKey<AID> {
-    if (!Number.isSafeInteger(sequenceNumber) || sequenceNumber < 0) {
-      throw new Error(
-        `sequenceNumber must be a non-negative safe integer, got ${sequenceNumber}`,
-      );
-    }
-    return new DynamoDBAggregateKey(
-      shardSelector.selectShardId(aggregateId, shardCount),
-      aggregateId,
-      sequenceNumber,
+function createDynamoDBAggregateKey<AID extends AggregateId>(
+  aggregateId: AID,
+  sequenceNumber: number,
+  shardSelector: ShardSelector<AID>,
+  shardCount: ShardCount,
+): DynamoDBAggregateKey<AID> {
+  if (!Number.isSafeInteger(sequenceNumber) || sequenceNumber < 0) {
+    throw new Error(
+      `sequenceNumber must be a non-negative safe integer, got ${sequenceNumber}`,
     );
   }
-
-  get partitionKeyValue(): string {
-    return `${this.aggregateId.typeName}-${this.shardId}`;
-  }
-
-  get sortKeyValue(): string {
-    return `${this.aggregateId.typeName}-${this.aggregateId.value}-${this.sequenceNumber}`;
-  }
+  const shardId = shardSelector.selectShardId(aggregateId, shardCount);
+  return Object.freeze({
+    shardId,
+    aggregateId,
+    sequenceNumber,
+    partitionKeyValue: `${aggregateId.typeName}-${shardId}`,
+    sortKeyValue: `${aggregateId.typeName}-${aggregateId.value}-${sequenceNumber}`,
+  });
 }
 
-export { DynamoDBAggregateKey };
+export type { DynamoDBAggregateKey };
+export { createDynamoDBAggregateKey };
