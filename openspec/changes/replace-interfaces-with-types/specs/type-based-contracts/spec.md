@@ -33,10 +33,15 @@
 - **WHEN** 呼び出し側が `EventStore` をランタイム値として取り込む
 - **THEN** `EventStore.ofDynamoDB(...)`、`EventStore.ofMemory(...)`、`EventStore.ofSpanner(...)` は公開 API に含まれない
 
-#### Scenario: 楽観ロックエラーの識別子が利用できる
+#### Scenario: Result ファクトリが利用できる
 
-- **WHEN** 呼び出し側が楽観ロック失敗を捕捉する
-- **THEN** 投げられたエラーは `error instanceof OptimisticLockError` と互換である
+- **WHEN** 呼び出し側が回復可能な EventStore 操作結果を扱う
+- **THEN** `Result.ok(...)` と `Result.err(...)` は値を構築するランタイムファクトリとして利用できる
+
+#### Scenario: EventStoreError ファクトリが利用できる
+
+- **WHEN** ライブラリが楽観ロック失敗などの回復可能な失敗を返す
+- **THEN** `EventStoreError` のファクトリは `type` フィールドを持つ判別共用体の値を構築する
 
 ### Requirement: 同名値ファクトリは create を使う
 
@@ -62,14 +67,28 @@
 - **WHEN** 呼び出し側がライブラリのランタイム値を取り込む
 - **THEN** `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` は公開 API に含まれない
 
-### Requirement: 本ライブラリ定義クラスはエラー識別子に限定する
+### Requirement: 回復可能なエラーは Result と判別共用体で返す
 
-ライブラリは、明示的な公開ランタイムエラー識別子を除き、製品コード、サンプル、ライブラリ内テスト用データで本ライブラリ定義クラスを使わない。
+ライブラリは、楽観ロック失敗など契約上想定される回復可能な失敗を例外として投げず、`Result` と `EventStoreError` の判別共用体で返す。
 
-#### Scenario: 公開楽観ロックエラーは `class` のままにする
+#### Scenario: 楽観ロック失敗は Result の err で返す
 
-- **WHEN** 呼び出し側が `OptimisticLockError` を取り込む
-- **THEN** `OptimisticLockError` は `instanceof` をサポートするランタイム `Error` サブクラスのままである
+- **WHEN** EventStore 操作が楽観ロック失敗に到達する
+- **THEN** 呼び出し側は `throw` された `OptimisticLockError` ではなく、`Result` の `err` 側を受け取る
+
+#### Scenario: 呼び出し側はエラー type で分岐する
+
+- **WHEN** 呼び出し側が EventStore 操作の失敗理由を判定する
+- **THEN** 呼び出し側は `instanceof` ではなく `result.error.type` の文字列リテラルで分岐できる
+
+#### Scenario: 旧 OptimisticLockError クラスは公開 API に含まれない
+
+- **WHEN** 呼び出し側がライブラリのランタイム値を取り込む
+- **THEN** `OptimisticLockError` は公開 `Error` サブクラスとして提供されない
+
+### Requirement: 本ライブラリ定義クラスを使わない
+
+ライブラリは、製品コード、サンプル、ライブラリ内テスト用データで本ライブラリ定義クラスを使わない。
 
 #### Scenario: 内部実装は `class` を避ける
 
