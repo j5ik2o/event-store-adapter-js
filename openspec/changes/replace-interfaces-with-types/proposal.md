@@ -26,7 +26,7 @@
 
 ### 変更される能力
 
-- なし。
+- `spanner-event-store`: Cloud Spanner 用 `EventStore` の構築ファクトリを `EventStore.ofSpanner(...)` から `EventStore.createSpanner(...)` へ変更する。
 
 ## 影響
 

@@ -19,7 +19,7 @@
 ## 3. サンプルとドキュメントの更新
 
 - [ ] 3.1 サンプルの集約 ID、イベント、集約モデルを、型エイリアス、同名ファクトリオブジェクト、不変オブジェクト値として書き換える。
-- [ ] 3.2 サンプルの `instanceof` によるイベント分岐を、`typeName` のような安定したイベントデータに基づく判別処理へ置き換える。
+- [ ] 3.2 サンプルとライブラリ内テスト用データの `instanceof` によるイベント分岐を、`typeName` のような安定したイベントデータに基づく判別処理へ置き換える。
 - [ ] 3.3 README のサンプルを更新し、ライブラリが構造的な値だけを要求する箇所では `class` ではなく不変オブジェクト値と同名ファクトリオブジェクトを示す。
 - [ ] 3.4 `interface` 宣言マージが互換契約の対象外になる意図的な破壊的変更を文書化する。
 - [ ] 3.5 旧ファクトリ名から `create` メソッドへの意図的な破壊的変更を文書化する。
@@ -31,5 +31,6 @@
 - [ ] 4.3 EventStore 契約テストを含む関連 Jest テスト群を実行する。
 - [ ] 4.4 生成された `dist/*.d.ts` を確認し、ランタイム export の意図しない削除や型 export の欠落がないことを確認する。
 - [ ] 4.5 `rg "createShardId|createShardCount|createAggregateIdValue|ofMemory|ofDynamoDB|ofSpanner" packages/library/src packages/examples/src` で、コード / export 面に旧ファクトリ名が残っていないことを確認する。
-- [ ] 4.6 `OptimisticLockError` と外部 SDK 利用を除き、本ライブラリ定義 `class` が残っていないことを確認する。
-- [ ] 4.7 `replace-interfaces-with-types` の OpenSpec 状態確認を実行し、change が適用可能なままであることを確認する。
+- [ ] 4.6 `rg "instanceof (UserAccount|.*Event)" packages/library/src/internal/test packages/examples/src/domain` で、サンプルとライブラリ内テスト用データのイベント分岐に `instanceof` が残っていないことを確認する。
+- [ ] 4.7 `OptimisticLockError` と外部 SDK 利用を除き、本ライブラリ定義 `class` が残っていないことを確認する。
+- [ ] 4.8 `replace-interfaces-with-types` の OpenSpec 状態確認を実行し、change が適用可能なままであることを確認する。
