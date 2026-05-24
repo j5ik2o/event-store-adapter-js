@@ -42,7 +42,6 @@ class UserAccountRepository {
     async findById(id: UserAccountId): Promise<UserAccount | undefined> {
         const snapshot = await this.eventStore.getLatestSnapshotById(
             id,
-            convertJSONToUserAccount,
         );
         if (snapshot === undefined) {
             return undefined;
@@ -50,7 +49,6 @@ class UserAccountRepository {
             const events = await this.eventStore.getEventsByIdSinceSequenceNumber(
                 id,
                 snapshot.sequenceNumber + 1,
-                convertJSONtoUserAccountEvent,
             );
             return UserAccount.replay(events, snapshot);
         }
@@ -70,10 +68,10 @@ const eventStore = EventStore.ofDynamoDB<
     journalTableName: JOURNAL_TABLE_NAME,
     snapshotTableName: SNAPSHOT_TABLE_NAME,
     journalAidIndexName: JOURNAL_AID_INDEX_NAME,
-    snapshotAidIndexName: SNAPSHOTS_AID_INDEX_NAME,
-    snapshotActiveTtlIndexName: SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
+    snapshotAidIndexName: SNAPSHOT_AID_INDEX_NAME,
+    snapshotActiveTtlIndexName: SNAPSHOT_ACTIVE_TTL_INDEX_NAME,
     shardCount: 32,
-    eventConverter: convertJSONtoUserAccountEvent,
+    eventConverter: convertJSONToUserAccountEvent,
     snapshotConverter: convertJSONToUserAccount,
 });
 // if you want to use in-memory event store, use the following code.
@@ -84,7 +82,7 @@ const eventStore = EventStore.ofDynamoDB<
 //     journalTableName: "journal",
 //     snapshotTableName: "snapshot",
 //     shardCount: 32,
-//     eventConverter: convertJSONtoUserAccountEvent,
+//     eventConverter: convertJSONToUserAccountEvent,
 //     snapshotConverter: convertJSONToUserAccount,
 // });
 
@@ -114,8 +112,8 @@ expect(userAccount3.version).toEqual(2);
 ## Development
 
 This repository uses pnpm workspaces. The library package is located at
-`packages/library`, with `packages/examples` and `packages/tests` reserved for
-future example and test packages.
+`packages/library`. Runnable examples are located at `packages/examples`, and
+`packages/tests` is reserved for future e2e test packages.
 
 ```shell
 pnpm install
@@ -123,6 +121,9 @@ pnpm run lint
 pnpm run build
 pnpm run test
 pnpm run coverage
+pnpm run example:memory
+pnpm run example:dynamodb
+pnpm run example:spanner
 ```
 
 ## Table Specifications
