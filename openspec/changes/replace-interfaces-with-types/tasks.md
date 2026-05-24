@@ -30,6 +30,6 @@
 - [ ] 4.2 library build を実行し、生成された declaration files が export 名を維持していることを確認する。
 - [ ] 4.3 EventStore contract tests を含む relevant Jest test suites を実行する。
 - [ ] 4.4 生成された `dist/*.d.ts` を確認し、runtime export の意図しない削除や type export の欠落がないことを確認する。
-- [ ] 4.5 `rg "createShardId|createShardCount|createAggregateIdValue|ofMemory|ofDynamoDB|ofSpanner" packages` で旧 factory 名が残っていないことを確認する。
+- [ ] 4.5 `rg "createShardId|createShardCount|createAggregateIdValue|ofMemory|ofDynamoDB|ofSpanner" packages/library/src packages/examples/src` で、code / export surface に旧 factory 名が残っていないことを確認する。
 - [ ] 4.6 `OptimisticLockError` と外部 SDK usage を除き、library-authored class が残っていないことを確認する。
 - [ ] 4.7 `replace-interfaces-with-types` の OpenSpec status を実行し、change が apply-ready のままであることを確認する。
