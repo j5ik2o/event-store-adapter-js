@@ -67,10 +67,10 @@ const eventStore = EventStore.ofDynamoDB<
     journalTableName: JOURNAL_TABLE_NAME,
     snapshotTableName: SNAPSHOT_TABLE_NAME,
     journalAidIndexName: JOURNAL_AID_INDEX_NAME,
-    snapshotAidIndexName: SNAPSHOTS_AID_INDEX_NAME,
-    snapshotActiveTtlIndexName: SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
+    snapshotAidIndexName: SNAPSHOT_AID_INDEX_NAME,
+    snapshotActiveTtlIndexName: SNAPSHOT_ACTIVE_TTL_INDEX_NAME,
     shardCount: 32,
-    eventConverter: convertJSONtoUserAccountEvent,
+    eventConverter: convertJSONToUserAccountEvent,
     snapshotConverter: convertJSONToUserAccount,
 });
 // if you want to use in-memory event store, use the following code.
@@ -81,7 +81,7 @@ const eventStore = EventStore.ofDynamoDB<
 //     journalTableName: "journal",
 //     snapshotTableName: "snapshot",
 //     shardCount: 32,
-//     eventConverter: convertJSONtoUserAccountEvent,
+//     eventConverter: convertJSONToUserAccountEvent,
 //     snapshotConverter: convertJSONToUserAccount,
 // });
 
@@ -111,8 +111,8 @@ expect(userAccount3.version).toEqual(2);
 ## 開発
 
 このリポジトリは pnpm workspace を使います。ライブラリパッケージは
-`packages/library` に配置し、今後の example や test package の追加先として
-`packages/examples` と `packages/tests` を予約しています。
+`packages/library` に配置しています。実行可能な example は `packages/examples` にあり、
+`packages/tests` は今後の e2e test package の追加先として予約しています。
 
 ```shell
 pnpm install
@@ -120,6 +120,9 @@ pnpm run lint
 pnpm run build
 pnpm run test
 pnpm run coverage
+pnpm run example:memory
+pnpm run example:dynamodb
+pnpm run example:spanner
 ```
 
 ## テーブル仕様
