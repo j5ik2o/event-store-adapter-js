@@ -1,36 +1,36 @@
 ## なぜ
 
-現在のライブラリは storage-neutral な契約を TypeScript の構造的型として公開しているが、一部の public contract はまだ `interface` で定義され、examples も class に依存している。そのため、本来は構造的に扱える契約が nominal な契約に見えやすく、documented path に `instanceof` ベースのドメインモデリングも残っている。
+現在のライブラリは、ストレージ非依存の契約を TypeScript の構造的型として公開している。一方で、一部の公開契約はまだ `interface` で定義され、サンプルもクラスに依存している。そのため、本来は構造で満たせる契約が名目的な契約に見えやすく、利用例にも `instanceof` ベースのドメインモデリングが残っている。
 
-加えて、factory naming が free function の `createX(...)` と `EventStore.ofX(...)` に分かれている。今回の変更では、Scala の companion object に近い `UserAccountId.create(...)` のような same-name factory object へ揃える。
+加えて、ファクトリ名が自由関数の `createX(...)` と `EventStore.ofX(...)` に分かれている。今回の変更では、Scala のコンパニオンオブジェクトに近い `UserAccountId.create(...)` のような同名ファクトリオブジェクトへ揃える。
 
 ## 何を変えるか
 
-- 構造的な public contract を、export された `interface` から `type` alias へ置き換える。
-- production code、examples、library test fixtures にある library-authored class を、immutable object value、type alias、factory object へ置き換える。
-- `OptimisticLockError` は、呼び出し側が `instanceof OptimisticLockError` を使う可能性があるため、唯一の library-authored class 例外として残す。
-- 外部 SDK 由来の class は対象外にする。
-- internal test fixtures と examples を、class-free な aggregate / event / aggregate id modeling に更新し、Scala 風の immutable value style を示す。
-- example の event dispatch を `instanceof` ではなく、`typeName` のような discriminated data で行う。
-- public factory function / method を、same-name factory object の `create` method へ揃える。
-- **BREAKING**: `EventStore.ofDynamoDB(...)`、`EventStore.ofMemory(...)`、`EventStore.ofSpanner(...)` を `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)` へ置き換える。
-- **BREAKING**: `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` を `AggregateIdValue.create(...)`、`ShardId.create(...)`、`ShardCount.create(...)` へ置き換える。
-- **BREAKING**: 旧 factory 名の compatibility shim は提供しない。
-- **BREAKING**: export された interface に対する declaration merging はサポート対象外にする。
+- 構造的な公開契約を、エクスポートされた `interface` から型エイリアスへ置き換える。
+- 本ライブラリが定義しているクラスを、製品コード、サンプル、ライブラリ内テスト用データから取り除き、不変オブジェクト値、型エイリアス、ファクトリオブジェクトへ置き換える。
+- `OptimisticLockError` は、呼び出し側が `instanceof OptimisticLockError` を使う可能性があるため、唯一の本ライブラリ定義クラス例外として残す。
+- 外部 SDK 由来のクラスは対象外にする。
+- ライブラリ内テスト用データとサンプルを、クラスを使わない集約 / イベント / 集約 ID モデリングへ更新し、Scala 風の不変値スタイルを示す。
+- サンプルのイベント分岐を `instanceof` ではなく、`typeName` のような判別用データで行う。
+- 公開ファクトリ関数 / メソッドを、同名ファクトリオブジェクトの `create` メソッドへ揃える。
+- **破壊的変更**: `EventStore.ofDynamoDB(...)`、`EventStore.ofMemory(...)`、`EventStore.ofSpanner(...)` を `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)` へ置き換える。
+- **破壊的変更**: `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` を `AggregateIdValue.create(...)`、`ShardId.create(...)`、`ShardCount.create(...)` へ置き換える。
+- **破壊的変更**: 旧ファクトリ名の互換用置き換えは提供しない。
+- **破壊的変更**: エクスポートされた `interface` に対する宣言マージはサポート対象外にする。
 
-## Capabilities
+## 能力
 
-### New Capabilities
+### 新規能力
 
-- `type-based-contracts`: 構造的な public contract を `type` alias として定義し、明示的な runtime error identity を除いて library-authored class を廃止し、factory を same-name `create` object へ統一する。
+- `type-based-contracts`: 構造的な公開契約を型エイリアスとして定義し、明示的なランタイムエラー識別子を除いて本ライブラリ定義クラスを廃止し、ファクトリを同名 `create` オブジェクトへ統一する。
 
-### Modified Capabilities
+### 変更される能力
 
 - なし。
 
 ## 影響
 
-- Public API: `Aggregate`、`AggregateId`、`Event`、`EventStore`、input contracts、serializers、logger、shard selector は同じ type 名で export し続けるが、該当するものは `type` alias になる。
+- 公開 API: `Aggregate`、`AggregateId`、`Event`、`EventStore`、入力契約、シリアライザ、ロガー、シャードセレクタは同じ型名でエクスポートし続けるが、該当するものは型エイリアスになる。
 - ランタイム API: `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)`、`AggregateIdValue.create(...)`、`ShardId.create(...)`、`ShardCount.create(...)`、`OptimisticLockError`。
-- Examples / tests: domain fixtures は class-based な `implements` / `instanceof` pattern から、immutable な factory-created value へ移行する。
-- ドキュメント: README examples は、ライブラリが class を要求していない箇所では class ではなく immutable object value と same-name factory object を示す。
+- サンプル / テスト: ドメイン用データはクラスベースの `implements` / `instanceof` パターンから、不変なファクトリ生成値へ移行する。
+- ドキュメント: README のサンプルは、ライブラリがクラスを要求していない箇所ではクラスではなく不変オブジェクト値と同名ファクトリオブジェクトを示す。

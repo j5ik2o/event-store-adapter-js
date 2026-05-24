@@ -1,117 +1,117 @@
 ## 背景
 
-現在の package は pre-release の TypeScript library であり、domain-facing API はすでに構造的型として扱われている。呼び出し側は `Aggregate`、`AggregateId`、`Event`、`EventStore`、serializers、input contracts、extension points を type として import する。一方で、これらの contract の一部は `interface` として定義されており、examples では aggregate、id、event を class と `instanceof` dispatch で表現している。
+現在のパッケージは未リリースの TypeScript ライブラリであり、ドメイン向け API はすでに構造的型として扱われている。呼び出し側は `Aggregate`、`AggregateId`、`Event`、`EventStore`、シリアライザ、入力契約、拡張点を型として import する。一方で、これらの契約の一部は `interface` として定義されており、サンプルでは集約、ID、イベントをクラスと `instanceof` による分岐で表現している。
 
 これにより次の問題がある。
 
-- type-only contract であるにもかかわらず、nominal な契約に見えやすい。
-- serialized event は storage boundary を越えるため、本来は `typeName` のような安定した data で判定する方が自然だが、example code が runtime class identity を教えている。
-- factory naming が free function の `createX(...)` と `EventStore.ofX(...)` に分かれている。目指すモデルは `UserAccountId.create(...)` のような same-name factory object である。
+- 型だけの契約であるにもかかわらず、名目的な契約に見えやすい。
+- シリアライズ済みイベントはストレージ境界を越えるため、本来は `typeName` のような安定したデータで判定する方が自然だが、サンプルコードがランタイムのクラス識別を教えている。
+- ファクトリ名が自由関数の `createX(...)` と `EventStore.ofX(...)` に分かれている。目指すモデルは `UserAccountId.create(...)` のような同名ファクトリオブジェクトである。
 
-ただし、runtime value として残すべきものもある。`EventStore` は type name であると同時に frozen constructor object であり、`OptimisticLockError` は `instanceof` で使われうる public error class である。
+ただし、ランタイム値として残すべきものもある。`EventStore` は型名であると同時に凍結された構築用オブジェクトであり、`OptimisticLockError` は `instanceof` で使われうる公開エラークラスである。
 
 ## 目的 / 対象外
 
 **目的:**
 
-- 構造的な public contract を `interface` ではなく `type` alias として定義する。
-- `import type { EventStore }` などの type import が動くよう、export 名は維持する。
-- `EventStore` runtime factory object は維持しつつ、construction method を `createDynamoDB`、`createMemory`、`createSpanner` へ rename する。
-- `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` を same-name factory object の `AggregateIdValue.create(...)`、`ShardId.create(...)`、`ShardCount.create(...)` へ置き換える。
-- `OptimisticLockError` の public error identity は維持する。
-- production code、examples、library test fixtures から、`OptimisticLockError` を除く library-authored class を取り除く。
-- examples と internal fixtures を、class-based domain object と `instanceof` event dispatch から移行する。
-- class を置き換える際は、Scala 風の immutable value style に寄せ、object factory と immutable copy を優先する。
-- 既存の EventStore behavior、storage schema、persistence semantics は変えない。
+- 構造的な公開契約を `interface` ではなく型エイリアスとして定義する。
+- `import type { EventStore }` などの型 import が動くよう、エクスポート名は維持する。
+- `EventStore` ランタイムファクトリオブジェクトは維持しつつ、構築メソッドを `createDynamoDB`、`createMemory`、`createSpanner` へ改名する。
+- `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` を同名ファクトリオブジェクトの `AggregateIdValue.create(...)`、`ShardId.create(...)`、`ShardCount.create(...)` へ置き換える。
+- `OptimisticLockError` の公開エラー識別子は維持する。
+- 製品コード、サンプル、ライブラリ内テスト用データから、`OptimisticLockError` を除く本ライブラリ定義クラスを取り除く。
+- サンプルと内部テスト用データを、クラスベースのドメインオブジェクトと `instanceof` によるイベント分岐から移行する。
+- クラスを置き換える際は、Scala 風の不変値スタイルに寄せ、オブジェクトファクトリと不変コピーを優先する。
+- 既存の EventStore の挙動、ストレージスキーマ、永続化の意味論は変えない。
 
 **対象外:**
 
-- 関数型プログラミング framework や新しい runtime dependency は導入しない。
-- 旧 factory 名の compatibility shim は提供しない。
-- DynamoDB、memory、Spanner の storage behavior は変えない。
-- 別の error contract を提案しない限り、`OptimisticLockError` class は削除しない。
-- AWS SDK、Google Cloud Spanner、testcontainers など外部 SDK 由来の class は削除対象にしない。
-- declaration merging の compatibility shim は追加しない。
+- 関数型プログラミングフレームワークや新しいランタイム依存は導入しない。
+- 旧ファクトリ名の互換用置き換えは提供しない。
+- DynamoDB、メモリ、Spanner のストレージ挙動は変えない。
+- 別のエラー契約を提案しない限り、`OptimisticLockError` クラスは削除しない。
+- AWS SDK、Google Cloud Spanner、testcontainers など外部 SDK 由来のクラスは削除対象にしない。
+- 宣言マージの互換用置き換えは追加しない。
 
 ## 判断
 
-### Public interface を object-shaped type alias へ変換する
+### 公開 `interface` をオブジェクト形状の型エイリアスへ変換する
 
-`Aggregate`、`AggregateId`、`Event`、input contracts、serializer contracts、`Logger`、`ShardSelector`、`EventStore` type などの public contract は、`interface` declaration から object shape を持つ `type` alias へ変換する。
+`Aggregate`、`AggregateId`、`Event`、入力契約、シリアライザ契約、`Logger`、`ShardSelector`、`EventStore` 型などの公開契約は、`interface` 宣言からオブジェクト形状を持つ型エイリアスへ変換する。
 
-これにより structural typing であることを明示しつつ、type import 名は維持できる。既知の breaking point は declaration merging である。これらの contract は user-augmented な ambient extension point ではなく、library が閉じて定義する契約として扱うため、pre-release cleanup として許容する。
+これにより構造的型付けであることを明示しつつ、型 import 名は維持できる。既知の破壊的変更点は宣言マージである。これらの契約は利用者が外部から拡張する契約ではなく、ライブラリが閉じて定義する契約として扱うため、未リリース API の整理として許容する。
 
-代替案として、interface を残して examples だけ変える案がある。この案は差分を小さくできるが、source code 上は不要な extensible interface model を伝え続けてしまう。
+代替案として、`interface` を残してサンプルだけ変える案がある。この案は差分を小さくできるが、ソースコード上は不要な拡張可能 `interface` モデルを伝え続けてしまう。
 
-### EventStore は same-name type / runtime value を維持しつつ factory を createX へ rename する
+### EventStore は同名の型 / ランタイム値を維持しつつファクトリを createX へ改名する
 
 `EventStore` は次の2つを兼ねる。
 
-- persistence contract を表す type alias
-- `createDynamoDB`、`createMemory`、`createSpanner` を持つ frozen runtime object
+- 永続化契約を表す型エイリアス
+- `createDynamoDB`、`createMemory`、`createSpanner` を持つ凍結済みランタイムオブジェクト
 
-runtime object は単一の public construction boundary として残す。ただし factory method 名は、`UserAccountId.create(...)`、`ShardId.create(...)`、`AggregateIdValue.create(...)` のような value factory と揃えるため `create` に寄せる。同じ file で type と runtime value の両方を使う場合は、`import type` を明示する。
+ランタイムオブジェクトは単一の公開構築境界として残す。ただしファクトリメソッド名は、`UserAccountId.create(...)`、`ShardId.create(...)`、`AggregateIdValue.create(...)` のような値ファクトリと揃えるため `create` に寄せる。同じファイルで型とランタイム値の両方を使う場合は、`import type` を明示する。
 
-代替案として、`EventStore.ofX(...)` だけを例外として残す案がある。この案は call-site の変更量を減らせるが、「factory vocabulary を1つにする」というルールを弱め、不要な naming split を残してしまう。
+代替案として、`EventStore.ofX(...)` だけを例外として残す案がある。この案は呼び出し側の変更量を減らせるが、「ファクトリ語彙を1つにする」というルールを弱め、不要な命名の分裂を残してしまう。
 
-### Public value factory を same-name create object にする
+### 公開値ファクトリを同名 create オブジェクトにする
 
-Public value factory は same-name runtime object へ移行する。
+公開値ファクトリは同名ランタイムオブジェクトへ移行する。
 
 - `AggregateIdValue.create(value)`
 - `ShardId.create(value)`
 - `ShardCount.create(value)`
 
-従来の free function は shim なしで削除する。これは breaking change だが、二重 API を避け、新しい domain examples と public API style を揃えられる。
+従来の自由関数は互換用置き換えなしで削除する。これは破壊的変更だが、二重 API を避け、新しいドメインサンプルと公開 API スタイルを揃えられる。
 
-代替案として、`createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` を deprecated alias として残す案がある。この案は migration を楽にするが、pre-release cleanup において2つの construction path を同時に残してしまう。
+代替案として、`createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` を非推奨別名として残す案がある。この案は移行を楽にするが、未リリース API の整理において2つの構築経路を同時に残してしまう。
 
-### 明示的な runtime identity を除いて library-authored class を削除する
+### 明示的なランタイム識別子を除いて本ライブラリ定義クラスを削除する
 
-Production code、examples、library test fixtures では library-authored class を使わない。例外は `OptimisticLockError` のような public runtime error identity のみとする。外部 SDK class は対象外である。
+製品コード、サンプル、ライブラリ内テスト用データでは本ライブラリ定義クラスを使わない。例外は `OptimisticLockError` のような公開ランタイムエラー識別子のみとする。外部 SDK クラスは対象外である。
 
-Internal store implementation は class から factory function または closure-backed object へ移行する。対象には internal `MemoryEventStore`、`DynamoDBEventStore`、`SpannerEventStore`、aggregate key helpers、default serializers、shard selectors、test fakes を含める。
+内部ストア実装は `class` からファクトリ関数またはクロージャで支えるオブジェクトへ移行する。対象には内部 `MemoryEventStore`、`DynamoDBEventStore`、`SpannerEventStore`、集約キー補助関数、デフォルトシリアライザ、シャードセレクタ、テスト用代替実装を含める。
 
-Public な `EventStore.createX(...)` methods が construction boundary であるため、呼び出し側は返された object が class 由来か closure 由来かを観測しない。
+公開 `EventStore.createX(...)` メソッドが構築境界であるため、呼び出し側は返されたオブジェクトが `class` 由来かクロージャ由来かを観測しない。
 
-代替案として、public type declaration だけを変換し、internal class は残す案がある。この案は差分を小さくできるが、「class をやめる」という目的を部分的にしか満たさず、test fixtures に古い style が残る。
+代替案として、公開型宣言だけを変換し、内部 `class` は残す案がある。この案は差分を小さくできるが、「class をやめる」という目的を部分的にしか満たさず、テスト用データに古いスタイルが残る。
 
-### OptimisticLockError は public runtime class として残す
+### OptimisticLockError は公開ランタイムクラスとして残す
 
-`OptimisticLockError` は `Error` を継承する class として残す。既存の呼び出し側は `error instanceof OptimisticLockError` で分岐している可能性があり、これを type alias や tagged object に置き換えると、この cleanup の範囲を超える runtime breaking change になる。
+`OptimisticLockError` は `Error` を継承する `class` として残す。既存の呼び出し側は `error instanceof OptimisticLockError` で分岐している可能性があり、これを型エイリアスやタグ付きオブジェクトに置き換えると、この整理の範囲を超えるランタイム破壊的変更になる。
 
-identity が観測されない internal custom error class は、通常の `Error` を返す helper などへ置き換える。
+識別子が観測されない内部カスタムエラークラスは、通常の `Error` を返す補助関数などへ置き換える。
 
-代替案として、すべての error class を tagged error に置き換える案がある。この案は class をさらに減らせるが、現在 export されている中で最も重要な runtime identity を壊す。
+代替案として、すべてのエラークラスをタグ付きエラーに置き換える案がある。この案は `class` をさらに減らせるが、現在エクスポートされている中で最も重要なランタイム識別子を壊す。
 
-### Immutable value と localized mutation を使う
+### 不変値と局所化された変更を使う
 
-Public domain values と API objects は immutable とする。Domain examples は type alias と same-name factory object を使い、更新操作は既存 value を mutate せず新しい value を返す。`withVersion(...)` と `updateVersion(...)` は既存 aggregate contract の一部なので残すが、実装は mutable な `this` state に依存しない。
+公開ドメイン値と API オブジェクトは不変とする。ドメインサンプルは型エイリアスと同名ファクトリオブジェクトを使い、更新操作は既存値を変更せず新しい値を返す。`withVersion(...)` と `updateVersion(...)` は既存の集約契約の一部なので残すが、実装は可変な `this` 状態に依存しない。
 
-Persistence adapter internals では、既存の async persistence contract を実装するために必要で、外部から観測できない場合に限り localized mutation を許容する。たとえば in-memory store は closure-owned な `Map` を mutate してよいが、seed input は defensive copy し、外部に返す API object は immutable にする。
+永続化アダプタ内部では、既存の非同期永続化契約を実装するために必要で、外部から観測できない場合に限り局所的な変更を許容する。たとえばインメモリストアはクロージャが所有する `Map` を変更してよいが、初期入力は防御的コピーを行い、外部に返す API オブジェクトは不変にする。
 
-代替案として、すべての persistence operation が新しい store value を返す設計がある。この案はより純粋だが、既存の side-effecting な `EventStore` persistence contract を変えてしまう。
+代替案として、すべての永続化操作が新しいストア値を返す設計がある。この案はより純粋だが、既存の副作用を持つ `EventStore` 永続化契約を変えてしまう。
 
-### Aggregate behavior は immutable object 上に残す
+### Aggregate の挙動は不変オブジェクト上に残す
 
-`Aggregate` contract には `withVersion(...)` と `updateVersion(...)` が含まれているため、aggregate value は method を持つ immutable object として残す。Event value は data-only とし、aggregate id value は既存 contract の `asString()` method を残す。Method は closure または helper で実装し、rebinding-sensitive な `this` behavior を避ける。
+`Aggregate` 契約には `withVersion(...)` と `updateVersion(...)` が含まれているため、集約値はメソッドを持つ不変オブジェクトとして残す。イベント値はデータのみとし、集約 ID 値は既存契約の `asString()` メソッドを残す。メソッドはクロージャまたは補助関数で実装し、`this` の束縛変更に影響される挙動を避ける。
 
-代替案として、すべての behavior を free function へ移す案がある。この案は pure data plus functions に近いが、今回の cleanup より広い public contract change になる。
+代替案として、すべての挙動を自由関数へ移す案がある。この案は純粋なデータと関数の組み合わせに近いが、今回の整理より広い公開契約変更になる。
 
-### Example では instanceof ではなく discriminated event data を使う
+### サンプルでは instanceof ではなく判別用イベントデータを使う
 
-Example events は、stable literal `typeName` を持つ object-shaped value にする。Replay / apply logic は `event instanceof SomeClass` ではなく `event.typeName` で分岐する。
+サンプルイベントは、安定したリテラル `typeName` を持つオブジェクト形状の値にする。リプレイ / 適用ロジックは `event instanceof SomeClass` ではなく `event.typeName` で分岐する。
 
-これは serialization boundary と整合する。Persistence round trip 後の event identity は constructor ではなく data に基づくべきである。
+これはシリアライズ境界と整合する。永続化の往復変換後のイベント識別子は、コンストラクタではなくデータに基づくべきである。
 
-代替案として、event class を残して static factory function だけを使う案がある。この案は class identity を primary domain pattern として教え続けてしまう。
+代替案として、イベントクラスを残して静的ファクトリ関数だけを使う案がある。この案はクラス識別子を主要なドメインパターンとして教え続けてしまう。
 
 ## リスク / トレードオフ
 
-- [declaration merging に依存している利用者が extension point を失う] -> pre-release の intentional breaking change として proposal と release note に明記する。
-- [旧 factory 名に依存している call site の更新が必要になる] -> shim は提供せず、README、examples、tests を更新し、完了前に旧名が残っていないことを検索する。
-- [same-name の `EventStore` type/value が編集時に紛らわしい] -> `import type` を一貫して使い、constructor object type は private に保つ。
-- [class-to-object rewrite で `this` behavior が変わる] -> rebinding に依存する method ではなく、closure-based function と object factory helper を優先する。
-- [event dispatch の変更で exhaustive check が抜ける] -> literal `typeName` を持つ discriminated union と `never` exhaustive check を使う。
-- [internal tests が implementation class を直接 instantiate している可能性がある] -> 可能な限り `EventStore.createX(...)` または internal factory helper 経由にし、storage contract tests は維持する。
-- [in-memory store の seed data から localized mutation が漏れる] -> input boundary で defensive copy を続け、mutable state は closure 内に閉じ込める。
+- [宣言マージに依存している利用者が拡張点を失う] -> 未リリース API の意図的な破壊的変更として提案とリリースノートに明記する。
+- [旧ファクトリ名に依存している呼び出し側の更新が必要になる] -> 互換用置き換えは提供せず、README、サンプル、テストを更新し、完了前に旧名が残っていないことを検索する。
+- [同名の `EventStore` 型 / 値が編集時に紛らわしい] -> `import type` を一貫して使い、構築用オブジェクト型は非公開に保つ。
+- [class からオブジェクトへの書き換えで `this` の挙動が変わる] -> `this` の再束縛に依存するメソッドではなく、クロージャベースの関数とオブジェクトファクトリ補助関数を優先する。
+- [イベント分岐の変更で網羅性チェックが抜ける] -> リテラル `typeName` を持つ判別共用体と `never` による網羅性チェックを使う。
+- [内部テストが実装クラスを直接構築している可能性がある] -> 可能な限り `EventStore.createX(...)` または内部ファクトリ補助関数経由にし、ストレージ契約テストは維持する。
+- [インメモリストアの初期データから局所的な変更が漏れる] -> 入力境界で防御的コピーを続け、可変状態はクロージャ内に閉じ込める。

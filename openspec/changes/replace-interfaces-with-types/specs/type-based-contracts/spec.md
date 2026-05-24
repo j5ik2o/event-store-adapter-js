@@ -2,133 +2,133 @@
 
 ### Requirement: 構造的契約は type alias で定義する
 
-ライブラリは、export される構造的 contract を TypeScript の `interface` declaration ではなく `type` alias として定義する。
+ライブラリは、エクスポートされる構造的契約を TypeScript の `interface` 宣言ではなく `type` alias として定義する。
 
-#### Scenario: Type-only public contract import が維持される
+#### Scenario: 型だけの公開契約 import が維持される
 
-- **WHEN** 呼び出し側が `Aggregate`、`AggregateId`、`Event`、`EventStore`、serializer contracts、input contracts、`Logger`、`ShardSelector` を `import type` で import する
-- **THEN** import した名前は、同じ export 名の type として利用できる
+- **WHEN** 呼び出し側が `Aggregate`、`AggregateId`、`Event`、`EventStore`、シリアライザ契約、入力契約、`Logger`、`ShardSelector` を `import type` で取り込む
+- **THEN** 取り込んだ名前は、同じエクスポート名の型として利用できる
 
-#### Scenario: Plain object が public contract を満たす
+#### Scenario: プレーンオブジェクトが公開契約を満たす
 
-- **WHEN** 呼び出し側が `Aggregate`、`AggregateId`、`Event`、`EventStore` の shape を満たす plain object を作る
-- **THEN** TypeScript は class declaration や `implements` clause を要求せず、その value を受け入れる
+- **WHEN** 呼び出し側が `Aggregate`、`AggregateId`、`Event`、`EventStore` の形状を満たすプレーンオブジェクトを作る
+- **THEN** TypeScript は `class` 宣言や `implements` 句を要求せず、その値を受け入れる
 
-#### Scenario: Declaration merging はサポートしない
+#### Scenario: 宣言マージはサポートしない
 
-- **WHEN** 呼び出し側が public structural contract を TypeScript interface declaration merging で拡張しようとする
-- **THEN** ライブラリはその拡張を public compatibility contract としてサポートしない
+- **WHEN** 呼び出し側が公開構造契約を TypeScript の `interface` 宣言マージで拡張しようとする
+- **THEN** ライブラリはその拡張を公開互換契約としてサポートしない
 
-### Requirement: ランタイム API value は明示的に残す
+### Requirement: ランタイム API 値は明示的に残す
 
-ライブラリは、呼び出し側が JavaScript runtime value として必要とするものだけを runtime value として公開する。
+ライブラリは、呼び出し側が JavaScript ランタイム値として必要とするものだけをランタイム値として公開する。
 
-#### Scenario: EventStore create factory が利用できる
+#### Scenario: EventStore create ファクトリが利用できる
 
-- **WHEN** 呼び出し側が `EventStore` を runtime value として import する
-- **THEN** `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)` は既存の EventStore construction behavior と同等の動作で利用できる
+- **WHEN** 呼び出し側が `EventStore` をランタイム値として取り込む
+- **THEN** `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)` は既存の EventStore 構築挙動と同等の動作で利用できる
 
-#### Scenario: 古い EventStore factory 名は削除される
+#### Scenario: 古い EventStore ファクトリ名は削除される
 
-- **WHEN** 呼び出し側が `EventStore` を runtime value として import する
-- **THEN** `EventStore.ofDynamoDB(...)`、`EventStore.ofMemory(...)`、`EventStore.ofSpanner(...)` は public API に含まれない
+- **WHEN** 呼び出し側が `EventStore` をランタイム値として取り込む
+- **THEN** `EventStore.ofDynamoDB(...)`、`EventStore.ofMemory(...)`、`EventStore.ofSpanner(...)` は公開 API に含まれない
 
-#### Scenario: Optimistic lock error identity が利用できる
+#### Scenario: 楽観ロックエラーの識別子が利用できる
 
-- **WHEN** 呼び出し側が optimistic locking failure を catch する
-- **THEN** throw された error は `error instanceof OptimisticLockError` と互換である
+- **WHEN** 呼び出し側が楽観ロック失敗を捕捉する
+- **THEN** 投げられたエラーは `error instanceof OptimisticLockError` と互換である
 
-### Requirement: Same-name value factories use create
+### Requirement: 同名値ファクトリは create を使う
 
-ライブラリは、value construction を same-name runtime factory object の `create` method として公開する。
+ライブラリは、値の構築を同名ランタイムファクトリオブジェクトの `create` メソッドとして公開する。
 
 #### Scenario: AggregateIdValue を構築する
 
-- **WHEN** 呼び出し側が aggregate id value を構築する
+- **WHEN** 呼び出し側が集約 ID 値を構築する
 - **THEN** 呼び出し側は `AggregateIdValue.create(...)` を使う
 
 #### Scenario: ShardId を構築する
 
-- **WHEN** 呼び出し側が shard id を構築する
+- **WHEN** 呼び出し側がシャード ID を構築する
 - **THEN** 呼び出し側は `ShardId.create(...)` を使う
 
 #### Scenario: ShardCount を構築する
 
-- **WHEN** 呼び出し側が shard count を構築する
+- **WHEN** 呼び出し側がシャード数を構築する
 - **THEN** 呼び出し側は `ShardCount.create(...)` を使う
 
-#### Scenario: 古い free factory 名は削除される
+#### Scenario: 古い自由ファクトリ名は削除される
 
-- **WHEN** 呼び出し側が library runtime values を import する
-- **THEN** `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` は public API に含まれない
+- **WHEN** 呼び出し側がライブラリのランタイム値を取り込む
+- **THEN** `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` は公開 API に含まれない
 
-### Requirement: Library-authored classes are limited to error identity
+### Requirement: 本ライブラリ定義クラスはエラー識別子に限定する
 
-ライブラリは、明示的な public runtime error identity を除き、production code、examples、library test fixtures で library-authored class を使わない。
+ライブラリは、明示的な公開ランタイムエラー識別子を除き、製品コード、サンプル、ライブラリ内テスト用データで本ライブラリ定義クラスを使わない。
 
-#### Scenario: Public optimistic lock error は class のままにする
+#### Scenario: 公開楽観ロックエラーは `class` のままにする
 
-- **WHEN** 呼び出し側が `OptimisticLockError` を import する
-- **THEN** `OptimisticLockError` は `instanceof` をサポートする runtime `Error` subclass のままである
+- **WHEN** 呼び出し側が `OptimisticLockError` を取り込む
+- **THEN** `OptimisticLockError` は `instanceof` をサポートするランタイム `Error` サブクラスのままである
 
-#### Scenario: Internal implementation は class を避ける
+#### Scenario: 内部実装は `class` を避ける
 
-- **WHEN** production code、examples、library test fixtures が library-authored runtime structures を定義する
-- **THEN** それらの構造は `class` ではなく、type alias、immutable object value、factory object、または function を使う
+- **WHEN** 製品コード、サンプル、ライブラリ内テスト用データが本ライブラリ定義ランタイム構造を定義する
+- **THEN** それらの構造は `class` ではなく、型エイリアス、不変オブジェクト値、ファクトリオブジェクト、または関数を使う
 
-#### Scenario: 外部 SDK class は対象外にする
+#### Scenario: 外部 SDK クラスは対象外にする
 
-- **WHEN** code が外部 SDK や tooling が提供する value を構築する
-- **THEN** この class restriction はそれらの外部 class には適用されない
+- **WHEN** コードが外部 SDK やツールが提供する値を構築する
+- **THEN** このクラス制限はそれらの外部クラスには適用されない
 
-### Requirement: Event dispatch is data discriminated
+### Requirement: イベント分岐はデータで判別する
 
-Examples と test domain events は、JavaScript constructor identity ではなく、安定した event data を使って behavior を選択する。
+サンプルとテスト用ドメインイベントは、JavaScript コンストラクタ識別子ではなく、安定したイベントデータを使って挙動を選択する。
 
-#### Scenario: Replay は event typeName を使う
+#### Scenario: リプレイはイベント typeName を使う
 
-- **WHEN** example または fixture の replay code が stored domain event を apply する
-- **THEN** `typeName` のような discriminated event data を使って behavior を選択する
+- **WHEN** サンプルまたはテスト用データのリプレイコードが保存済みドメインイベントを適用する
+- **THEN** `typeName` のような判別用イベントデータを使って挙動を選択する
 
-#### Scenario: Replay は instanceof に依存しない
+#### Scenario: リプレイは instanceof に依存しない
 
-- **WHEN** event が storage から deserialized され、構造的に互換な event value になっている
-- **THEN** example または fixture の replay code は `event instanceof SomeEventClass` を要求せずに処理できる
+- **WHEN** イベントがストレージからデシリアライズされ、構造的に互換なイベント値になっている
+- **THEN** サンプルまたはテスト用データのリプレイコードは `event instanceof SomeEventClass` を要求せずに処理できる
 
-### Requirement: Store construction hides implementation shape
+### Requirement: ストア構築は実装形状を隠す
 
-ライブラリは、public implementation class ではなく factory method を通じて EventStore construction を公開する。
+ライブラリは、公開実装クラスではなくファクトリメソッドを通じて EventStore の構築を公開する。
 
-#### Scenario: Memory store を構築する
+#### Scenario: Memory ストアを構築する
 
-- **WHEN** 呼び出し側が in-memory event store を構築する
-- **THEN** 呼び出し側は `EventStore.createMemory(...)` を使い、`EventStore` type を満たす value を受け取る
+- **WHEN** 呼び出し側がインメモリイベントストアを構築する
+- **THEN** 呼び出し側は `EventStore.createMemory(...)` を使い、`EventStore` 型を満たす値を受け取る
 
-#### Scenario: DynamoDB store を構築する
+#### Scenario: DynamoDB ストアを構築する
 
-- **WHEN** 呼び出し側が DynamoDB event store を構築する
-- **THEN** 呼び出し側は `EventStore.createDynamoDB(...)` を使い、`EventStore` type を満たす value を受け取る
+- **WHEN** 呼び出し側が DynamoDB イベントストアを構築する
+- **THEN** 呼び出し側は `EventStore.createDynamoDB(...)` を使い、`EventStore` 型を満たす値を受け取る
 
-#### Scenario: Spanner store を構築する
+#### Scenario: Spanner ストアを構築する
 
-- **WHEN** 呼び出し側が Spanner event store を構築する
-- **THEN** 呼び出し側は `EventStore.createSpanner(...)` を使い、`EventStore` type を満たす value を受け取る
+- **WHEN** 呼び出し側が Spanner イベントストアを構築する
+- **THEN** 呼び出し側は `EventStore.createSpanner(...)` を使い、`EventStore` 型を満たす値を受け取る
 
-### Requirement: Public values are immutable by default
+### Requirement: 公開値は原則として不変にする
 
-ライブラリは、public domain-facing values と API objects を原則として immutable value として扱う。
+ライブラリは、公開ドメイン向け値と API オブジェクトを原則として不変値として扱う。
 
-#### Scenario: Aggregate update は新しい value を返す
+#### Scenario: 集約更新は新しい値を返す
 
-- **WHEN** aggregate value が version または domain state を更新する
-- **THEN** 更新は既存 value を mutate せず、新しい aggregate value を返す
+- **WHEN** 集約値がバージョンまたはドメイン状態を更新する
+- **THEN** 更新は既存値を変更せず、新しい集約値を返す
 
-#### Scenario: API object は外部から mutate できない
+#### Scenario: API オブジェクトは外部から変更できない
 
-- **WHEN** ライブラリが `EventStore` や value factory object のような runtime API object を返す
-- **THEN** 呼び出し側は supported usage として public API object の method table を mutate できない
+- **WHEN** ライブラリが `EventStore` や値ファクトリオブジェクトのようなランタイム API オブジェクトを返す
+- **THEN** 呼び出し側はサポート対象の使い方として公開 API オブジェクトのメソッド表を変更できない
 
-#### Scenario: Persistence internals では localized mutation を許容する
+#### Scenario: 永続化内部では局所的な変更を許容する
 
-- **WHEN** adapter が既存の asynchronous persistence contract を実装するために mutable state を必要とする
-- **THEN** その mutation は adapter 内部に局所化され、呼び出し側から渡された mutable object を直接 expose しない
+- **WHEN** アダプタが既存の非同期永続化契約を実装するために可変状態を必要とする
+- **THEN** その変更はアダプタ内部に局所化され、呼び出し側から渡された可変オブジェクトを直接公開しない
