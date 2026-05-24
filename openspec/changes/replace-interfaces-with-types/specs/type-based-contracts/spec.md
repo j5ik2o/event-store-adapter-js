@@ -1,134 +1,134 @@
 ## ADDED Requirements
 
-### Requirement: Structural contracts use type aliases
+### Requirement: 構造的契約は type alias で定義する
 
-The library SHALL author exported structural contracts as TypeScript `type` aliases instead of `interface` declarations.
+ライブラリは、export される構造的 contract を TypeScript の `interface` declaration ではなく `type` alias として定義する。
 
-#### Scenario: Type-only public contract import
+#### Scenario: Type-only public contract import が維持される
 
-- **WHEN** a caller imports `Aggregate`, `AggregateId`, `Event`, `EventStore`, serializer contracts, input contracts, `Logger`, or `ShardSelector` with `import type`
-- **THEN** the imported name SHALL remain available as a type under the same exported name
+- **WHEN** 呼び出し側が `Aggregate`、`AggregateId`、`Event`、`EventStore`、serializer contracts、input contracts、`Logger`、`ShardSelector` を `import type` で import する
+- **THEN** import した名前は、同じ export 名の type として利用できる
 
-#### Scenario: Plain object satisfies public contract
+#### Scenario: Plain object が public contract を満たす
 
-- **WHEN** a caller creates a plain object whose shape satisfies `Aggregate`, `AggregateId`, `Event`, or `EventStore`
-- **THEN** TypeScript SHALL accept that value without requiring a class declaration or `implements` clause
+- **WHEN** 呼び出し側が `Aggregate`、`AggregateId`、`Event`、`EventStore` の shape を満たす plain object を作る
+- **THEN** TypeScript は class declaration や `implements` clause を要求せず、その value を受け入れる
 
-#### Scenario: Declaration merging is not supported
+#### Scenario: Declaration merging はサポートしない
 
-- **WHEN** a caller attempts to augment a public structural contract through TypeScript interface declaration merging
-- **THEN** the library SHALL NOT support that augmentation as part of its public compatibility contract
+- **WHEN** 呼び出し側が public structural contract を TypeScript interface declaration merging で拡張しようとする
+- **THEN** ライブラリはその拡張を public compatibility contract としてサポートしない
 
-### Requirement: Runtime API values remain explicit
+### Requirement: ランタイム API value は明示的に残す
 
-The library SHALL keep runtime values only where callers need a JavaScript value at runtime.
+ライブラリは、呼び出し側が JavaScript runtime value として必要とするものだけを runtime value として公開する。
 
-#### Scenario: EventStore create factories remain available
+#### Scenario: EventStore create factory が利用できる
 
-- **WHEN** a caller imports `EventStore` as a runtime value
-- **THEN** `EventStore.createDynamoDB(...)`, `EventStore.createMemory(...)`, and `EventStore.createSpanner(...)` SHALL be available with the existing EventStore construction behavior
+- **WHEN** 呼び出し側が `EventStore` を runtime value として import する
+- **THEN** `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)` は既存の EventStore construction behavior と同等の動作で利用できる
 
-#### Scenario: Old EventStore factory names are removed
+#### Scenario: 古い EventStore factory 名は削除される
 
-- **WHEN** a caller imports `EventStore` as a runtime value
-- **THEN** `EventStore.ofDynamoDB(...)`, `EventStore.ofMemory(...)`, and `EventStore.ofSpanner(...)` SHALL NOT be part of the public API
+- **WHEN** 呼び出し側が `EventStore` を runtime value として import する
+- **THEN** `EventStore.ofDynamoDB(...)`、`EventStore.ofMemory(...)`、`EventStore.ofSpanner(...)` は public API に含まれない
 
-#### Scenario: Optimistic lock error identity remains available
+#### Scenario: Optimistic lock error identity が利用できる
 
-- **WHEN** a caller catches an optimistic locking failure
-- **THEN** the thrown error SHALL remain compatible with `error instanceof OptimisticLockError`
+- **WHEN** 呼び出し側が optimistic locking failure を catch する
+- **THEN** throw された error は `error instanceof OptimisticLockError` と互換である
 
 ### Requirement: Same-name value factories use create
 
-The library SHALL expose value construction through same-name runtime factory objects with `create` methods.
+ライブラリは、value construction を same-name runtime factory object の `create` method として公開する。
 
-#### Scenario: AggregateIdValue construction
+#### Scenario: AggregateIdValue を構築する
 
-- **WHEN** a caller constructs an aggregate id value
-- **THEN** the caller SHALL use `AggregateIdValue.create(...)`
+- **WHEN** 呼び出し側が aggregate id value を構築する
+- **THEN** 呼び出し側は `AggregateIdValue.create(...)` を使う
 
-#### Scenario: ShardId construction
+#### Scenario: ShardId を構築する
 
-- **WHEN** a caller constructs a shard id
-- **THEN** the caller SHALL use `ShardId.create(...)`
+- **WHEN** 呼び出し側が shard id を構築する
+- **THEN** 呼び出し側は `ShardId.create(...)` を使う
 
-#### Scenario: ShardCount construction
+#### Scenario: ShardCount を構築する
 
-- **WHEN** a caller constructs a shard count
-- **THEN** the caller SHALL use `ShardCount.create(...)`
+- **WHEN** 呼び出し側が shard count を構築する
+- **THEN** 呼び出し側は `ShardCount.create(...)` を使う
 
-#### Scenario: Old free factory names are removed
+#### Scenario: 古い free factory 名は削除される
 
-- **WHEN** a caller imports library runtime values
-- **THEN** `createAggregateIdValue(...)`, `createShardId(...)`, and `createShardCount(...)` SHALL NOT be part of the public API
+- **WHEN** 呼び出し側が library runtime values を import する
+- **THEN** `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` は public API に含まれない
 
 ### Requirement: Library-authored classes are limited to error identity
 
-The library SHALL NOT use library-authored classes in production code, examples, or library test fixtures except for explicit public runtime error identity.
+ライブラリは、明示的な public runtime error identity を除き、production code、examples、library test fixtures で library-authored class を使わない。
 
-#### Scenario: Public optimistic lock error remains a class
+#### Scenario: Public optimistic lock error は class のままにする
 
-- **WHEN** a caller imports `OptimisticLockError`
-- **THEN** `OptimisticLockError` SHALL remain a runtime `Error` subclass that supports `instanceof`
+- **WHEN** 呼び出し側が `OptimisticLockError` を import する
+- **THEN** `OptimisticLockError` は `instanceof` をサポートする runtime `Error` subclass のままである
 
-#### Scenario: Internal implementation avoids classes
+#### Scenario: Internal implementation は class を避ける
 
-- **WHEN** production code, examples, or library test fixtures define library-authored runtime structures
-- **THEN** those structures SHALL use type aliases, immutable object values, factory objects, or functions instead of `class`
+- **WHEN** production code、examples、library test fixtures が library-authored runtime structures を定義する
+- **THEN** それらの構造は `class` ではなく、type alias、immutable object value、factory object、または function を使う
 
-#### Scenario: External SDK classes are out of scope
+#### Scenario: 外部 SDK class は対象外にする
 
-- **WHEN** code constructs values provided by external SDKs or tooling
-- **THEN** this class restriction SHALL NOT apply to those external classes
+- **WHEN** code が外部 SDK や tooling が提供する value を構築する
+- **THEN** この class restriction はそれらの外部 class には適用されない
 
 ### Requirement: Event dispatch is data discriminated
 
-Example and test domain events SHALL use stable event data to select behavior rather than JavaScript constructor identity.
+Examples と test domain events は、JavaScript constructor identity ではなく、安定した event data を使って behavior を選択する。
 
-#### Scenario: Replay uses event typeName
+#### Scenario: Replay は event typeName を使う
 
-- **WHEN** example or fixture replay code applies a stored domain event
-- **THEN** it SHALL select behavior using discriminated event data such as `typeName`
+- **WHEN** example または fixture の replay code が stored domain event を apply する
+- **THEN** `typeName` のような discriminated event data を使って behavior を選択する
 
-#### Scenario: Replay does not depend on instanceof
+#### Scenario: Replay は instanceof に依存しない
 
-- **WHEN** an event has been deserialized from storage into a structurally compatible event value
-- **THEN** example or fixture replay code SHALL handle it without requiring `event instanceof SomeEventClass`
+- **WHEN** event が storage から deserialized され、構造的に互換な event value になっている
+- **THEN** example または fixture の replay code は `event instanceof SomeEventClass` を要求せずに処理できる
 
 ### Requirement: Store construction hides implementation shape
 
-The library SHALL expose EventStore construction through factory methods rather than public implementation classes.
+ライブラリは、public implementation class ではなく factory method を通じて EventStore construction を公開する。
 
-#### Scenario: Memory store construction
+#### Scenario: Memory store を構築する
 
-- **WHEN** a caller constructs an in-memory event store
-- **THEN** the caller SHALL use `EventStore.createMemory(...)` and receive a value satisfying the `EventStore` type
+- **WHEN** 呼び出し側が in-memory event store を構築する
+- **THEN** 呼び出し側は `EventStore.createMemory(...)` を使い、`EventStore` type を満たす value を受け取る
 
-#### Scenario: DynamoDB store construction
+#### Scenario: DynamoDB store を構築する
 
-- **WHEN** a caller constructs a DynamoDB event store
-- **THEN** the caller SHALL use `EventStore.createDynamoDB(...)` and receive a value satisfying the `EventStore` type
+- **WHEN** 呼び出し側が DynamoDB event store を構築する
+- **THEN** 呼び出し側は `EventStore.createDynamoDB(...)` を使い、`EventStore` type を満たす value を受け取る
 
-#### Scenario: Spanner store construction
+#### Scenario: Spanner store を構築する
 
-- **WHEN** a caller constructs a Spanner event store
-- **THEN** the caller SHALL use `EventStore.createSpanner(...)` and receive a value satisfying the `EventStore` type
+- **WHEN** 呼び出し側が Spanner event store を構築する
+- **THEN** 呼び出し側は `EventStore.createSpanner(...)` を使い、`EventStore` type を満たす value を受け取る
 
 ### Requirement: Public values are immutable by default
 
-The library SHALL model public domain-facing values and API objects as immutable values by default.
+ライブラリは、public domain-facing values と API objects を原則として immutable value として扱う。
 
-#### Scenario: Aggregate update returns new value
+#### Scenario: Aggregate update は新しい value を返す
 
-- **WHEN** an aggregate value updates its version or domain state
-- **THEN** the update SHALL return a new aggregate value rather than mutating the existing value
+- **WHEN** aggregate value が version または domain state を更新する
+- **THEN** 更新は既存 value を mutate せず、新しい aggregate value を返す
 
-#### Scenario: API object is not externally mutable
+#### Scenario: API object は外部から mutate できない
 
-- **WHEN** the library returns a runtime API object such as `EventStore` or a value factory object
-- **THEN** callers SHALL NOT be able to mutate the public API object's method table as part of supported usage
+- **WHEN** ライブラリが `EventStore` や value factory object のような runtime API object を返す
+- **THEN** 呼び出し側は supported usage として public API object の method table を mutate できない
 
-#### Scenario: Persistence internals may use localized mutation
+#### Scenario: Persistence internals では localized mutation を許容する
 
-- **WHEN** an adapter needs mutable state to implement the existing asynchronous persistence contract
-- **THEN** that mutation SHALL remain localized inside the adapter and SHALL NOT expose caller-provided mutable objects directly
+- **WHEN** adapter が既存の asynchronous persistence contract を実装するために mutable state を必要とする
+- **THEN** その mutation は adapter 内部に局所化され、呼び出し側から渡された mutable object を直接 expose しない

@@ -1,34 +1,36 @@
-## Why
+## なぜ
 
-The library already exposes storage-neutral contracts as structural TypeScript types, but several public contracts are still authored with `interface` and examples rely on classes. This makes the intended contract look more nominal than it is, keeps `instanceof`-style domain modeling in the documented path, and leaves factory naming split between `createX(...)` functions and `EventStore.ofX(...)` methods.
+現在のライブラリは storage-neutral な契約を TypeScript の構造的型として公開しているが、一部の public contract はまだ `interface` で定義され、examples も class に依存している。そのため、本来は構造的に扱える契約が nominal な契約に見えやすく、documented path に `instanceof` ベースのドメインモデリングも残っている。
 
-## What Changes
+加えて、factory naming が free function の `createX(...)` と `EventStore.ofX(...)` に分かれている。今回の変更では、Scala の companion object に近い `UserAccountId.create(...)` のような same-name factory object へ揃える。
 
-- Replace exported public `interface` declarations with exported `type` aliases where the contract is structural.
-- Replace library-authored classes in production code, examples, and library test fixtures with immutable object values, type aliases, and factory objects.
-- Keep `OptimisticLockError` as the only library-authored class exception because callers may use `instanceof OptimisticLockError`.
-- Keep external SDK classes out of scope.
-- Update internal test fixtures and examples to demonstrate class-free aggregate, event, and aggregate id modeling with Scala-like immutable value style.
-- Replace example event dispatch based on `instanceof` with discriminated data such as `typeName`.
-- Rename public factory functions and methods to same-name factory objects with `create` methods.
-- **BREAKING**: `EventStore.ofDynamoDB(...)`, `EventStore.ofMemory(...)`, and `EventStore.ofSpanner(...)` are replaced by `EventStore.createDynamoDB(...)`, `EventStore.createMemory(...)`, and `EventStore.createSpanner(...)`.
-- **BREAKING**: `createAggregateIdValue(...)`, `createShardId(...)`, and `createShardCount(...)` are replaced by `AggregateIdValue.create(...)`, `ShardId.create(...)`, and `ShardCount.create(...)`.
-- **BREAKING**: no compatibility shims are provided for the old factory names.
-- **BREAKING**: declaration merging against exported interfaces will no longer be supported.
+## 何を変えるか
+
+- 構造的な public contract を、export された `interface` から `type` alias へ置き換える。
+- production code、examples、library test fixtures にある library-authored class を、immutable object value、type alias、factory object へ置き換える。
+- `OptimisticLockError` は、呼び出し側が `instanceof OptimisticLockError` を使う可能性があるため、唯一の library-authored class 例外として残す。
+- 外部 SDK 由来の class は対象外にする。
+- internal test fixtures と examples を、class-free な aggregate / event / aggregate id modeling に更新し、Scala 風の immutable value style を示す。
+- example の event dispatch を `instanceof` ではなく、`typeName` のような discriminated data で行う。
+- public factory function / method を、same-name factory object の `create` method へ揃える。
+- **BREAKING**: `EventStore.ofDynamoDB(...)`、`EventStore.ofMemory(...)`、`EventStore.ofSpanner(...)` を `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)` へ置き換える。
+- **BREAKING**: `createAggregateIdValue(...)`、`createShardId(...)`、`createShardCount(...)` を `AggregateIdValue.create(...)`、`ShardId.create(...)`、`ShardCount.create(...)` へ置き換える。
+- **BREAKING**: 旧 factory 名の compatibility shim は提供しない。
+- **BREAKING**: export された interface に対する declaration merging はサポート対象外にする。
 
 ## Capabilities
 
 ### New Capabilities
 
-- `type-based-contracts`: Structural public contracts are authored as `type` aliases, library-authored classes are removed except explicit runtime error identity, and factories use same-name `create` objects.
+- `type-based-contracts`: 構造的な public contract を `type` alias として定義し、明示的な runtime error identity を除いて library-authored class を廃止し、factory を same-name `create` object へ統一する。
 
 ### Modified Capabilities
 
-- None.
+- なし。
 
-## Impact
+## 影響
 
-- Public API: `Aggregate`, `AggregateId`, `Event`, `EventStore`, input contracts, serializers, logger, and shard selector remain exported under the same type names but become type aliases where applicable.
-- Runtime API: `EventStore.createDynamoDB(...)`, `EventStore.createMemory(...)`, `EventStore.createSpanner(...)`, `AggregateIdValue.create(...)`, `ShardId.create(...)`, `ShardCount.create(...)`, and `OptimisticLockError`.
-- Examples and tests: domain fixtures move away from class-based `implements` and `instanceof` patterns and toward immutable factory-created values.
-- Documentation: README examples should show immutable object values and same-name factory objects rather than classes where the library does not require classes.
+- Public API: `Aggregate`、`AggregateId`、`Event`、`EventStore`、input contracts、serializers、logger、shard selector は同じ type 名で export し続けるが、該当するものは `type` alias になる。
+- ランタイム API: `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)`、`AggregateIdValue.create(...)`、`ShardId.create(...)`、`ShardCount.create(...)`、`OptimisticLockError`。
+- Examples / tests: domain fixtures は class-based な `implements` / `instanceof` pattern から、immutable な factory-created value へ移行する。
+- ドキュメント: README examples は、ライブラリが class を要求していない箇所では class ではなく immutable object value と same-name factory object を示す。
