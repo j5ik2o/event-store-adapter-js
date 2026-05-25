@@ -4,7 +4,7 @@
   "description": "This library is designed to turn DynamoDB into an Event Store for Event Sourcing.",
   "packageManager": "pnpm@11.3.0",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=24.0.0"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
