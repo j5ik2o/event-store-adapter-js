@@ -306,7 +306,8 @@ jobs:
                             and .workflowName != "Review Thread Resolution"
                             and (.status != "COMPLETED"))
                         elif .__typename == "StatusContext" then
-                          (.state == "PENDING" or .state == "EXPECTED")
+                          (.context != "Check unresolved comments"
+                            and (.state == "PENDING" or .state == "EXPECTED"))
                         else
                           false
                         end
@@ -662,7 +663,7 @@ jobs:
             if [[ "$refresh_result" -eq 1 ]]; then
               exit 1
             fi
-            if [[ "$refresh_result" -eq 2 ]]; then
+            if [[ "$refresh_result" -eq 2 && "$unresolved_count" -eq 0 && "$unacknowledged_top_level_count" -eq 0 ]]; then
               exit 0
             fi
 
