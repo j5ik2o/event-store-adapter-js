@@ -657,8 +657,13 @@ jobs:
               "$pr_url")"
             printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
 
-            if ! refresh_head_ref_oid; then
+            refresh_result=0
+            refresh_head_ref_oid || refresh_result=$?
+            if [[ "$refresh_result" -eq 1 ]]; then
               exit 1
+            fi
+            if [[ "$refresh_result" -eq 2 ]]; then
+              exit 0
             fi
 
             if [[ "$unresolved_count" -eq 0 && "$unacknowledged_top_level_count" -eq 0 ]]; then
