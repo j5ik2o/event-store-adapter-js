@@ -68,6 +68,42 @@ namespace UserAccountId {
 }
 ```
 
+If your domain values cross a JSON boundary, add paired `toJSON(...)` and
+`fromJSON(...)` helpers to the same factory namespace. A module-private
+`unique symbol` brand can distinguish in-process factory-created values from
+plain objects, but that brand disappears after `JSON.stringify(...)`.
+
+```ts
+const USER_ACCOUNT_ID_BRAND: unique symbol = Symbol("UserAccountId");
+
+type UserAccountId = AggregateId & {
+  typeName: "user-account";
+  readonly [USER_ACCOUNT_ID_BRAND]: true;
+};
+
+namespace UserAccountId {
+  export function create(value: string): UserAccountId {
+    return Object.freeze({
+      [USER_ACCOUNT_ID_BRAND]: true,
+      typeName: "user-account",
+      value,
+      asString: () => `user-account-${value}`,
+    });
+  }
+
+  export function fromJSON(json: { typeName: "user-account"; value: string }) {
+    return create(json.value);
+  }
+}
+```
+
+Use `typeName` or the default `{ type, data }` serializer wrapper as the JSON
+discriminant. In `EventSerializer.deserialize(bytes, converter)` and
+`SnapshotSerializer.deserialize(bytes, converter)`, keep the library API as-is
+and call your domain `fromJSON(...)` from the converter to restore the brand.
+The library itself is not a JSON-only abstraction; JSON restoration is a sample
+converter pattern.
+
 ## Interfaces
 
 Exported structural contracts are type aliases, not `interface` declarations. Type-only imports continue to use the same names, but TypeScript declaration merging is no longer a supported compatibility contract.

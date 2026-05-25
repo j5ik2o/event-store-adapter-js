@@ -104,6 +104,55 @@ expect(userAccount3.sequenceNumber).toEqual(2);
 expect(userAccount3.version).toEqual(2);
 ```
 
+## Runtime brands and JSON conversion
+
+The sample domain values use module-private `unique symbol` brands to tell
+factory-created values apart from plain objects inside the current process.
+`typeName` remains the JSON boundary discriminant; the symbol brand is not
+serialized and must be restored by a factory.
+
+```typescript
+const USER_ACCOUNT_ID_BRAND: unique symbol = Symbol("UserAccountId");
+
+type UserAccountId = AggregateId & {
+    typeName: "user-account";
+    readonly [USER_ACCOUNT_ID_BRAND]: true;
+};
+
+namespace UserAccountId {
+    export function create(value: string): UserAccountId {
+        return Object.freeze({
+            [USER_ACCOUNT_ID_BRAND]: true,
+            typeName: "user-account",
+            value,
+            asString: () => `user-account-${value}`,
+        });
+    }
+
+    export function is(value: unknown): value is UserAccountId {
+        return (
+            typeof value === "object" &&
+            value !== null &&
+            (value as Partial<UserAccountId>)[USER_ACCOUNT_ID_BRAND] === true
+        );
+    }
+
+    export function toJSON(value: UserAccountId) {
+        return { typeName: value.typeName, value: value.value };
+    }
+
+    export function fromJSON(json: { typeName: "user-account"; value: string }) {
+        return create(json.value);
+    }
+}
+```
+
+`JSON.stringify(...)` drops the symbol brand. In EventStore converters, call the
+domain `fromJSON(...)` function so deserialized events and snapshots become
+branded values again. The `EventSerializer` and `SnapshotSerializer` APIs stay
+unchanged; their `deserialize(bytes, converter)` contract still delegates
+domain reconstruction to the converter.
+
 ## Development
 
 This repository uses pnpm workspaces. The library package is located at

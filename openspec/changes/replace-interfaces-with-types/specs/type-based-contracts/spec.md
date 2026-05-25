@@ -2,7 +2,7 @@
 
 ### Requirement: 構造的契約は type alias で定義する
 
-ライブラリは、エクスポートされる構造的契約を TypeScript の `interface` 宣言ではなく `type` alias として定義する。
+ライブラリは、エクスポートされる構造的契約を TypeScript の `interface` 宣言ではなく `type` alias として定義しなければならない（SHALL）。
 
 #### Scenario: 型だけの公開契約 import が維持される
 
@@ -21,7 +21,7 @@
 
 ### Requirement: ランタイム API 値は明示的に残す
 
-ライブラリは、呼び出し側が JavaScript ランタイム値として必要とするものだけをランタイム値として公開する。
+ライブラリは、呼び出し側が JavaScript ランタイム値として必要とするものだけをランタイム値として公開しなければならない（SHALL）。
 
 #### Scenario: EventStore create ファクトリが利用できる
 
@@ -45,7 +45,7 @@
 
 ### Requirement: 同名値ファクトリは create を使う
 
-ライブラリは、値の構築を同名ランタイムファクトリオブジェクトの `create` メソッドとして公開する。
+ライブラリは、値の構築を同名ランタイムファクトリオブジェクトの `create` メソッドとして公開しなければならない（SHALL）。
 
 #### Scenario: ShardId を構築する
 
@@ -76,7 +76,7 @@
 
 ### Requirement: 回復可能なエラーは Result と判別共用体で返す
 
-ライブラリは、楽観ロック失敗など契約上想定される回復可能な失敗を例外として投げず、`Result` と `EventStoreError` の判別共用体で返す。
+ライブラリは、楽観ロック失敗など契約上想定される回復可能な失敗を例外として投げず、`Result` と `EventStoreError` の判別共用体で返さなければならない（SHALL）。
 
 #### Scenario: 楽観ロック失敗は Result の err で返す
 
@@ -95,7 +95,7 @@
 
 ### Requirement: 本ライブラリ定義クラスを使わない
 
-ライブラリは、製品コード、サンプル、ライブラリ内テスト用データで本ライブラリ定義クラスを使わない。
+ライブラリは、製品コード、サンプル、ライブラリ内テスト用データで本ライブラリ定義クラスを使ってはならない（SHALL）。
 
 #### Scenario: 内部実装は `class` を避ける
 
@@ -109,7 +109,7 @@
 
 ### Requirement: イベント分岐はデータで判別する
 
-サンプルとテスト用ドメインイベントは、JavaScript コンストラクタ識別子ではなく、安定したイベントデータを使って挙動を選択する。
+サンプルとテスト用ドメインイベントは、JavaScript コンストラクタ識別子ではなく、安定したイベントデータを使って挙動を選択しなければならない（SHALL）。
 
 #### Scenario: リプレイはイベント typeName を使う
 
@@ -123,7 +123,7 @@
 
 ### Requirement: サンプルは runtime brand と JSON 復元を示す
 
-サンプルとライブラリ内テスト用データは、利用側が serializer converter を実装するときの pattern として、同名 factory namespace に runtime brand 判定と JSON 変換を持つ。
+サンプルとライブラリ内テスト用データは、利用側が serializer converter を実装するときの pattern として、同名 factory namespace に runtime brand 判定と JSON 変換を持たなければならない（SHALL）。
 
 #### Scenario: factory 生成値は runtime brand で判定できる
 
@@ -168,7 +168,7 @@
 
 ### Requirement: ストア構築は実装形状を隠す
 
-ライブラリは、公開実装クラスではなくファクトリメソッドを通じて EventStore の構築を公開する。
+ライブラリは、公開実装クラスではなくファクトリメソッドを通じて EventStore の構築を公開しなければならない（SHALL）。
 
 #### Scenario: Memory ストアを構築する
 
@@ -187,7 +187,7 @@
 
 ### Requirement: 公開値は原則として不変にする
 
-ライブラリは、公開ドメイン向け値と API オブジェクトを原則として不変値として扱う。
+ライブラリは、公開ドメイン向け値と API オブジェクトを原則として不変値として扱わなければならない（SHALL）。
 
 #### Scenario: 集約更新は新しい値を返す
 

@@ -103,6 +103,55 @@ expect(userAccount3.sequenceNumber).toEqual(2);
 expect(userAccount3.version).toEqual(2);
 ```
 
+## runtime brand と JSON 変換
+
+サンプルのドメイン値は module-private な `unique symbol` brand を使い、
+プロセス内で factory が生成した値と plain object を区別します。`typeName`
+は JSON 境界の discriminant として残し、symbol brand は serialize されない
+ため factory で復元します。
+
+```typescript
+const USER_ACCOUNT_ID_BRAND: unique symbol = Symbol("UserAccountId");
+
+type UserAccountId = AggregateId & {
+    typeName: "user-account";
+    readonly [USER_ACCOUNT_ID_BRAND]: true;
+};
+
+namespace UserAccountId {
+    export function create(value: string): UserAccountId {
+        return Object.freeze({
+            [USER_ACCOUNT_ID_BRAND]: true,
+            typeName: "user-account",
+            value,
+            asString: () => `user-account-${value}`,
+        });
+    }
+
+    export function is(value: unknown): value is UserAccountId {
+        return (
+            typeof value === "object" &&
+            value !== null &&
+            (value as Partial<UserAccountId>)[USER_ACCOUNT_ID_BRAND] === true
+        );
+    }
+
+    export function toJSON(value: UserAccountId) {
+        return { typeName: value.typeName, value: value.value };
+    }
+
+    export function fromJSON(json: { typeName: "user-account"; value: string }) {
+        return create(json.value);
+    }
+}
+```
+
+`JSON.stringify(...)` 後は symbol brand が消えます。EventStore の converter
+ではドメイン側の `fromJSON(...)` を呼び、deserialize した event / snapshot
+を再び branded value にしてください。`EventSerializer` と
+`SnapshotSerializer` の API は変更せず、`deserialize(bytes, converter)` の
+契約どおり converter にドメイン復元を委ねます。
+
 ## 開発
 
 このリポジトリは pnpm workspace を使います。ライブラリパッケージは

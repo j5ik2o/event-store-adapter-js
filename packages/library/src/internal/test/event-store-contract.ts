@@ -2,7 +2,7 @@ import { ulid } from "ulid";
 import type { EventStore } from "../../event-store";
 import type { EventStoreError, Result } from "../../types";
 import { UserAccount } from "./user-account";
-import type { UserAccountEvent } from "./user-account-event";
+import { UserAccountEvent } from "./user-account-event";
 import { UserAccountId } from "./user-account-id";
 
 function runEventStoreContractTests(config: {
@@ -29,6 +29,7 @@ function runEventStoreContractTests(config: {
         if (userAccount2 === undefined) {
           throw new Error("userAccount2 is undefined");
         }
+        expect(UserAccount.is(userAccount2)).toBe(true);
         expect(userAccount2.id.asString()).toEqual(id.asString());
         expect(userAccount2.name).toEqual(name);
         expect(userAccount2.version).toEqual(1);
@@ -60,6 +61,8 @@ function runEventStoreContractTests(config: {
             id,
             latestSnapshot.sequenceNumber + 1,
           );
+        expect(UserAccount.is(latestSnapshot)).toBe(true);
+        expect(eventsAfterSnapshot.every(UserAccountEvent.is)).toBe(true);
         const userAccount3 = UserAccount.replay(
           eventsAfterSnapshot,
           latestSnapshot,
@@ -105,6 +108,8 @@ function runEventStoreContractTests(config: {
             id,
             latestSnapshot.sequenceNumber + 1,
           );
+        expect(UserAccount.is(latestSnapshot)).toBe(true);
+        expect(eventsAfterSnapshot.every(UserAccountEvent.is)).toBe(true);
         const userAccount4 = UserAccount.replay(
           eventsAfterSnapshot,
           latestSnapshot,
@@ -144,6 +149,8 @@ function runEventStoreContractTests(config: {
             id,
             latestSnapshot.sequenceNumber + 1,
           );
+        expect(UserAccount.is(latestSnapshot)).toBe(true);
+        expect(eventsAfterSnapshot.every(UserAccountEvent.is)).toBe(true);
         const userAccount3 = UserAccount.replay(
           eventsAfterSnapshot,
           latestSnapshot,

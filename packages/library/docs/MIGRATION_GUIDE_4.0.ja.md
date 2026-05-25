@@ -68,6 +68,42 @@ namespace UserAccountId {
 }
 ```
 
+ドメイン値が JSON 境界を越える場合は、同じ factory namespace に
+`toJSON(...)` と `fromJSON(...)` を対で追加してください。module-private な
+`unique symbol` brand はプロセス内で factory 生成値と plain object を
+区別できますが、`JSON.stringify(...)` 後には消えます。
+
+```ts
+const USER_ACCOUNT_ID_BRAND: unique symbol = Symbol("UserAccountId");
+
+type UserAccountId = AggregateId & {
+  typeName: "user-account";
+  readonly [USER_ACCOUNT_ID_BRAND]: true;
+};
+
+namespace UserAccountId {
+  export function create(value: string): UserAccountId {
+    return Object.freeze({
+      [USER_ACCOUNT_ID_BRAND]: true,
+      typeName: "user-account",
+      value,
+      asString: () => `user-account-${value}`,
+    });
+  }
+
+  export function fromJSON(json: { typeName: "user-account"; value: string }) {
+    return create(json.value);
+  }
+}
+```
+
+JSON 上の判別には `typeName`、または default serializer の `{ type, data }`
+wrapper を使います。`EventSerializer.deserialize(bytes, converter)` と
+`SnapshotSerializer.deserialize(bytes, converter)` のライブラリ API は変更せず、
+converter の中でドメイン側の `fromJSON(...)` を呼んで brand を復元してください。
+ライブラリ本体は JSON 専用の抽象ではなく、JSON 復元はサンプル converter の
+実装 pattern です。
+
 ## interface
 
 公開される構造的契約は `interface` 宣言ではなく type alias です。型 import の名前は維持しますが、TypeScript の宣言マージは互換契約の対象外です。
