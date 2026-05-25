@@ -1,8 +1,6 @@
 name: Bump-Version
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 0 * * 1"
 jobs:
   bump-version:
     runs-on: ubuntu-latest
