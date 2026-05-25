@@ -1,9 +1,6 @@
 name: Review Thread Resolution
 
 on:
-  pull_request:
-    branches: ["main"]
-    types: [opened, reopened, synchronize, ready_for_review, edited]
   pull_request_review:
     types: [submitted, edited, dismissed]
   pull_request_review_comment:
@@ -18,6 +15,22 @@ on:
         description: PR number to refresh. Leave empty to refresh all open main PRs.
         required: false
         type: string
+      wait_for_other_checks:
+        description: Wait for other PR checks before evaluating review threads.
+        required: false
+        default: true
+        type: boolean
+  workflow_call:
+    inputs:
+      pr_number:
+        description: PR number to refresh.
+        required: true
+        type: string
+      wait_for_other_checks:
+        description: Wait for other PR checks before evaluating review threads.
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -25,18 +38,19 @@ permissions:
   checks: write
   issues: read
   pull-requests: read
+  statuses: write
 
 concurrency:
-  group: review-thread-resolution-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || github.run_id }}
-  cancel-in-progress: true
+  group: review-thread-resolution-${{ (toJSON(inputs.wait_for_other_checks) == 'false' || inputs.wait_for_other_checks == 'false') && 'ci-' || 'event-' }}${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || 'refresh-all' }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' && toJSON(inputs.wait_for_other_checks) != 'false' && inputs.wait_for_other_checks != 'false' }}
 
 jobs:
   unresolved-comments:
     # Keep this Actions job name distinct from the synthetic required check-run
     # named "Check unresolved comments" so cancelled workflow runs are not
     # confused with the current branch-protection result.
-    name: Evaluate unresolved comments
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event.pull_request != null || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null) }}
+    name: ${{ (toJSON(inputs.wait_for_other_checks) == 'false' || inputs.wait_for_other_checks == 'false') && 'Evaluate CI review-thread gate' || 'Refresh review-thread state' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event.pull_request != null || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -45,8 +59,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}
-          PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event.pull_request.number || inputs.pr_number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
           EVENT_NAME: ${{ github.event_name }}
+          WAIT_FOR_OTHER_CHECKS: ${{ (toJSON(inputs.wait_for_other_checks) == 'false' || inputs.wait_for_other_checks == 'false') && '0' || '1' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -108,22 +123,11 @@ jobs:
             head_ref_oid="$(jq -r '.data.repository.pullRequest.headRefOid' <<< "$pr_response")"
             pr_url="$(jq -r '.data.repository.pullRequest.url' <<< "$pr_response")"
 
-            find_existing_head_check() {
-              gh api \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                "repos/$OWNER/$REPO/commits/$head_ref_oid/check-runs?check_name=Check%20unresolved%20comments&per_page=100" \
-                --jq '
-                  [
-                    .check_runs[]
-                    | select(.output.title == "Review Thread Resolution")
-                    | .id
-                  ]
-                  | first // empty
-                '
-            }
-
             should_publish_head_check() {
+              if [[ "$EVENT_NAME" == "workflow_call" ]]; then
+                return 1
+              fi
+
               if [[ -z "$head_repository" ]]; then
                 echo "::warning::Skipping synthetic check-run publication because PR head repository metadata is unavailable." >&2
                 return 1
@@ -161,130 +165,63 @@ jobs:
             publish_head_check() {
               local conclusion="$1"
               local summary="$2"
-              local check_summary="$summary"
-              local max_summary_chars=60000
-              local truncation_suffix
-              local available_chars
-              local create_payload
-              local update_payload
-              local check_run_response
-              local check_run_error
-              local existing_check_run_id
-              local check_run_url
-              # The synthetic check is the stable required context. Create it
-              # on every eligible event because the Actions job intentionally
-              # uses a distinct name for UI clarity.
-              local create_if_missing="true"
+              local state="$conclusion"
+              local status_payload
+              local status_response
+              local status_error
+              local status_url
 
-              if (( ${#check_summary} > max_summary_chars )); then
-                truncation_suffix=$'\n\n... truncated for GitHub Checks API summary limit ...'
-                available_chars=$(( max_summary_chars - ${#truncation_suffix} ))
-                if (( available_chars < 1 )); then
-                  check_summary="${truncation_suffix:0:max_summary_chars}"
-                else
-                  check_summary="${check_summary:0:available_chars}${truncation_suffix}"
-                fi
-              fi
-
-              create_payload="$(
+              status_payload="$(
                 jq -n \
-                  --arg name "Check unresolved comments" \
-                  --arg head_sha "$head_ref_oid" \
-                  --arg conclusion "$conclusion" \
-                  --arg details_url "$RUN_URL" \
-                  --arg title "Review Thread Resolution" \
-                  --arg summary "$check_summary" \
+                  --arg state "$state" \
+                  --arg target_url "$RUN_URL" \
+                  --arg description "Review-thread gate ${state}." \
+                  --arg context "Check unresolved comments" \
                   '{
-                    name: $name,
-                    head_sha: $head_sha,
-                    status: "completed",
-                    conclusion: $conclusion,
-                    details_url: $details_url,
-                    output: {
-                      title: $title,
-                      summary: $summary
-                    }
-                  }'
-              )"
-              update_payload="$(
-                jq -n \
-                  --arg name "Check unresolved comments" \
-                  --arg conclusion "$conclusion" \
-                  --arg details_url "$RUN_URL" \
-                  --arg title "Review Thread Resolution" \
-                  --arg summary "$check_summary" \
-                  '{
-                    name: $name,
-                    status: "completed",
-                    conclusion: $conclusion,
-                    details_url: $details_url,
-                    output: {
-                      title: $title,
-                      summary: $summary
-                    }
+                    state: $state,
+                    target_url: $target_url,
+                    description: $description,
+                    context: $context
                   }'
               )"
 
-            existing_check_run_id="$(find_existing_head_check)"
-
-            check_run_error="$(mktemp)"
-              trap 'rm -f "$check_run_error"; trap - RETURN' RETURN
-              if [[ -n "$existing_check_run_id" ]]; then
-                if ! check_run_response="$(
-                  gh api \
-                    --method PATCH \
-                    -H "Accept: application/vnd.github+json" \
-                    -H "X-GitHub-Api-Version: 2022-11-28" \
-                    "repos/$OWNER/$REPO/check-runs/$existing_check_run_id" \
-                    --input - \
-                    2> "$check_run_error" <<< "$update_payload"
-                )"; then
-                  echo "::error::Failed to update check run via GitHub API."
-                  cat "$check_run_error" >&2
-                  return 1
-                fi
-              else
-                if [[ "$create_if_missing" != "true" ]]; then
-                  echo "No existing synthetic check run to update."
-                  return 0
-                fi
-
-                if ! check_run_response="$(
-                  gh api \
-                    --method POST \
-                    -H "Accept: application/vnd.github+json" \
-                    -H "X-GitHub-Api-Version: 2022-11-28" \
-                    "repos/$OWNER/$REPO/check-runs" \
-                    --input - \
-                    2> "$check_run_error" <<< "$create_payload"
-                )"; then
-                  echo "::error::Failed to create check run via GitHub API."
-                  cat "$check_run_error" >&2
-                  return 1
-                fi
-              fi
-              if [[ -s "$check_run_error" ]]; then
-                cat "$check_run_error" >&2
-              fi
-
-              if jq -e '(.errors? // []) | length > 0' <<< "$check_run_response" > /dev/null; then
-                echo "::error::GitHub API returned errors while creating check run."
-                jq -r '.errors[]?.message // empty' <<< "$check_run_response" >&2
+              status_error="$(mktemp)"
+              trap 'rm -f "$status_error"; trap - RETURN' RETURN
+              if ! status_response="$(
+                gh api \
+                  --method POST \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "repos/$OWNER/$REPO/statuses/$head_ref_oid" \
+                  --input - \
+                  2> "$status_error" <<< "$status_payload"
+              )"; then
+                echo "::error::Failed to publish commit status via GitHub API."
+                cat "$status_error" >&2
                 return 1
               fi
-              if jq -e '.message? // empty' <<< "$check_run_response" > /dev/null; then
-                echo "::error::GitHub API returned an error message while creating check run."
-                jq -r '.message' <<< "$check_run_response" >&2
+              if [[ -s "$status_error" ]]; then
+                cat "$status_error" >&2
+              fi
+
+              if jq -e '(.errors? // []) | length > 0' <<< "$status_response" > /dev/null; then
+                echo "::error::GitHub API returned errors while publishing commit status."
+                jq -r '.errors[]?.message // empty' <<< "$status_response" >&2
                 return 1
               fi
-              if ! jq -e '.id and (.html_url // .url)' <<< "$check_run_response" > /dev/null; then
-                echo "::error::GitHub API response did not include check-run metadata."
-                jq -c '.' <<< "$check_run_response" >&2
+              if jq -e '.message? // empty' <<< "$status_response" > /dev/null; then
+                echo "::error::GitHub API returned an error message while publishing commit status."
+                jq -r '.message' <<< "$status_response" >&2
+                return 1
+              fi
+              if ! jq -e '.id and (.target_url // .url)' <<< "$status_response" > /dev/null; then
+                echo "::error::GitHub API response did not include commit status metadata."
+                jq -c '.' <<< "$status_response" >&2
                 return 1
               fi
 
-              check_run_url="$(jq -r '.html_url // .url' <<< "$check_run_response")"
-              echo "Published check run: $check_run_url"
+              status_url="$(jq -r '.target_url // .url' <<< "$status_response")"
+              echo "Published commit status '$state': $status_url"
             }
 
             build_summary() {
@@ -320,23 +257,87 @@ jobs:
               exit 0
             fi
 
-            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-              max_attempts=3
+            if [[ "$WAIT_FOR_OTHER_CHECKS" == "0" ]]; then
+              echo "Skipping other-check wait because the caller already ordered this gate after CI jobs."
             else
-              max_attempts=60
-            fi
-            initial_sleep_seconds=5
-            max_sleep_seconds=30
-            sleep_seconds="$initial_sleep_seconds"
-            attempt=0
-            while [[ "$attempt" -lt "$max_attempts" ]]; do
-              attempt=$((attempt + 1))
-              status_response="$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json headRefOid,statusCheckRollup)" || {
+              if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+                max_attempts=3
+              else
+                max_attempts=60
+              fi
+              initial_sleep_seconds=5
+              max_sleep_seconds=30
+              sleep_seconds="$initial_sleep_seconds"
+              attempt=0
+              while [[ "$attempt" -lt "$max_attempts" ]]; do
+                attempt=$((attempt + 1))
+                status_response="$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json headRefOid,statusCheckRollup)" || {
+                  if [[ "$attempt" -eq "$max_attempts" ]]; then
+                    echo "::error::Failed to fetch PR status after $max_attempts attempts."
+                    exit 1
+                  fi
+                  echo "::warning::Failed to fetch PR status on attempt $attempt; retrying."
+                  sleep "$sleep_seconds"
+                  if [[ "$sleep_seconds" -lt "$max_sleep_seconds" ]]; then
+                    sleep_seconds=$((sleep_seconds * 2))
+                    if [[ "$sleep_seconds" -gt "$max_sleep_seconds" ]]; then
+                      sleep_seconds="$max_sleep_seconds"
+                    fi
+                  fi
+                  continue
+                }
+                current_head_ref_oid="$(jq -r '.headRefOid' <<< "$status_response")"
+                if [[ "$current_head_ref_oid" != "$head_ref_oid" ]]; then
+                  if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+                    echo "::notice::PR head changed from $head_ref_oid to $current_head_ref_oid while waiting for checks; continuing scheduled refresh on the latest head."
+                    head_ref_oid="$current_head_ref_oid"
+                  else
+                    echo "::error::PR head changed from $head_ref_oid to $current_head_ref_oid while waiting for checks."
+                    exit 1
+                  fi
+                fi
+
+                pending_checks="$(
+                  jq -r '
+                    .statusCheckRollup[]
+                    | select(
+                        if .__typename == "CheckRun" then
+                          (.name != "Check unresolved comments"
+                            and .workflowName != "Review Thread Resolution"
+                            and (.status != "COMPLETED"))
+                        elif .__typename == "StatusContext" then
+                          (.context != "Check unresolved comments"
+                            and (.state == "PENDING" or .state == "EXPECTED"))
+                        else
+                          false
+                        end
+                      )
+                    | if .__typename == "CheckRun" then
+                        "\(.workflowName // "unknown") / \(.name // "unknown")"
+                      else
+                        "\(.context // "unknown")"
+                      end
+                  ' <<< "$status_response"
+                )"
+
+                if [[ -z "$pending_checks" ]]; then
+                  echo "All other PR checks have reached a terminal state."
+                  break
+                fi
+
                 if [[ "$attempt" -eq "$max_attempts" ]]; then
-                  echo "::error::Failed to fetch PR status after $max_attempts attempts."
+                  if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+                    echo "::notice::Other PR checks are still pending; refreshing review-thread state without waiting."
+                    echo "$pending_checks"
+                    break
+                  fi
+                  echo "::error::Timed out waiting for other PR checks to finish before evaluating review comments."
+                  echo "$pending_checks" >&2
                   exit 1
                 fi
-                echo "::warning::Failed to fetch PR status on attempt $attempt; retrying."
+
+                echo "Waiting for other PR checks to finish before evaluating review comments:"
+                echo "$pending_checks"
                 sleep "$sleep_seconds"
                 if [[ "$sleep_seconds" -lt "$max_sleep_seconds" ]]; then
                   sleep_seconds=$((sleep_seconds * 2))
@@ -344,67 +345,8 @@ jobs:
                     sleep_seconds="$max_sleep_seconds"
                   fi
                 fi
-                continue
-              }
-              current_head_ref_oid="$(jq -r '.headRefOid' <<< "$status_response")"
-              if [[ "$current_head_ref_oid" != "$head_ref_oid" ]]; then
-                if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-                  echo "::notice::PR head changed from $head_ref_oid to $current_head_ref_oid while waiting for checks; continuing scheduled refresh on the latest head."
-                  head_ref_oid="$current_head_ref_oid"
-                else
-                  echo "::error::PR head changed from $head_ref_oid to $current_head_ref_oid while waiting for checks."
-                  exit 1
-                fi
-              fi
-
-              pending_checks="$(
-                jq -r '
-                  .statusCheckRollup[]
-                  | select(
-                      if .__typename == "CheckRun" then
-                        (.name != "Check unresolved comments"
-                          and .workflowName != "Review Thread Resolution"
-                          and (.status != "COMPLETED"))
-                      elif .__typename == "StatusContext" then
-                        (.state == "PENDING" or .state == "EXPECTED")
-                      else
-                        false
-                      end
-                    )
-                  | if .__typename == "CheckRun" then
-                      "\(.workflowName // "unknown") / \(.name // "unknown")"
-                    else
-                      "\(.context // "unknown")"
-                    end
-                ' <<< "$status_response"
-              )"
-
-              if [[ -z "$pending_checks" ]]; then
-                echo "All other PR checks have reached a terminal state."
-                break
-              fi
-
-              if [[ "$attempt" -eq "$max_attempts" ]]; then
-                if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-                  echo "::notice::Other PR checks are still pending; refreshing review-thread state without waiting."
-                  echo "$pending_checks"
-                  break
-                fi
-                echo "::error::Timed out waiting for other PR checks to finish before evaluating review comments."
-                echo "$pending_checks" >&2
-                exit 1
-              fi
-
-              echo "Waiting for other PR checks to finish before evaluating review comments:"
-              echo "$pending_checks"
-              sleep "$sleep_seconds"
-              if [[ "$sleep_seconds" -lt "$max_sleep_seconds" ]]; then
-                sleep_seconds=$((sleep_seconds * 2))
-                if [[ "$sleep_seconds" -gt "$max_sleep_seconds" ]]; then
-                  sleep_seconds="$max_sleep_seconds"
-                fi
-              fi
-            done
+              done
+            fi
 
             unresolved='[]'
             cursor=''
@@ -648,12 +590,23 @@ jobs:
                   | (.body // "") as $body
                   | (
                       $author == "coderabbitai"
-                      and ($body | contains("<!-- This is an auto-generated comment: summarize by coderabbit.ai -->"))
+                      and (
+                        ($body | contains("<!-- This is an auto-generated comment: summarize by coderabbit.ai -->"))
+                        or ($body | contains("<!-- This is an auto-generated comment by CodeRabbit for review status -->"))
+                      )
                     )
                     or (
                       $author == "codecov"
                       and ($body | startswith("## [Codecov]("))
                       and ($body | contains(" Report"))
+                    )
+                    or (
+                      $author == "cursor"
+                      and ($body | contains("<!-- BUGBOT_REVIEW -->"))
+                    )
+                    or (
+                      $author == "chatgpt-codex-connector"
+                      and ($body | contains("### 💡 Codex Review"))
                     );
                 . as $comments
                 | [
@@ -705,8 +658,13 @@ jobs:
               "$pr_url")"
             printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
 
-            if ! refresh_head_ref_oid; then
+            refresh_result=0
+            refresh_head_ref_oid || refresh_result=$?
+            if [[ "$refresh_result" -eq 1 ]]; then
               exit 1
+            fi
+            if [[ "$refresh_result" -eq 2 && "$unresolved_count" -eq 0 && "$unacknowledged_top_level_count" -eq 0 ]]; then
+              exit 0
             fi
 
             if [[ "$unresolved_count" -eq 0 && "$unacknowledged_top_level_count" -eq 0 ]]; then
