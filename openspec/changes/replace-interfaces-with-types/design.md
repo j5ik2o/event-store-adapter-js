@@ -111,6 +111,25 @@
 
 代替案として、イベントクラスを残して静的ファクトリ関数だけを使う案がある。この案はクラス識別子を主要なドメインパターンとして教え続けてしまう。
 
+### サンプルのドメイン値は runtime brand と JSON 変換を対で示す
+
+サンプルとライブラリ内テスト用データでは、`UserAccountId`、`UserAccountCreated`、`UserAccountRenamed`、`UserAccount` のようなドメイン値に module-private な `unique symbol` brand を持たせる。brand はプロセス内で `create(...)` を通った値かどうかを判定する補助であり、セキュリティ境界や永続化フォーマットではない。
+
+各同名 factory namespace は、少なくとも次を持つ。
+
+- `create(...)`: 入力を検証し、runtime symbol brand を付与した不変値を返す。
+- `is(value: unknown)`: runtime symbol brand と最低限の shape を確認し、factory 生成値かを判定する。
+- `toJSON(value)`: JSON-safe な plain object へ変換する。
+- `fromJSON(json: unknown)`: JSON-safe shape を検証し、必ず `create(...)` 経由で brand を再付与する。
+
+`fromJSON(...)` だけを追加すると、どの JSON 形状を正とするかが暗黙になるため採用しない。`toJSON(...)` と対で置くことで、serializer converter の利用者に往復可能な形を示す。
+
+JSON 境界では `unique symbol` brand は `JSON.stringify(...)` に出ない。したがって、保存済み payload の判別には `typeName` または既存 default serializer の `{ type, data }` wrapper を使う。`typeName` は JSON 境界の discriminant、runtime symbol brand はプロセス内の factory 生成値判定という役割分担にする。
+
+本来、`toJSON(...)` / `fromJSON(...)` はドメイン層外の adapter / converter 層へ置く方が境界としてはきれいである。ただし、このリポジトリのサンプルでは serializer を作る利用者が実装すべき最低限の形を示すことを優先し、ドメイン例に同居させる。
+
+ライブラリ本体の `EventSerializer` / `SnapshotSerializer` API は変更しない。default serializer は JSON ベースだが、custom serializer でも `deserialize(bytes, converter)` の `converter` が `fromJSON(...)` 相当の parse/factory を呼ぶことで同じ復元パターンを使える。
+
 ## リスク / トレードオフ
 
 - [宣言マージに依存している利用者が拡張点を失う] -> 未リリース API の意図的な破壊的変更として提案とリリースノートに明記する。
@@ -119,5 +138,7 @@
 - [同名の `EventStore` 型 / 値が編集時に紛らわしい] -> `import type` を一貫して使い、構築用オブジェクト型は非公開に保つ。
 - [class からオブジェクトへの書き換えで `this` の挙動が変わる] -> `this` の再束縛に依存するメソッドではなく、クロージャベースの関数とオブジェクトファクトリ補助関数を優先する。
 - [イベント分岐の変更で網羅性チェックが抜ける] -> リテラル `typeName` を持つ判別共用体と `never` による網羅性チェックを使う。
+- [runtime symbol brand が JSON 境界で消える] -> `toJSON(...)` / `fromJSON(...)` を対で提供し、復元時は `fromJSON(...)` が `create(...)` 経由で brand を再付与することをサンプルとドキュメントに明記する。
+- [`toJSON(...)` / `fromJSON(...)` をドメイン例に置くことで層が混ざる] -> 本来は adapter / converter 層が望ましいが、サンプルでは serializer 利用者が実装すべき pattern を示すための割り切りとして扱う。
 - [内部テストが実装クラスを直接構築している可能性がある] -> 可能な限り `EventStore.createX(...)` または内部ファクトリ補助関数経由にし、ストレージ契約テストは維持する。
 - [インメモリストアの初期データから局所的な変更が漏れる] -> 入力境界で防御的コピーを続け、可変状態はクロージャ内に閉じ込める。
