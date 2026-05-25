@@ -123,6 +123,10 @@ jobs:
             pr_url="$(jq -r '.data.repository.pullRequest.url' <<< "$pr_response")"
 
             should_publish_head_check() {
+              if [[ "$EVENT_NAME" == "workflow_call" ]]; then
+                return 1
+              fi
+
               if [[ -z "$head_repository" ]]; then
                 echo "::warning::Skipping synthetic check-run publication because PR head repository metadata is unavailable." >&2
                 return 1
