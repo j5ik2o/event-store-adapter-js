@@ -50,3 +50,16 @@
 - [x] 5.11 公開 API オブジェクトと値ファクトリオブジェクトが、サポート対象の使い方では外部からメソッド表を変更できないことをテストで確認する。
 - [x] 5.12 4.0.0 向け移行ガイドに、`EventStore.ofX(...)` から `EventStore.createX(...)`、`createShardId(...)` から `ShardId.create(...)`、ライブラリ提供の `AggregateIdValue` / `createAggregateIdValue(...)` から plain `string` を保持するユーザー側 `UserAccountId.create(...)`、`try/catch` から `Result` 分岐への before / after が含まれていることを確認する。
 - [x] 5.13 `replace-interfaces-with-types` の OpenSpec 状態確認を実行し、change が適用可能なままであることを確認する。
+
+## 6. Runtime brand と JSON 復元導線
+
+- [ ] 6.1 サンプルの `UserAccountId`、`UserAccountCreated`、`UserAccountRenamed`、`UserAccount` に module-private `unique symbol` brand を追加し、`create(...)` が brand 付き不変値を返すようにする。
+- [ ] 6.2 サンプルの同名 factory namespace に `is(value)`、`toJSON(value)`、`fromJSON(json)` を追加し、`fromJSON(...)` は必ず `create(...)` 経由で brand を再付与する。
+- [ ] 6.3 既存の `convertJSONToUserAccountId`、`convertJSONToUserAccountEvent`、`convertJSONToUserAccount` は、対応する `fromJSON(...)` を呼ぶ薄い alias として残す。
+- [ ] 6.4 ライブラリ内テスト用データにも同じ runtime brand / `is` / `toJSON` / `fromJSON` pattern を追加し、DynamoDB / Spanner の deserialize converter が branded value を返すことを確認する。
+- [ ] 6.5 JSON round-trip テストを追加し、`JSON.parse(JSON.stringify(value))` 直後は `is(value) === false`、`fromJSON(...)` 後は `is(value) === true` になることを確認する。
+- [ ] 6.6 構造だけを真似た `AggregateId` plain object が branded ID として受理されないこと、wrong `typeName` / missing `value` / invalid event `type` / invalid `occurredAt` を拒否することをテストする。
+- [ ] 6.7 README / README.ja に `unique symbol` brand、`is`、`toJSON`、`fromJSON` の最小例を追加し、`typeName` は JSON 境界用 discriminant、runtime symbol brand はプロセス内の factory 生成値判定用であることを説明する。
+- [ ] 6.8 `MIGRATION_GUIDE_4.0.md` / `MIGRATION_GUIDE_4.0.ja.md` に、JSON 境界で symbol brand が消えること、deserialize converter は `fromJSON(...)` / factory を通して brand を復元すること、ライブラリ本体は JSON 専用ではないことを追記する。
+- [ ] 6.9 ライブラリの `EventSerializer` / `SnapshotSerializer` 公開 API を変更していないことを確認する。
+- [ ] 6.10 `pnpm --filter event-store-adapter-js run lint`、`pnpm --filter event-store-adapter-js run build`、`pnpm --filter event-store-adapter-js run coverage`、`pnpm --filter @event-store-adapter-js/examples run typecheck` を実行する。
