@@ -673,12 +673,19 @@ jobs:
                   | (.body // "") as $body
                   | (
                       $author == "coderabbitai"
-                      and ($body | contains("<!-- This is an auto-generated comment: summarize by coderabbit.ai -->"))
+                      and (
+                        ($body | contains("<!-- This is an auto-generated comment: summarize by coderabbit.ai -->"))
+                        or ($body | contains("<!-- This is an auto-generated comment by CodeRabbit for review status -->"))
+                      )
                     )
                     or (
                       $author == "codecov"
                       and ($body | startswith("## [Codecov]("))
                       and ($body | contains(" Report"))
+                    )
+                    or (
+                      $author == "cursor"
+                      and ($body | contains("<!-- BUGBOT_REVIEW -->"))
                     );
                 . as $comments
                 | [
@@ -747,6 +754,11 @@ jobs:
             # issue_comment failure cannot remain stale on the PR head.
             if should_publish_head_check; then
               publish_head_check "failure" "$summary"
+            fi
+
+            if [[ "${REFRESH_OPEN_PRS:-0}" == "1" ]]; then
+              echo "::notice::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) or review summary comment(s) remain."
+              exit 0
             fi
 
             echo "::error::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) or review summary comment(s) remain. Resolve or acknowledge all review conversations before merging."
