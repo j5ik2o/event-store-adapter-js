@@ -4,7 +4,7 @@ import { createDefaultShardSelector } from "./default-shard-selector";
 import { UserAccountId } from "./test/user-account-id";
 
 describe("DefaultShardSelector", () => {
-  function selectLegacyDynamoDBShardId(
+  function selectLegacyShardId(
     aggregateId: UserAccountId,
     shardCount: number,
   ): number {
@@ -32,7 +32,7 @@ describe("DefaultShardSelector", () => {
     ).toBe(ShardId.create(shardId));
   });
 
-  test("matches the legacy DynamoDB shard hash coercion", () => {
+  test("matches the legacy shard hash coercion", () => {
     const shardCount = ShardCount.create(32);
     const selector = createDefaultShardSelector<UserAccountId>();
     const ids = [
@@ -43,7 +43,7 @@ describe("DefaultShardSelector", () => {
 
     for (const id of ids) {
       expect(selector.selectShardId(id, shardCount)).toBe(
-        ShardId.create(selectLegacyDynamoDBShardId(id, shardCount)),
+        ShardId.create(selectLegacyShardId(id, shardCount)),
       );
     }
   });
