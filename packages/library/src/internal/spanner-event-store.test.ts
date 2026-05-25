@@ -92,6 +92,15 @@ function createFakeSpannerDatabase(options: FakeSpannerDatabaseOptions = {}) {
     options.failRetainedSnapshotSelectWith = error;
   }
 
+  function getRetainedSnapshotSequenceNumbers(aggregateId: string): number[] {
+    return Array.from(snapshotRows.values())
+      .filter(
+        (row) => row.aggregateId === aggregateId && row.sequenceNumber > 0,
+      )
+      .map((row) => row.sequenceNumber)
+      .sort((a, b) => a - b);
+  }
+
   async function run(request: FakeSqlRequest): Promise<[FakeRow[]]> {
     if (request.sql.includes("FROM `journal`")) {
       return [selectJournalRows(requireParams(request))];
@@ -386,6 +395,7 @@ function createFakeSpannerDatabase(options: FakeSpannerDatabaseOptions = {}) {
     run,
     runTransactionAsync,
     runUpdate,
+    getRetainedSnapshotSequenceNumbers,
     setFailRetainedSnapshotSelectWith,
   };
   return Object.freeze(fakeDatabase);
@@ -573,6 +583,42 @@ describe("SpannerEventStore", () => {
 
     const latestSnapshot = await eventStore.getLatestSnapshotById(id);
     expect(latestSnapshot?.name).toBe("Bob");
+  });
+
+  test("purges existing retained snapshots when keepSnapshotCount is zero", async () => {
+    const database = createFakeSpannerDatabase();
+    const retainedEventStore = createFakeEventStore(2, database);
+    const id = UserAccountId.create(ulid());
+    const [userAccount1, created] = UserAccount.create(id, "Alice");
+    await expectOk(
+      retainedEventStore.persistEventAndSnapshot(created, userAccount1),
+    );
+
+    const [userAccount2, renamedToBob] = userAccount1.rename("Bob");
+    await expectOk(
+      retainedEventStore.persistEventAndSnapshot(renamedToBob, userAccount2),
+    );
+    expect(database.getRetainedSnapshotSequenceNumbers(id.asString())).toEqual([
+      1, 2,
+    ]);
+
+    const zeroRetentionEventStore = createFakeEventStore(0, database);
+    const snapshotAfterBob =
+      await zeroRetentionEventStore.getLatestSnapshotById(id);
+    if (snapshotAfterBob === undefined) {
+      throw new Error("snapshotAfterBob is undefined");
+    }
+    const [userAccount3, renamedToCarol] = snapshotAfterBob.rename("Carol");
+    await expectOk(
+      zeroRetentionEventStore.persistEventAndSnapshot(
+        renamedToCarol,
+        userAccount3,
+      ),
+    );
+
+    expect(database.getRetainedSnapshotSequenceNumbers(id.asString())).toEqual(
+      [],
+    );
   });
 
   test("converts duplicate journal inserts to optimistic lock conflict", async () => {

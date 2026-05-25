@@ -381,7 +381,7 @@ function createSpannerEventStore<
   async function purgeExcessSnapshots(
     aggregateId: AID,
   ): Promise<EventStoreError | undefined> {
-    if (keepSnapshotCount === undefined || keepSnapshotCount === 0) {
+    if (keepSnapshotCount === undefined) {
       return undefined;
     }
     try {
