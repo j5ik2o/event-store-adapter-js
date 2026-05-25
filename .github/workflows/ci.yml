@@ -343,6 +343,7 @@ jobs:
     if: ${{ always() && github.event_name == 'pull_request' }}
     permissions:
       contents: read
+      actions: write
       checks: write
       issues: read
       pull-requests: read
