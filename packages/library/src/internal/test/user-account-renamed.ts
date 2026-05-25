@@ -1,15 +1,13 @@
-import type { Event } from "event-store-adapter-js";
+import type { Event } from "../../types";
 import { UserAccountId } from "./user-account-id";
 
-const USER_ACCOUNT_CREATED_BRAND: unique symbol = Symbol(
-  "UserAccountCreated",
-);
+const USER_ACCOUNT_RENAMED_BRAND: unique symbol = Symbol("UserAccountRenamed");
 const ISO_UTC_DATE_TIME_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 
-type UserAccountCreatedDataJson = {
-  typeName: "UserAccountCreated";
-  isCreated: true;
+type UserAccountRenamedDataJson = {
+  typeName: "UserAccountRenamed";
+  isCreated: false;
   id: string;
   aggregateId: ReturnType<typeof UserAccountId.toJSON>;
   name: string;
@@ -17,50 +15,53 @@ type UserAccountCreatedDataJson = {
   occurredAt: string;
 };
 
-type UserAccountCreatedJson =
-  | UserAccountCreatedDataJson
+type UserAccountRenamedJson =
+  | UserAccountRenamedDataJson
   | {
-      type: "UserAccountCreated";
-      data: UserAccountCreatedDataJson;
+      type: "UserAccountRenamed";
+      data: UserAccountRenamedDataJson;
     };
 
-export type UserAccountCreated = Event<UserAccountId> & {
-  typeName: "UserAccountCreated";
-  isCreated: true;
+export type UserAccountRenamed = Event<UserAccountId> & {
+  typeName: "UserAccountRenamed";
+  isCreated: false;
   name: string;
-  readonly [USER_ACCOUNT_CREATED_BRAND]: true;
+  readonly [USER_ACCOUNT_RENAMED_BRAND]: true;
 };
 
-export namespace UserAccountCreated {
+export namespace UserAccountRenamed {
   export function create(input: {
     id: string;
     aggregateId: UserAccountId;
     name: string;
     sequenceNumber: number;
     occurredAt: Date;
-  }): UserAccountCreated {
-    requireAggregateId("UserAccountCreated aggregateId", input.aggregateId);
-    requireNonEmptyString("UserAccountCreated id", input.id);
-    requireNonEmptyString("UserAccountCreated name", input.name);
-    requireSequenceNumber("UserAccountCreated sequenceNumber", input.sequenceNumber);
-    requireValidDate("UserAccountCreated occurredAt", input.occurredAt);
+  }): UserAccountRenamed {
+    requireAggregateId("UserAccountRenamed aggregateId", input.aggregateId);
+    requireNonEmptyString("UserAccountRenamed id", input.id);
+    requireNonEmptyString("UserAccountRenamed name", input.name);
+    requireSequenceNumber(
+      "UserAccountRenamed sequenceNumber",
+      input.sequenceNumber,
+    );
+    requireValidDate("UserAccountRenamed occurredAt", input.occurredAt);
     return Object.freeze({
-      [USER_ACCOUNT_CREATED_BRAND]: true as const,
+      [USER_ACCOUNT_RENAMED_BRAND]: true as const,
       ...input,
-      typeName: "UserAccountCreated",
-      isCreated: true,
+      typeName: "UserAccountRenamed",
+      isCreated: false,
     });
   }
 
-  export function is(value: unknown): value is UserAccountCreated {
+  export function is(value: unknown): value is UserAccountRenamed {
     if (typeof value !== "object" || value === null) {
       return false;
     }
-    const candidate = value as Partial<UserAccountCreated>;
+    const candidate = value as Partial<UserAccountRenamed>;
     return (
-      candidate[USER_ACCOUNT_CREATED_BRAND] === true &&
-      candidate.typeName === "UserAccountCreated" &&
-      candidate.isCreated === true &&
+      candidate[USER_ACCOUNT_RENAMED_BRAND] === true &&
+      candidate.typeName === "UserAccountRenamed" &&
+      candidate.isCreated === false &&
       typeof candidate.id === "string" &&
       candidate.id.length > 0 &&
       UserAccountId.is(candidate.aggregateId) &&
@@ -72,18 +73,18 @@ export namespace UserAccountCreated {
   }
 
   export function toJSON(
-    value: UserAccountCreated,
-  ): Extract<UserAccountCreatedJson, { type: "UserAccountCreated" }> {
+    value: UserAccountRenamed,
+  ): Extract<UserAccountRenamedJson, { type: "UserAccountRenamed" }> {
     if (!is(value)) {
-      throw new Error("UserAccountCreated must be a branded value");
+      throw new Error("UserAccountRenamed must be a branded value");
     }
     return {
-      type: "UserAccountCreated",
+      type: "UserAccountRenamed",
       data: toDataJson(value),
     };
   }
 
-  export function fromJSON(json: unknown): UserAccountCreated {
+  export function fromJSON(json: unknown): UserAccountRenamed {
     const data = parseJson(json);
     return create({
       id: data.id,
@@ -95,9 +96,9 @@ export namespace UserAccountCreated {
   }
 }
 
-Object.freeze(UserAccountCreated);
+Object.freeze(UserAccountRenamed);
 
-function toDataJson(value: UserAccountCreated): UserAccountCreatedDataJson {
+function toDataJson(value: UserAccountRenamed): UserAccountRenamedDataJson {
   return {
     typeName: value.typeName,
     isCreated: value.isCreated,
@@ -109,33 +110,33 @@ function toDataJson(value: UserAccountCreated): UserAccountCreatedDataJson {
   };
 }
 
-function parseJson(json: unknown): UserAccountCreatedDataJson {
-  if (isUserAccountCreatedDataJson(json)) {
+function parseJson(json: unknown): UserAccountRenamedDataJson {
+  if (isUserAccountRenamedDataJson(json)) {
     return json;
   }
   if (
     typeof json === "object" &&
     json !== null &&
     "type" in json &&
-    json.type === "UserAccountCreated" &&
+    json.type === "UserAccountRenamed" &&
     "data" in json &&
-    isUserAccountCreatedDataJson(json.data)
+    isUserAccountRenamedDataJson(json.data)
   ) {
     return json.data;
   }
-  throw new Error("Invalid UserAccountCreated JSON");
+  throw new Error("Invalid UserAccountRenamed JSON");
 }
 
-function isUserAccountCreatedDataJson(
+function isUserAccountRenamedDataJson(
   json: unknown,
-): json is UserAccountCreatedDataJson {
+): json is UserAccountRenamedDataJson {
   return (
     typeof json === "object" &&
     json !== null &&
     "typeName" in json &&
-    json.typeName === "UserAccountCreated" &&
+    json.typeName === "UserAccountRenamed" &&
     "isCreated" in json &&
-    json.isCreated === true &&
+    json.isCreated === false &&
     "id" in json &&
     typeof json.id === "string" &&
     json.id.length > 0 &&

@@ -2,7 +2,7 @@ import {
   type Aggregate,
   type AggregateId,
   type Event,
-  OptimisticLockError,
+  EventStoreError,
 } from "../types";
 
 function assertEventMatchesAggregate<
@@ -27,14 +27,27 @@ function assertPersistableUpdateEvent<AID extends AggregateId>(
 
 function assertExpectedVersion(actual: number, expected: number): void {
   if (actual !== expected) {
-    throw new OptimisticLockError(
+    throw new Error(
       `Optimistic locking failed: expected version ${expected}, got ${actual}`,
     );
   }
+}
+
+function toExpectedVersionError(
+  actual: number,
+  expected: number,
+): EventStoreError | undefined {
+  if (actual === expected) {
+    return undefined;
+  }
+  return EventStoreError.optimisticLockConflict(
+    `Optimistic locking failed: expected version ${expected}, got ${actual}`,
+  );
 }
 
 export {
   assertEventMatchesAggregate,
   assertExpectedVersion,
   assertPersistableUpdateEvent,
+  toExpectedVersionError,
 };

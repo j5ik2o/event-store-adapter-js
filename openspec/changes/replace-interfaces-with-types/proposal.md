@@ -12,6 +12,8 @@
 - 外部 SDK 由来のクラスは対象外にする。
 - ライブラリ内テスト用データとサンプルを、クラスを使わない集約 / イベント / 集約 ID モデリングへ更新し、Scala 風の不変値スタイルを示す。
 - サンプルのイベント分岐を `instanceof` ではなく、`typeName` のような判別用データで行う。
+- サンプルとライブラリ内テスト用データに、利用側が serializer converter を実装するときの例として、runtime `unique symbol` brand と同名 factory namespace の `is(...)` / `toJSON(...)` / `fromJSON(...)` を追加する。
+- `fromJSON(...)` だけでなく `toJSON(...)` も対で示し、JSON 境界では brand が消えるため `fromJSON(...)` が必ず `create(...)` 経由で brand を再付与する形にする。
 - 公開ファクトリ関数 / メソッドを、同名ファクトリオブジェクトの `create` メソッドへ揃える。
 - **破壊的変更**: `EventStore.ofDynamoDB(...)`、`EventStore.ofMemory(...)`、`EventStore.ofSpanner(...)` を `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)` へ置き換える。
 - **破壊的変更**: `createShardId(...)`、`createShardCount(...)` を `ShardId.create(...)`、`ShardCount.create(...)` へ置き換える。
@@ -35,4 +37,5 @@
 - 公開 API: `Aggregate`、`AggregateId`、`Event`、`EventStore`、入力契約、シリアライザ、ロガー、シャードセレクタは同じ型名でエクスポートし続けるが、該当するものは型エイリアスになる。`AggregateIdValue` はライブラリが集約 ID の具象値を所有しているように見せるため廃止する。
 - ランタイム API: `EventStore.createDynamoDB(...)`、`EventStore.createMemory(...)`、`EventStore.createSpanner(...)`、`ShardId.create(...)`、`ShardCount.create(...)`、`Result.ok(...)`、`Result.err(...)`、`EventStoreError.*(...)`。
 - サンプル / テスト: ドメイン用データはクラスベースの `implements` / `instanceof` パターンから、不変なファクトリ生成値へ移行する。
+- サンプル / テスト: `typeName` は JSON 境界で残る判別用データとして扱い、runtime `unique symbol` brand はプロセス内で factory 生成値を判定する補助として扱う。JSON から復元する converter は `fromJSON(...)` で検証し、`create(...)` 経由で brand を再付与する。
 - ドキュメント: README のサンプルは、ライブラリがクラスを要求していない箇所ではクラスではなく不変オブジェクト値と同名ファクトリオブジェクトを示す。

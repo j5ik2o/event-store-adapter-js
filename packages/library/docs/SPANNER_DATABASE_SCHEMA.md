@@ -1,7 +1,7 @@
 ## Cloud Spanner schema used by EventStore
 
 The Spanner adapter uses two GoogleSQL tables: `journal` and `snapshot`.
-The caller owns the `Database` lifecycle and passes it to `EventStore.ofSpanner(...)`.
+The caller owns the `Database` lifecycle and passes it to `EventStore.createSpanner(...)`.
 
 ```sql
 CREATE TABLE journal (

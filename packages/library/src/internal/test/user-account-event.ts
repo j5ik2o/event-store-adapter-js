@@ -1,64 +1,72 @@
-import type { Event } from "../../types";
 import {
-  convertJSONToUserAccountId,
-  type UserAccountId,
-} from "./user-account-id";
+  UserAccountCreated,
+  type UserAccountCreated as UserAccountCreatedEvent,
+} from "./user-account-created";
+import {
+  UserAccountRenamed,
+  type UserAccountRenamed as UserAccountRenamedEvent,
+} from "./user-account-renamed";
 
-interface UserAccountEvent extends Event<UserAccountId> {}
+type UserAccountEvent = UserAccountCreatedEvent | UserAccountRenamedEvent;
 
-class UserAccountCreated implements UserAccountEvent {
-  public readonly typeName: string = "UserAccountCreated";
-  public readonly isCreated: boolean = true;
-
-  constructor(
-    public readonly id: string,
-    public readonly aggregateId: UserAccountId,
-    public readonly name: string,
-    public readonly sequenceNumber: number,
-    public readonly occurredAt: Date,
-  ) {}
+function isUserAccountEvent(value: unknown): value is UserAccountEvent {
+  return UserAccountCreated.is(value) || UserAccountRenamed.is(value);
 }
 
-class UserAccountRenamed implements UserAccountEvent {
-  public readonly typeName: string = "UserAccountRenamed";
-  public readonly isCreated: boolean = false;
-  constructor(
-    public readonly id: string,
-    public readonly aggregateId: UserAccountId,
-    public readonly name: string,
-    public readonly sequenceNumber: number,
-    public readonly occurredAt: Date,
-  ) {}
-}
-
-// biome-ignore lint/suspicious/noExplicitAny: JSON deserialization requires dynamic typing
-function convertJSONtoUserAccountEvent(json: any): UserAccountEvent {
-  const aggregateId = convertJSONToUserAccountId(json.data.aggregateId);
-  switch (json.type) {
+function toUserAccountEventJSON(value: UserAccountEvent) {
+  switch (value.typeName) {
     case "UserAccountCreated":
-      return new UserAccountCreated(
-        json.data.id,
-        aggregateId,
-        json.data.name,
-        json.data.sequenceNumber,
-        json.data.occurredAt,
-      );
+      return UserAccountCreated.toJSON(value);
     case "UserAccountRenamed":
-      return new UserAccountRenamed(
-        json.data.id,
-        aggregateId,
-        json.data.name,
-        json.data.sequenceNumber,
-        json.data.occurredAt,
-      );
-    default:
-      throw new Error(`Unknown type: ${json.type}`);
+      return UserAccountRenamed.toJSON(value);
+    default: {
+      const exhaustiveCheck: never = value;
+      throw new Error(`Unknown UserAccountEvent type: ${exhaustiveCheck}`);
+    }
   }
 }
+
+function userAccountEventFromJSON(json: unknown): UserAccountEvent {
+  if (typeof json !== "object" || json === null || !("type" in json)) {
+    if (
+      typeof json === "object" &&
+      json !== null &&
+      "typeName" in json &&
+      json.typeName === "UserAccountCreated"
+    ) {
+      return UserAccountCreated.fromJSON(json);
+    }
+    if (
+      typeof json === "object" &&
+      json !== null &&
+      "typeName" in json &&
+      json.typeName === "UserAccountRenamed"
+    ) {
+      return UserAccountRenamed.fromJSON(json);
+    }
+    throw new Error("Invalid UserAccountEvent JSON");
+  }
+  switch (json.type) {
+    case "UserAccountCreated":
+      return UserAccountCreated.fromJSON(json);
+    case "UserAccountRenamed":
+      return UserAccountRenamed.fromJSON(json);
+    default:
+      throw new Error("Invalid UserAccountEvent JSON");
+  }
+}
+
+const UserAccountEvent = Object.freeze({
+  is: isUserAccountEvent,
+  toJSON: toUserAccountEventJSON,
+  fromJSON: userAccountEventFromJSON,
+});
+
+const convertJSONtoUserAccountEvent = UserAccountEvent.fromJSON;
 
 export {
   convertJSONtoUserAccountEvent,
   UserAccountCreated,
-  type UserAccountEvent,
+  UserAccountEvent,
   UserAccountRenamed,
 };

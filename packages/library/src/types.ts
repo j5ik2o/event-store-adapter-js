@@ -1,13 +1,11 @@
 export type { Aggregate } from "./aggregate";
 export type { AggregateId } from "./aggregate-id";
-export {
-  type AggregateIdValue,
-  createAggregateIdValue,
-} from "./aggregate-id-value";
 export type { Event } from "./event";
 export type { EventSerializer } from "./event-serializer";
+export type { EventStore } from "./event-store";
+export * from "./event-store-error";
 export type { Logger } from "./logger";
-export { OptimisticLockError } from "./optimistic-lock-error";
-export { createShardCount, type ShardCount } from "./shard-count";
+export * from "./result";
+export * from "./shard-count";
 export type { ShardSelector } from "./shard-selector";
 export type { SnapshotSerializer } from "./snapshot-serializer";

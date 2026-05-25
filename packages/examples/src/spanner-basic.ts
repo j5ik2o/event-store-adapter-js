@@ -22,7 +22,7 @@ async function main(): Promise<void> {
     snapshotTableName: SNAPSHOT_TABLE_NAME,
   });
   try {
-    const eventStore = EventStore.ofSpanner<
+    const eventStore = EventStore.createSpanner<
       UserAccountId,
       UserAccount,
       UserAccountEvent

@@ -35,7 +35,7 @@ async function main(): Promise<void> {
       SNAPSHOT_AID_INDEX_NAME,
       SNAPSHOT_ACTIVE_TTL_INDEX_NAME,
     );
-    const eventStore = EventStore.ofDynamoDB<
+    const eventStore = EventStore.createDynamoDB<
       UserAccountId,
       UserAccount,
       UserAccountEvent

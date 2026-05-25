@@ -8,27 +8,26 @@ import type { SpannerEventStoreInput } from "../spanner-event-store-input";
 import {
   type Aggregate,
   type AggregateId,
-  createShardCount,
   type Event,
-  type EventSerializer,
-  type Logger,
-  OptimisticLockError,
-  type ShardCount,
-  type ShardSelector,
-  type SnapshotSerializer,
+  EventStoreError,
+  Result,
+  ShardCount,
 } from "../types";
 import {
-  JsonEventSerializer,
-  JsonSnapshotSerializer,
+  createJsonEventSerializer,
+  createJsonSnapshotSerializer,
 } from "./default-serializer";
-import { DefaultShardSelector } from "./default-shard-selector";
+import { createDefaultShardSelector } from "./default-shard-selector";
 import {
   assertEventMatchesAggregate,
-  assertExpectedVersion,
   assertPersistableUpdateEvent,
+  toExpectedVersionError,
 } from "./event-store-assertions";
 import { convertJson } from "./json-converter";
-import { SpannerAggregateKey } from "./spanner-aggregate-key";
+import {
+  createSpannerAggregateKey,
+  type SpannerAggregateKey,
+} from "./spanner-aggregate-key";
 
 type SpannerRow = Array<{
   name: string;
@@ -44,83 +43,52 @@ const LATEST_SNAPSHOT_SEQUENCE_NUMBER = 0;
 const SPANNER_ALREADY_EXISTS_CODE = 6;
 const TABLE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-class SpannerEventStoreConfigurationError extends Error {
-  constructor(fieldName: string, cause: Error) {
-    super(`Invalid ${fieldName} configuration: ${cause.message}`);
-    this.name = "SpannerEventStoreConfigurationError";
-    this.cause = cause;
-  }
-}
-
-function createDefaultShardSelector<
-  AID extends AggregateId,
->(): ShardSelector<AID> {
-  return new DefaultShardSelector();
-}
-
-class SpannerEventStore<
+function createSpannerEventStore<
   AID extends AggregateId,
   A extends Aggregate<A, AID>,
   E extends Event<AID>,
-> implements EventStore<AID, A, E>
-{
-  private readonly database: Database;
-  private readonly journalTableName: string;
-  private readonly snapshotTableName: string;
-  private readonly quotedJournalTableName: string;
-  private readonly quotedSnapshotTableName: string;
-  private readonly shardCount: ShardCount;
-  private readonly eventConverter: (json: unknown) => E;
-  private readonly snapshotConverter: (json: unknown) => A;
-  private readonly keepSnapshotCount: number | undefined;
-  private readonly shardSelector: ShardSelector<AID>;
-  private readonly eventSerializer: EventSerializer<AID, E>;
-  private readonly snapshotSerializer: SnapshotSerializer<AID, A>;
-  private readonly logger: Logger | undefined;
+>(input: SpannerEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
+  assertConverter("eventConverter", input.eventConverter);
+  assertConverter("snapshotConverter", input.snapshotConverter);
+  const shardCount = parseShardCount(input.shardCount);
+  const database = input.database;
+  const journalTableName = assertTableName(
+    "journalTableName",
+    input.journalTableName,
+  );
+  const snapshotTableName = assertTableName(
+    "snapshotTableName",
+    input.snapshotTableName,
+  );
+  const quotedJournalTableName = quoteTableName(journalTableName);
+  const quotedSnapshotTableName = quoteTableName(snapshotTableName);
+  const eventConverter = input.eventConverter;
+  const snapshotConverter = input.snapshotConverter;
+  const keepSnapshotCount =
+    input.keepSnapshotCount === undefined
+      ? undefined
+      : normalizeKeepSnapshotCount(input.keepSnapshotCount);
+  const shardSelector =
+    input.shardSelector ?? createDefaultShardSelector<AID>();
+  const eventSerializer = input.eventSerializer ?? createJsonEventSerializer();
+  const snapshotSerializer =
+    input.snapshotSerializer ?? createJsonSnapshotSerializer();
+  const logger = input.logger;
 
-  constructor(input: SpannerEventStoreInput<AID, A, E>) {
-    this.assertConverter("eventConverter", input.eventConverter);
-    this.assertConverter("snapshotConverter", input.snapshotConverter);
-    const shardCount = this.parseShardCount(input.shardCount);
-    this.database = input.database;
-    this.journalTableName = this.assertTableName(
-      "journalTableName",
-      input.journalTableName,
-    );
-    this.snapshotTableName = this.assertTableName(
-      "snapshotTableName",
-      input.snapshotTableName,
-    );
-    this.quotedJournalTableName = this.quoteTableName(this.journalTableName);
-    this.quotedSnapshotTableName = this.quoteTableName(this.snapshotTableName);
-    this.shardCount = shardCount;
-    this.eventConverter = input.eventConverter;
-    this.snapshotConverter = input.snapshotConverter;
-    this.keepSnapshotCount =
-      input.keepSnapshotCount === undefined
-        ? undefined
-        : this.normalizeKeepSnapshotCount(input.keepSnapshotCount);
-    this.shardSelector = input.shardSelector ?? createDefaultShardSelector();
-    this.eventSerializer = input.eventSerializer ?? new JsonEventSerializer();
-    this.snapshotSerializer =
-      input.snapshotSerializer ?? new JsonSnapshotSerializer();
-    this.logger = input.logger;
-  }
-
-  async getEventsByIdSinceSequenceNumber(
+  async function getEventsByIdSinceSequenceNumber(
     id: AID,
     sequenceNumber: number,
   ): Promise<E[]> {
-    this.logger?.debug(
+    logger?.debug(
       `getEventsByIdSinceSequenceNumber(${JSON.stringify(
         id,
       )}, ${sequenceNumber}): start`,
     );
-    const key = this.createKey(id);
-    const [rows] = await this.database.run({
+    const key = createKey(id);
+    const [rows] = await database.run({
       sql: `
         SELECT payload
-        FROM ${this.quotedJournalTableName}
+        FROM ${quotedJournalTableName}
         WHERE shard_id = @shardId
           AND aggregate_id = @aggregateId
           AND sequence_number >= @sequenceNumber
@@ -133,12 +101,12 @@ class SpannerEventStore<
       },
     });
     const events = (rows as SpannerRow[]).map((row) => {
-      const payload = this.getBytes(row, "payload");
-      return this.eventSerializer.deserialize(payload, (json) =>
-        convertJson("eventConverter", this.eventConverter, json),
+      const payload = getBytes(row, "payload");
+      return eventSerializer.deserialize(payload, (json) =>
+        convertJson("eventConverter", eventConverter, json),
       );
     });
-    this.logger?.debug(
+    logger?.debug(
       `getEventsByIdSinceSequenceNumber(${JSON.stringify(
         id,
       )}, ${sequenceNumber}): finished`,
@@ -146,87 +114,107 @@ class SpannerEventStore<
     return events;
   }
 
-  async getLatestSnapshotById(id: AID): Promise<A | undefined> {
-    this.logger?.debug(`getLatestSnapshotById(${JSON.stringify(id)}): start`);
-    const key = this.createKey(id);
-    const row = await this.readLatestSnapshot(this.database, key);
+  async function getLatestSnapshotById(id: AID): Promise<A | undefined> {
+    logger?.debug(`getLatestSnapshotById(${JSON.stringify(id)}): start`);
+    const key = createKey(id);
+    const row = await readLatestSnapshot(database, key);
     if (row === undefined) {
       return undefined;
     }
-    const snapshot = this.snapshotSerializer.deserialize(row.payload, (json) =>
-      convertJson("snapshotConverter", this.snapshotConverter, json),
+    const snapshot = snapshotSerializer.deserialize(row.payload, (json) =>
+      convertJson("snapshotConverter", snapshotConverter, json),
     );
-    this.logger?.debug(
-      `getLatestSnapshotById(${JSON.stringify(id)}): finished`,
-    );
+    logger?.debug(`getLatestSnapshotById(${JSON.stringify(id)}): finished`);
     return snapshot.withVersion(row.version);
   }
 
-  async persistEvent(event: E, expectedVersion: number): Promise<void> {
-    this.logger?.debug(
+  async function persistEvent(event: E, expectedVersion: number) {
+    logger?.debug(
       `persistEvent(aggregateId=${event.aggregateId.asString()}, sequenceNumber=${event.sequenceNumber}, expectedVersion=${expectedVersion}): start`,
     );
     assertPersistableUpdateEvent(event);
-    await this.executeWrite(async () => {
-      await this.updateEventAndSnapshotOpt(event, expectedVersion, undefined);
+    const writeError = await executeWrite(async () => {
+      await updateEventAndSnapshotOpt(event, expectedVersion, undefined);
     });
-    await this.purgeExcessSnapshots(event.aggregateId);
-    this.logger?.debug(
+    if (writeError !== undefined) {
+      return Result.err(writeError);
+    }
+    const purgeError = await purgeExcessSnapshots(event.aggregateId);
+    if (purgeError !== undefined) {
+      return Result.err(purgeError);
+    }
+    logger?.debug(
       `persistEvent(aggregateId=${event.aggregateId.asString()}, sequenceNumber=${event.sequenceNumber}, expectedVersion=${expectedVersion}): finished`,
     );
+    return Result.ok(undefined);
   }
 
-  async persistEventAndSnapshot(event: E, aggregate: A): Promise<void> {
+  async function persistEventAndSnapshot(event: E, aggregate: A) {
     assertEventMatchesAggregate(event, aggregate);
-    this.logger?.debug(
+    logger?.debug(
       `persistEventAndSnapshot(aggregateId=${event.aggregateId.asString()}, sequenceNumber=${event.sequenceNumber}, aggregateVersion=${aggregate.version}): start`,
     );
-    await this.executeWrite(async () => {
+    const writeError = await executeWrite(async () => {
       if (event.isCreated) {
-        await this.createEventAndSnapshot(event, aggregate);
+        await createEventAndSnapshot(event, aggregate);
         return;
       }
-      await this.updateEventAndSnapshotOpt(event, aggregate.version, aggregate);
+      await updateEventAndSnapshotOpt(event, aggregate.version, aggregate);
     });
-    await this.purgeExcessSnapshots(event.aggregateId);
-    this.logger?.debug(
+    if (writeError !== undefined) {
+      return Result.err(writeError);
+    }
+    const purgeError = await purgeExcessSnapshots(event.aggregateId);
+    if (purgeError !== undefined) {
+      return Result.err(purgeError);
+    }
+    logger?.debug(
       `persistEventAndSnapshot(aggregateId=${event.aggregateId.asString()}, sequenceNumber=${event.sequenceNumber}, aggregateVersion=${aggregate.version}): finished`,
     );
+    return Result.ok(undefined);
   }
 
-  private async createEventAndSnapshot(event: E, aggregate: A): Promise<void> {
-    const key = this.createKey(event.aggregateId);
-    await this.runWriteTransaction(async (transaction) => {
-      const latestSnapshot = await this.readLatestSnapshot(transaction, key);
+  async function createEventAndSnapshot(event: E, aggregate: A): Promise<void> {
+    const key = createKey(event.aggregateId);
+    await runWriteTransaction(async (transaction) => {
+      const latestSnapshot = await readLatestSnapshot(transaction, key);
       if (latestSnapshot !== undefined) {
-        throw new OptimisticLockError("Aggregate already exists");
+        throw EventStoreError.optimisticLockConflict(
+          "Aggregate already exists",
+        );
       }
-      await this.insertJournal(transaction, key, event);
-      await this.insertSnapshot(transaction, key, event, aggregate, {
+      await insertJournal(transaction, key, event);
+      await insertSnapshot(transaction, key, event, aggregate, {
         sequenceNumber: LATEST_SNAPSHOT_SEQUENCE_NUMBER,
         version: 1,
       });
-      await this.insertRetainedSnapshot(transaction, key, event, aggregate, 1);
+      await insertRetainedSnapshot(transaction, key, event, aggregate, 1);
     });
   }
 
-  private async updateEventAndSnapshotOpt(
+  async function updateEventAndSnapshotOpt(
     event: E,
     expectedVersion: number,
     aggregate: A | undefined,
   ): Promise<void> {
-    const key = this.createKey(event.aggregateId);
-    await this.runWriteTransaction(async (transaction) => {
-      const latestSnapshot = await this.readLatestSnapshot(transaction, key);
+    const key = createKey(event.aggregateId);
+    await runWriteTransaction(async (transaction) => {
+      const latestSnapshot = await readLatestSnapshot(transaction, key);
       if (latestSnapshot === undefined) {
-        throw new OptimisticLockError(
+        throw EventStoreError.optimisticLockConflict(
           `Aggregate does not exist: ${event.aggregateId.asString()}`,
         );
       }
-      assertExpectedVersion(latestSnapshot.version, expectedVersion);
+      const versionError = toExpectedVersionError(
+        latestSnapshot.version,
+        expectedVersion,
+      );
+      if (versionError !== undefined) {
+        throw versionError;
+      }
       const nextVersion = latestSnapshot.version + 1;
-      await this.insertJournal(transaction, key, event);
-      await this.updateLatestSnapshot(
+      await insertJournal(transaction, key, event);
+      await updateLatestSnapshot(
         transaction,
         key,
         event,
@@ -235,7 +223,7 @@ class SpannerEventStore<
         aggregate,
       );
       if (aggregate !== undefined) {
-        await this.insertRetainedSnapshot(
+        await insertRetainedSnapshot(
           transaction,
           key,
           event,
@@ -246,14 +234,14 @@ class SpannerEventStore<
     });
   }
 
-  private async readLatestSnapshot(
+  async function readLatestSnapshot(
     queryable: Database | Transaction,
     key: SpannerAggregateKey<AID>,
   ): Promise<SnapshotRow | undefined> {
     const [rows] = await queryable.run({
       sql: `
         SELECT version, payload
-        FROM ${this.quotedSnapshotTableName}
+        FROM ${quotedSnapshotTableName}
         WHERE shard_id = @shardId
           AND aggregate_id = @aggregateId
           AND sequence_number = @sequenceNumber
@@ -270,34 +258,44 @@ class SpannerEventStore<
       return undefined;
     }
     return {
-      version: this.getNumber(row, "version"),
-      payload: this.getBytes(row, "payload"),
+      version: getNumber(row, "version"),
+      payload: getBytes(row, "payload"),
     };
   }
 
-  private async insertJournal(
+  async function insertJournal(
     transaction: Transaction,
     key: SpannerAggregateKey<AID>,
     event: E,
   ): Promise<void> {
-    await transaction.runUpdate({
-      sql: `
-        INSERT INTO ${this.quotedJournalTableName}
+    try {
+      await transaction.runUpdate({
+        sql: `
+        INSERT INTO ${quotedJournalTableName}
           (shard_id, aggregate_id, sequence_number, payload, occurred_at)
         VALUES
           (@shardId, @aggregateId, @sequenceNumber, @payload, @occurredAt)
       `,
-      params: {
-        shardId: key.shardIdValue,
-        aggregateId: key.aggregateIdValue,
-        sequenceNumber: event.sequenceNumber,
-        payload: Buffer.from(this.eventSerializer.serialize(event)),
-        occurredAt: Spanner.timestamp(event.occurredAt.toISOString()),
-      },
-    });
+        params: {
+          shardId: key.shardIdValue,
+          aggregateId: key.aggregateIdValue,
+          sequenceNumber: event.sequenceNumber,
+          payload: Buffer.from(serializeEvent(event)),
+          occurredAt: Spanner.timestamp(event.occurredAt.toISOString()),
+        },
+      });
+    } catch (error) {
+      if (isAlreadyExistsError(error)) {
+        throw EventStoreError.optimisticLockConflict(
+          "Optimistic locking failed",
+          error,
+        );
+      }
+      throw error;
+    }
   }
 
-  private async insertSnapshot(
+  async function insertSnapshot(
     transaction: Transaction,
     key: SpannerAggregateKey<AID>,
     event: E,
@@ -309,7 +307,7 @@ class SpannerEventStore<
   ): Promise<void> {
     await transaction.runUpdate({
       sql: `
-        INSERT INTO ${this.quotedSnapshotTableName}
+        INSERT INTO ${quotedSnapshotTableName}
           (shard_id, aggregate_id, sequence_number, version, payload, updated_at)
         VALUES
           (@shardId, @aggregateId, @sequenceNumber, @version, @payload, @updatedAt)
@@ -319,29 +317,29 @@ class SpannerEventStore<
         aggregateId: key.aggregateIdValue,
         sequenceNumber: input.sequenceNumber,
         version: input.version,
-        payload: Buffer.from(this.snapshotSerializer.serialize(aggregate)),
+        payload: Buffer.from(serializeSnapshot(aggregate)),
         updatedAt: Spanner.timestamp(event.occurredAt.toISOString()),
       },
     });
   }
 
-  private async insertRetainedSnapshot(
+  async function insertRetainedSnapshot(
     transaction: Transaction,
     key: SpannerAggregateKey<AID>,
     event: E,
     aggregate: A,
     version: number,
   ): Promise<void> {
-    if (this.keepSnapshotCount === undefined || this.keepSnapshotCount === 0) {
+    if (keepSnapshotCount === undefined || keepSnapshotCount === 0) {
       return;
     }
-    await this.insertSnapshot(transaction, key, event, aggregate, {
+    await insertSnapshot(transaction, key, event, aggregate, {
       sequenceNumber: event.sequenceNumber,
       version,
     });
   }
 
-  private async updateLatestSnapshot(
+  async function updateLatestSnapshot(
     transaction: Transaction,
     key: SpannerAggregateKey<AID>,
     event: E,
@@ -360,13 +358,11 @@ class SpannerEventStore<
       updatedAt: Spanner.timestamp(event.occurredAt.toISOString()),
     };
     if (aggregate !== undefined) {
-      params.payload = Buffer.from(
-        this.snapshotSerializer.serialize(aggregate),
-      );
+      params.payload = Buffer.from(serializeSnapshot(aggregate));
     }
     const [rowCount] = await transaction.runUpdate({
       sql: `
-        UPDATE ${this.quotedSnapshotTableName}
+        UPDATE ${quotedSnapshotTableName}
         SET version = @afterVersion,
             updated_at = @updatedAt
             ${payloadAssignment}
@@ -378,82 +374,96 @@ class SpannerEventStore<
       params,
     });
     if (rowCount !== 1) {
-      throw new OptimisticLockError("Optimistic locking failed");
+      throw EventStoreError.optimisticLockConflict("Optimistic locking failed");
     }
   }
 
-  private async purgeExcessSnapshots(aggregateId: AID): Promise<void> {
-    if (this.keepSnapshotCount === undefined || this.keepSnapshotCount === 0) {
-      return;
+  async function purgeExcessSnapshots(
+    aggregateId: AID,
+  ): Promise<EventStoreError | undefined> {
+    if (keepSnapshotCount === undefined || keepSnapshotCount === 0) {
+      return undefined;
     }
-    const keepCount = this.keepSnapshotCount;
-    const key = this.createKey(aggregateId);
-    await this.runWriteTransaction(async (transaction) => {
-      const [rows] = await transaction.run({
-        sql: `
+    try {
+      const keepCount = keepSnapshotCount;
+      const key = createKey(aggregateId);
+      await runWriteTransaction(async (transaction) => {
+        const [rows] = await transaction.run({
+          sql: `
           SELECT sequence_number
-          FROM ${this.quotedSnapshotTableName}
+          FROM ${quotedSnapshotTableName}
           WHERE shard_id = @shardId
             AND aggregate_id = @aggregateId
             AND sequence_number > @latestSequenceNumber
           ORDER BY sequence_number DESC
         `,
-        params: {
-          shardId: key.shardIdValue,
-          aggregateId: key.aggregateIdValue,
-          latestSequenceNumber: LATEST_SNAPSHOT_SEQUENCE_NUMBER,
-        },
-      });
-      const excessSequenceNumbers = (rows as SpannerRow[])
-        .map((row) => this.getNumber(row, "sequence_number"))
-        .slice(keepCount);
-      for (const sequenceNumber of excessSequenceNumbers) {
-        await transaction.runUpdate({
-          sql: `
-            DELETE FROM ${this.quotedSnapshotTableName}
+          params: {
+            shardId: key.shardIdValue,
+            aggregateId: key.aggregateIdValue,
+            latestSequenceNumber: LATEST_SNAPSHOT_SEQUENCE_NUMBER,
+          },
+        });
+        const excessSequenceNumbers = (rows as SpannerRow[])
+          .map((row) => getNumber(row, "sequence_number"))
+          .slice(keepCount);
+        for (const sequenceNumber of excessSequenceNumbers) {
+          await transaction.runUpdate({
+            sql: `
+            DELETE FROM ${quotedSnapshotTableName}
             WHERE shard_id = @shardId
               AND aggregate_id = @aggregateId
               AND sequence_number = @sequenceNumber
           `,
-          params: {
-            shardId: key.shardIdValue,
-            aggregateId: key.aggregateIdValue,
-            sequenceNumber,
-          },
-        });
-      }
-    });
-  }
-
-  private async runWriteTransaction(
-    operation: (transaction: Transaction) => Promise<void>,
-  ): Promise<void> {
-    // runTransactionAsync owns rollback/retry lifecycle; async callbacks still commit explicitly.
-    await this.database.runTransactionAsync(
-      async (transaction: Transaction) => {
-        await operation(transaction);
-        // @google-cloud/spanner's runTransactionAsync async callback examples commit explicitly.
-        await transaction.commit();
-      },
-    );
-  }
-
-  private async executeWrite(operation: () => Promise<void>): Promise<void> {
-    try {
-      await operation();
+            params: {
+              shardId: key.shardIdValue,
+              aggregateId: key.aggregateIdValue,
+              sequenceNumber,
+            },
+          });
+        }
+      });
+      return undefined;
     } catch (error) {
-      if (this.isAlreadyExistsError(error)) {
-        const cause = error instanceof Error ? error : new Error(String(error));
-        throw new OptimisticLockError("Optimistic locking failed", cause);
+      if (isEventStoreError(error)) {
+        return error;
       }
-      // ABORTED is retried by Database.runTransactionAsync. Other infrastructure
-      // errors are not deterministic optimistic lock conflicts, so callers see
-      // the original Spanner failure.
-      throw error;
+      return EventStoreError.storage(
+        "Spanner snapshot retention failed",
+        error,
+      );
     }
   }
 
-  private isAlreadyExistsError(error: unknown): boolean {
+  async function runWriteTransaction(
+    operation: (transaction: Transaction) => Promise<void>,
+  ): Promise<void> {
+    await database.runTransactionAsync(async (transaction: Transaction) => {
+      await operation(transaction);
+      await transaction.commit();
+    });
+  }
+
+  async function executeWrite(
+    operation: () => Promise<void>,
+  ): Promise<EventStoreError | undefined> {
+    try {
+      await operation();
+      return undefined;
+    } catch (error) {
+      if (isEventStoreError(error)) {
+        return error;
+      }
+      if (isAlreadyExistsError(error)) {
+        return EventStoreError.optimisticLockConflict(
+          "Optimistic locking failed",
+          error,
+        );
+      }
+      return EventStoreError.storage("Spanner write failed", error);
+    }
+  }
+
+  function isAlreadyExistsError(error: unknown): boolean {
     return (
       typeof error === "object" &&
       error !== null &&
@@ -463,16 +473,51 @@ class SpannerEventStore<
     );
   }
 
-  private createKey(aggregateId: AID): SpannerAggregateKey<AID> {
-    return SpannerAggregateKey.create(
-      aggregateId,
-      this.shardSelector,
-      this.shardCount,
+  function isEventStoreError(error: unknown): error is EventStoreError {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      "type" in error &&
+      typeof (error as { type: unknown }).type === "string" &&
+      [
+        "optimistic-lock-conflict",
+        "configuration-error",
+        "serialization-error",
+        "storage-error",
+      ].includes((error as { type: string }).type)
     );
   }
 
-  private getNumber(row: SpannerRow, fieldName: string): number {
-    const value = this.getField(row, fieldName);
+  function serializeEvent(event: E): Uint8Array {
+    try {
+      return eventSerializer.serialize(event);
+    } catch (error) {
+      throw EventStoreError.serialization(
+        "serialize",
+        "Spanner event serialization failed",
+        error,
+      );
+    }
+  }
+
+  function serializeSnapshot(aggregate: A): Uint8Array {
+    try {
+      return snapshotSerializer.serialize(aggregate);
+    } catch (error) {
+      throw EventStoreError.serialization(
+        "serialize",
+        "Spanner snapshot serialization failed",
+        error,
+      );
+    }
+  }
+
+  function createKey(aggregateId: AID): SpannerAggregateKey<AID> {
+    return createSpannerAggregateKey(aggregateId, shardSelector, shardCount);
+  }
+
+  function getNumber(row: SpannerRow, fieldName: string): number {
+    const value = getField(row, fieldName);
     if (typeof value === "number") {
       if (!Number.isSafeInteger(value)) {
         throw new Error(`${fieldName} is not a safe integer`);
@@ -480,7 +525,7 @@ class SpannerEventStore<
       return value;
     }
     if (typeof value === "string") {
-      return this.parseSafeInteger(fieldName, value);
+      return parseSafeInteger(fieldName, value);
     }
     if (typeof value === "object" && value !== null && "value" in value) {
       const wrappedValue = (value as Record<string, unknown>).value;
@@ -491,14 +536,14 @@ class SpannerEventStore<
         return wrappedValue;
       }
       if (typeof wrappedValue === "string") {
-        return this.parseSafeInteger(fieldName, wrappedValue);
+        return parseSafeInteger(fieldName, wrappedValue);
       }
       throw new Error(`${fieldName} is not a number`);
     }
     throw new Error(`${fieldName} is not a number`);
   }
 
-  private parseSafeInteger(fieldName: string, value: unknown): number {
+  function parseSafeInteger(fieldName: string, value: unknown): number {
     const numberValue = Number(value);
     if (!Number.isSafeInteger(numberValue)) {
       throw new Error(`${fieldName} is not a safe integer`);
@@ -506,13 +551,13 @@ class SpannerEventStore<
     return numberValue;
   }
 
-  private getBytes(row: SpannerRow, fieldName: string): Uint8Array {
-    const value = this.getField(row, fieldName);
+  function getBytes(row: SpannerRow, fieldName: string): Uint8Array {
+    const value = getField(row, fieldName);
     if (value instanceof Uint8Array) {
       return value;
     }
     if (typeof value === "string") {
-      if (!this.isBase64(value)) {
+      if (!isBase64(value)) {
         throw new Error(`${fieldName} is not valid base64`);
       }
       return Buffer.from(value, "base64");
@@ -520,8 +565,7 @@ class SpannerEventStore<
     throw new Error(`${fieldName} is not bytes`);
   }
 
-  private isBase64(value: string): boolean {
-    // Spanner string values are accepted only as canonical padded base64.
+  function isBase64(value: string): boolean {
     return (
       value.length > 0 &&
       value.length % 4 === 0 &&
@@ -529,7 +573,7 @@ class SpannerEventStore<
     );
   }
 
-  private getField(row: SpannerRow, fieldName: string): unknown {
+  function getField(row: SpannerRow, fieldName: string): unknown {
     const field = row.find((candidate) => candidate.name === fieldName);
     if (field === undefined) {
       throw new Error(`${fieldName} is undefined`);
@@ -537,38 +581,32 @@ class SpannerEventStore<
     return field.value;
   }
 
-  private normalizeKeepSnapshotCount(keepSnapshotCount: number): number {
-    if (!Number.isFinite(keepSnapshotCount)) {
+  function normalizeKeepSnapshotCount(keepSnapshotCountInput: number): number {
+    if (!Number.isFinite(keepSnapshotCountInput)) {
       throw new Error(
-        `keepSnapshotCount must be finite, got ${keepSnapshotCount}`,
+        `keepSnapshotCount must be finite, got ${keepSnapshotCountInput}`,
       );
     }
-    return Math.max(0, Math.floor(keepSnapshotCount));
+    return Math.max(0, Math.floor(keepSnapshotCountInput));
   }
 
-  private assertConverter(name: string, converter: unknown): void {
+  function assertConverter(name: string, converter: unknown): void {
     if (typeof converter !== "function") {
-      throw new SpannerEventStoreConfigurationError(
-        name,
-        new Error("must be a function"),
-      );
+      throw createConfigurationError(name, new Error("must be a function"));
     }
   }
 
-  private parseShardCount(shardCount: number): ShardCount {
+  function parseShardCount(shardCountInput: number): ShardCount {
     try {
-      return createShardCount(shardCount);
+      return ShardCount.create(shardCountInput);
     } catch (cause) {
-      throw new SpannerEventStoreConfigurationError(
-        "shardCount",
-        cause as Error,
-      );
+      throw createConfigurationError("shardCount", cause);
     }
   }
 
-  private assertTableName(fieldName: string, tableName: string): string {
+  function assertTableName(fieldName: string, tableName: string): string {
     if (!TABLE_NAME_PATTERN.test(tableName)) {
-      throw new SpannerEventStoreConfigurationError(
+      throw createConfigurationError(
         fieldName,
         new Error(`must be a GoogleSQL identifier, got ${tableName}`),
       );
@@ -576,9 +614,25 @@ class SpannerEventStore<
     return tableName;
   }
 
-  private quoteTableName(tableName: string): string {
+  function quoteTableName(tableName: string): string {
     return `\`${tableName}\``;
   }
+
+  return Object.freeze({
+    persistEvent,
+    persistEventAndSnapshot,
+    getEventsByIdSinceSequenceNumber,
+    getLatestSnapshotById,
+  });
 }
 
-export { SpannerEventStore };
+function createConfigurationError(fieldName: string, cause: unknown): Error {
+  /* istanbul ignore next -- internal callers pass Error causes. */
+  const message = cause instanceof Error ? cause.message : String(cause);
+  const error = new Error(`Invalid ${fieldName} configuration: ${message}`);
+  error.name = "SpannerEventStoreConfigurationError";
+  error.cause = cause;
+  return error;
+}
+
+export { createSpannerEventStore };

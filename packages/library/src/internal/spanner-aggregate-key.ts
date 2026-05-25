@@ -3,30 +3,26 @@ import type { ShardId } from "../shard-id";
 import type { ShardSelector } from "../shard-selector";
 import type { AggregateId } from "../types";
 
-class SpannerAggregateKey<AID extends AggregateId> {
-  private constructor(
-    readonly shardId: ShardId,
-    readonly aggregateId: AID,
-  ) {}
+type SpannerAggregateKey<AID extends AggregateId> = Readonly<{
+  shardId: ShardId;
+  aggregateId: AID;
+  shardIdValue: number;
+  aggregateIdValue: string;
+}>;
 
-  static create<AID extends AggregateId>(
-    aggregateId: AID,
-    shardSelector: ShardSelector<AID>,
-    shardCount: ShardCount,
-  ): SpannerAggregateKey<AID> {
-    return new SpannerAggregateKey(
-      shardSelector.selectShardId(aggregateId, shardCount),
-      aggregateId,
-    );
-  }
-
-  get shardIdValue(): number {
-    return this.shardId;
-  }
-
-  get aggregateIdValue(): string {
-    return this.aggregateId.asString();
-  }
+function createSpannerAggregateKey<AID extends AggregateId>(
+  aggregateId: AID,
+  shardSelector: ShardSelector<AID>,
+  shardCount: ShardCount,
+): SpannerAggregateKey<AID> {
+  const shardId = shardSelector.selectShardId(aggregateId, shardCount);
+  return Object.freeze({
+    shardId,
+    aggregateId,
+    shardIdValue: shardId,
+    aggregateIdValue: aggregateId.asString(),
+  });
 }
 
-export { SpannerAggregateKey };
+export type { SpannerAggregateKey };
+export { createSpannerAggregateKey };

@@ -1,9 +1,7 @@
-import type { Event } from "event-store-adapter-js";
+import type { Event } from "../../types";
 import { UserAccountId } from "./user-account-id";
 
-const USER_ACCOUNT_CREATED_BRAND: unique symbol = Symbol(
-  "UserAccountCreated",
-);
+const USER_ACCOUNT_CREATED_BRAND: unique symbol = Symbol("UserAccountCreated");
 const ISO_UTC_DATE_TIME_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 
@@ -42,7 +40,10 @@ export namespace UserAccountCreated {
     requireAggregateId("UserAccountCreated aggregateId", input.aggregateId);
     requireNonEmptyString("UserAccountCreated id", input.id);
     requireNonEmptyString("UserAccountCreated name", input.name);
-    requireSequenceNumber("UserAccountCreated sequenceNumber", input.sequenceNumber);
+    requireSequenceNumber(
+      "UserAccountCreated sequenceNumber",
+      input.sequenceNumber,
+    );
     requireValidDate("UserAccountCreated occurredAt", input.occurredAt);
     return Object.freeze({
       [USER_ACCOUNT_CREATED_BRAND]: true as const,

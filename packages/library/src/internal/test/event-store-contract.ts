@@ -1,8 +1,8 @@
 import { ulid } from "ulid";
 import type { EventStore } from "../../event-store";
-import { OptimisticLockError } from "../../types";
+import type { EventStoreError, Result } from "../../types";
 import { UserAccount } from "./user-account";
-import type { UserAccountEvent } from "./user-account-event";
+import { UserAccountEvent } from "./user-account-event";
 import { UserAccountId } from "./user-account-id";
 
 function runEventStoreContractTests(config: {
@@ -17,17 +17,20 @@ function runEventStoreContractTests(config: {
       "persists created event and snapshot",
       async () => {
         const eventStore = await config.createEventStore();
-        const id = new UserAccountId(ulid());
+        const id = UserAccountId.create(ulid());
         const name = "Alice";
         const [userAccount1, created] = UserAccount.create(id, name);
 
-        await eventStore.persistEventAndSnapshot(created, userAccount1);
+        await expectOk(
+          eventStore.persistEventAndSnapshot(created, userAccount1),
+        );
 
         const userAccount2 = await eventStore.getLatestSnapshotById(id);
         if (userAccount2 === undefined) {
           throw new Error("userAccount2 is undefined");
         }
-        expect(userAccount2.id).toEqual(id);
+        expect(UserAccount.is(userAccount2)).toBe(true);
+        expect(userAccount2.id.asString()).toEqual(id.asString());
         expect(userAccount2.name).toEqual(name);
         expect(userAccount2.version).toEqual(1);
       },
@@ -38,14 +41,16 @@ function runEventStoreContractTests(config: {
       "persists update event and replays events after the latest snapshot",
       async () => {
         const eventStore = await config.createEventStore();
-        const id = new UserAccountId(ulid());
+        const id = UserAccountId.create(ulid());
         const [userAccount1, created] = UserAccount.create(id, "Alice");
 
-        await eventStore.persistEventAndSnapshot(created, userAccount1);
+        await expectOk(
+          eventStore.persistEventAndSnapshot(created, userAccount1),
+        );
 
         const [userAccount2, renamed] = userAccount1.rename("Bob");
 
-        await eventStore.persistEvent(renamed, userAccount2.version);
+        await expectOk(eventStore.persistEvent(renamed, userAccount2.version));
 
         const latestSnapshot = await eventStore.getLatestSnapshotById(id);
         if (latestSnapshot === undefined) {
@@ -56,12 +61,14 @@ function runEventStoreContractTests(config: {
             id,
             latestSnapshot.sequenceNumber + 1,
           );
+        expect(UserAccount.is(latestSnapshot)).toBe(true);
+        expect(eventsAfterSnapshot.every(UserAccountEvent.is)).toBe(true);
         const userAccount3 = UserAccount.replay(
           eventsAfterSnapshot,
           latestSnapshot,
         );
 
-        expect(userAccount3.id).toEqual(id);
+        expect(userAccount3.id.asString()).toEqual(id.asString());
         expect(userAccount3.name).toEqual("Bob");
         expect(userAccount3.sequenceNumber).toEqual(2);
         expect(userAccount3.version).toEqual(2);
@@ -73,18 +80,24 @@ function runEventStoreContractTests(config: {
       "persists multiple update events between snapshots",
       async () => {
         const eventStore = await config.createEventStore();
-        const id = new UserAccountId(ulid());
+        const id = UserAccountId.create(ulid());
         const [userAccount1, created] = UserAccount.create(id, "Alice");
 
-        await eventStore.persistEventAndSnapshot(created, userAccount1);
+        await expectOk(
+          eventStore.persistEventAndSnapshot(created, userAccount1),
+        );
 
         const [userAccount2, renamedToBob] = userAccount1.rename("Bob");
-        await eventStore.persistEvent(renamedToBob, userAccount2.version);
+        await expectOk(
+          eventStore.persistEvent(renamedToBob, userAccount2.version),
+        );
 
         const [userAccount3, renamedToCarol] = userAccount2
           .withVersion(userAccount2.version + 1)
           .rename("Carol");
-        await eventStore.persistEvent(renamedToCarol, userAccount3.version);
+        await expectOk(
+          eventStore.persistEvent(renamedToCarol, userAccount3.version),
+        );
 
         const latestSnapshot = await eventStore.getLatestSnapshotById(id);
         if (latestSnapshot === undefined) {
@@ -95,12 +108,14 @@ function runEventStoreContractTests(config: {
             id,
             latestSnapshot.sequenceNumber + 1,
           );
+        expect(UserAccount.is(latestSnapshot)).toBe(true);
+        expect(eventsAfterSnapshot.every(UserAccountEvent.is)).toBe(true);
         const userAccount4 = UserAccount.replay(
           eventsAfterSnapshot,
           latestSnapshot,
         );
 
-        expect(userAccount4.id).toEqual(id);
+        expect(userAccount4.id.asString()).toEqual(id.asString());
         expect(userAccount4.name).toEqual("Carol");
         expect(userAccount4.sequenceNumber).toEqual(3);
         expect(userAccount4.version).toEqual(3);
@@ -112,14 +127,18 @@ function runEventStoreContractTests(config: {
       "persists update event with a new snapshot",
       async () => {
         const eventStore = await config.createEventStore();
-        const id = new UserAccountId(ulid());
+        const id = UserAccountId.create(ulid());
         const [userAccount1, created] = UserAccount.create(id, "Alice");
 
-        await eventStore.persistEventAndSnapshot(created, userAccount1);
+        await expectOk(
+          eventStore.persistEventAndSnapshot(created, userAccount1),
+        );
 
         const [userAccount2, renamed] = userAccount1.rename("Bob");
 
-        await eventStore.persistEventAndSnapshot(renamed, userAccount2);
+        await expectOk(
+          eventStore.persistEventAndSnapshot(renamed, userAccount2),
+        );
 
         const latestSnapshot = await eventStore.getLatestSnapshotById(id);
         if (latestSnapshot === undefined) {
@@ -130,12 +149,14 @@ function runEventStoreContractTests(config: {
             id,
             latestSnapshot.sequenceNumber + 1,
           );
+        expect(UserAccount.is(latestSnapshot)).toBe(true);
+        expect(eventsAfterSnapshot.every(UserAccountEvent.is)).toBe(true);
         const userAccount3 = UserAccount.replay(
           eventsAfterSnapshot,
           latestSnapshot,
         );
 
-        expect(userAccount3.id).toEqual(id);
+        expect(userAccount3.id.asString()).toEqual(id.asString());
         expect(userAccount3.name).toEqual("Bob");
         expect(userAccount3.sequenceNumber).toEqual(2);
         expect(userAccount3.version).toEqual(2);
@@ -147,7 +168,7 @@ function runEventStoreContractTests(config: {
       "returns empty reads for an unknown aggregate",
       async () => {
         const eventStore = await config.createEventStore();
-        const id = new UserAccountId(ulid());
+        const id = UserAccountId.create(ulid());
 
         await expect(eventStore.getLatestSnapshotById(id)).resolves.toBe(
           undefined,
@@ -163,10 +184,10 @@ function runEventStoreContractTests(config: {
       "rejects aggregate id mismatch as a caller contract error",
       async () => {
         const eventStore = await config.createEventStore();
-        const id = new UserAccountId(ulid());
-        const otherId = new UserAccountId(ulid());
+        const id = UserAccountId.create(ulid());
+        const otherId = UserAccountId.create(ulid());
         const [aggregate, created] = UserAccount.create(id, "Alice");
-        const mismatchedAggregate = new UserAccount(
+        const mismatchedAggregate = UserAccount.createSnapshot(
           otherId,
           aggregate.name,
           aggregate.sequenceNumber,
@@ -175,16 +196,14 @@ function runEventStoreContractTests(config: {
 
         let thrown: unknown;
         try {
-          await eventStore.persistEventAndSnapshot(
-            created,
-            mismatchedAggregate,
+          await expectOk(
+            eventStore.persistEventAndSnapshot(created, mismatchedAggregate),
           );
         } catch (e) {
           thrown = e;
         }
 
         expect(thrown).toBeInstanceOf(Error);
-        expect(thrown).not.toBeInstanceOf(OptimisticLockError);
         expect((thrown as Error).message).toContain("aggregateId mismatch");
       },
       config.timeout,
@@ -194,13 +213,13 @@ function runEventStoreContractTests(config: {
       "rejects updates for unknown aggregates as optimistic lock errors",
       async () => {
         const eventStore = await config.createEventStore();
-        const id = new UserAccountId(ulid());
+        const id = UserAccountId.create(ulid());
         const [userAccount1] = UserAccount.create(id, "Alice");
         const [userAccount2, renamed] = userAccount1.rename("Bob");
 
-        await expect(
+        await expectOptimisticLockConflict(
           eventStore.persistEvent(renamed, userAccount2.version),
-        ).rejects.toThrow(OptimisticLockError);
+        );
       },
       config.timeout,
     );
@@ -209,16 +228,16 @@ function runEventStoreContractTests(config: {
       "rejects stale versions as optimistic lock errors",
       async () => {
         const eventStore = await config.createEventStore();
-        const id = new UserAccountId(ulid());
+        const id = UserAccountId.create(ulid());
         const [userAccount1, created] = UserAccount.create(id, "Alice");
 
-        await eventStore.persistEventAndSnapshot(created, userAccount1);
+        await expectOk(
+          eventStore.persistEventAndSnapshot(created, userAccount1),
+        );
 
         const [, renamed] = userAccount1.rename("Bob");
 
-        await expect(eventStore.persistEvent(renamed, 0)).rejects.toThrow(
-          OptimisticLockError,
-        );
+        await expectOptimisticLockConflict(eventStore.persistEvent(renamed, 0));
       },
       config.timeout,
     );
@@ -227,18 +246,38 @@ function runEventStoreContractTests(config: {
       "rejects duplicate created events as optimistic lock errors",
       async () => {
         const eventStore = await config.createEventStore();
-        const id = new UserAccountId(ulid());
+        const id = UserAccountId.create(ulid());
         const [userAccount1, created] = UserAccount.create(id, "Alice");
 
-        await eventStore.persistEventAndSnapshot(created, userAccount1);
-
-        await expect(
+        await expectOk(
           eventStore.persistEventAndSnapshot(created, userAccount1),
-        ).rejects.toThrow(OptimisticLockError);
+        );
+
+        await expectOptimisticLockConflict(
+          eventStore.persistEventAndSnapshot(created, userAccount1),
+        );
       },
       config.timeout,
     );
   });
+}
+
+async function expectOk(
+  resultPromise: Promise<Result<void, EventStoreError>>,
+): Promise<void> {
+  const result = await resultPromise;
+  expect(result).toEqual({ type: "ok", value: undefined });
+}
+
+async function expectOptimisticLockConflict(
+  resultPromise: Promise<Result<void, EventStoreError>>,
+): Promise<void> {
+  const result = await resultPromise;
+  expect(result.type).toBe("err");
+  if (result.type !== "err") {
+    return;
+  }
+  expect(result.error.type).toBe("optimistic-lock-conflict");
 }
 
 export { runEventStoreContractTests };

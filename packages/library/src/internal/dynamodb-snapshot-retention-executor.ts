@@ -36,15 +36,13 @@ const RETRYABLE_DYNAMODB_ERROR_NAMES = new Set([
   "ThrottlingException",
 ]);
 
-class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
-  constructor(
-    private dynamodbClient: DynamoDBClient,
-    private snapshotTableName: string,
-    private snapshotAidIndexName: string,
-    private snapshotActiveTtlIndexName: string,
-  ) {}
-
-  async purgeExcessSnapshots(
+function createDynamoDBSnapshotRetentionExecutor<AID extends AggregateId>(
+  dynamodbClient: DynamoDBClient,
+  snapshotTableName: string,
+  snapshotAidIndexName: string,
+  snapshotActiveTtlIndexName: string,
+) {
+  async function purgeExcessSnapshots(
     aggregateId: AID,
     keepSnapshotCount: number | undefined,
     deleteTtlMillis: number | undefined,
@@ -52,21 +50,21 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     if (keepSnapshotCount === undefined) {
       return;
     }
-    const keepCount = this.normalizeKeepSnapshotCount(keepSnapshotCount);
+    const keepCount = normalizeKeepSnapshotCount(keepSnapshotCount);
     const normalizedDeleteTtlMillis =
       normalizeDynamoDBDeleteTtlMillis(deleteTtlMillis);
     if (normalizedDeleteTtlMillis === undefined) {
-      await this.deleteExcessSnapshots(aggregateId, keepCount);
+      await deleteExcessSnapshots(aggregateId, keepCount);
       return;
     }
-    await this.updateTtlOfExcessSnapshots(
+    await updateTtlOfExcessSnapshots(
       aggregateId,
       keepCount,
       normalizedDeleteTtlMillis,
     );
   }
 
-  private normalizeKeepSnapshotCount(keepSnapshotCount: number): number {
+  function normalizeKeepSnapshotCount(keepSnapshotCount: number): number {
     if (!Number.isFinite(keepSnapshotCount)) {
       throw new Error(
         `keepSnapshotCount must be finite, got ${keepSnapshotCount}`,
@@ -75,7 +73,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     return Math.max(0, Math.floor(keepSnapshotCount));
   }
 
-  private async getExcessSnapshotKeys(
+  async function getExcessSnapshotKeys(
     aggregateId: AID,
     keepCount: number,
     onlyActiveTtl: boolean,
@@ -85,17 +83,15 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     let nextKeptKeyIndex = 0;
     let exclusiveStartKey: Record<string, AttributeValue> | undefined;
     do {
-      const request = this.createSnapshotKeyQuery(
+      const request = createSnapshotKeyQuery(
         aggregateId,
         onlyActiveTtl,
         exclusiveStartKey,
       );
-      const queryResult = await this.dynamodbClient.send(
-        new QueryCommand(request),
-      );
+      const queryResult = await dynamodbClient.send(new QueryCommand(request));
       if (queryResult.Items !== undefined) {
         for (const key of queryResult.Items.map((item) =>
-          this.toSnapshotKey(item),
+          toSnapshotKey(item),
         )) {
           if (keepCount === 0) {
             excessKeys.push(key);
@@ -116,7 +112,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     return excessKeys;
   }
 
-  private createSnapshotKeyQuery(
+  function createSnapshotKeyQuery(
     aggregateId: AID,
     onlyActiveTtl: boolean,
     exclusiveStartKey: Record<string, AttributeValue> | undefined,
@@ -139,10 +135,10 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       ":seq_nr": { N: "0" },
     };
     return {
-      TableName: this.snapshotTableName,
+      TableName: snapshotTableName,
       IndexName: onlyActiveTtl
-        ? this.snapshotActiveTtlIndexName
-        : this.snapshotAidIndexName,
+        ? snapshotActiveTtlIndexName
+        : snapshotAidIndexName,
       KeyConditionExpression: onlyActiveTtl
         ? "#aid = :aid AND #active_ttl_seq_nr > :seq_nr"
         : "#aid = :aid AND #seq_nr > :seq_nr",
@@ -155,7 +151,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     };
   }
 
-  private toSnapshotKey(item: Record<string, AttributeValue>): SnapshotKey {
+  function toSnapshotKey(item: Record<string, AttributeValue>): SnapshotKey {
     const pkey = item.pkey.S;
     const skey = item.skey.S;
     if (pkey === undefined || skey === undefined) {
@@ -164,12 +160,12 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     return { pkey, skey };
   }
 
-  private async updateTtlOfExcessSnapshots(
+  async function updateTtlOfExcessSnapshots(
     aggregateId: AID,
     keepSnapshotCount: number,
     deleteTtlMillis: number,
   ): Promise<void> {
-    const keys = await this.getExcessSnapshotKeys(
+    const keys = await getExcessSnapshotKeys(
       aggregateId,
       keepSnapshotCount,
       true,
@@ -177,11 +173,11 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     if (keys.length === 0) {
       return;
     }
-    const ttl = this.toDeleteTtlEpochSeconds(deleteTtlMillis);
-    await this.sendUpdateTtlRequests(keys, ttl);
+    const ttl = toDeleteTtlEpochSeconds(deleteTtlMillis);
+    await sendUpdateTtlRequests(keys, ttl);
   }
 
-  private toDeleteTtlEpochSeconds(deleteTtlMillis: number): string {
+  function toDeleteTtlEpochSeconds(deleteTtlMillis: number): string {
     const nowMillis = Date.now();
     const ttlEpochMillis = nowMillis + deleteTtlMillis;
     // DynamoDB TTL is epoch seconds. Use ceil so sub-second TTLs do not expire
@@ -195,7 +191,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     return ttlEpochSeconds.toString();
   }
 
-  private async sendUpdateTtlRequests(
+  async function sendUpdateTtlRequests(
     keys: SnapshotKey[],
     ttl: string,
   ): Promise<void> {
@@ -208,9 +204,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
           const key = keys[nextKeyIndex];
           nextKeyIndex += 1;
           try {
-            await this.sendUpdateTtlRequest(
-              this.createUpdateTtlRequest(key, ttl),
-            );
+            await sendUpdateTtlRequest(createUpdateTtlRequest(key, ttl));
           } catch (e) {
             failures.push(e);
           }
@@ -218,14 +212,14 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       }),
     );
     if (failures.length > 0) {
-      throw this.createSnapshotRetentionError(
+      throw createSnapshotRetentionError(
         `Failed to update TTL for ${failures.length} snapshot items`,
         failures,
       );
     }
   }
 
-  private createSnapshotRetentionError(
+  function createSnapshotRetentionError(
     message: string,
     failures: unknown[],
   ): Error {
@@ -237,12 +231,12 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     return error;
   }
 
-  private createUpdateTtlRequest(
+  function createUpdateTtlRequest(
     key: SnapshotKey,
     ttl: string,
   ): UpdateItemInput {
     return {
-      TableName: this.snapshotTableName,
+      TableName: snapshotTableName,
       Key: {
         pkey: { S: key.pkey },
         skey: { S: key.skey },
@@ -259,11 +253,11 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     };
   }
 
-  private async deleteExcessSnapshots(
+  async function deleteExcessSnapshots(
     aggregateId: AID,
     keepSnapshotCount: number,
   ): Promise<void> {
-    const keys = await this.getExcessSnapshotKeys(
+    const keys = await getExcessSnapshotKeys(
       aggregateId,
       keepSnapshotCount,
       false,
@@ -281,10 +275,10 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
         },
       };
     });
-    await this.batchWriteDeleteRequests(requests);
+    await batchWriteDeleteRequests(requests);
   }
 
-  private async batchWriteDeleteRequests(
+  async function batchWriteDeleteRequests(
     requests: WriteRequest[],
   ): Promise<void> {
     for (
@@ -292,13 +286,13 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       index < requests.length;
       index += MAX_BATCH_WRITE_ITEM_COUNT
     ) {
-      await this.batchWriteDeleteRequestChunk(
+      await batchWriteDeleteRequestChunk(
         requests.slice(index, index + MAX_BATCH_WRITE_ITEM_COUNT),
       );
     }
   }
 
-  private async batchWriteDeleteRequestChunk(
+  async function batchWriteDeleteRequestChunk(
     requests: WriteRequest[],
   ): Promise<void> {
     let unprocessedRequests = requests;
@@ -309,12 +303,10 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
       retryCount++
     ) {
       if (retryCount > 0) {
-        await this.waitBeforeRetry(retryCount);
+        await waitBeforeRetry(retryCount);
       }
-      const output =
-        await this.sendBatchWriteDeleteRequests(unprocessedRequests);
-      unprocessedRequests =
-        output.UnprocessedItems?.[this.snapshotTableName] ?? [];
+      const output = await sendBatchWriteDeleteRequests(unprocessedRequests);
+      unprocessedRequests = output.UnprocessedItems?.[snapshotTableName] ?? [];
     }
     if (unprocessedRequests.length > 0) {
       throw new Error(
@@ -323,36 +315,36 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     }
   }
 
-  private async waitBeforeRetry(retryCount: number): Promise<void> {
+  async function waitBeforeRetry(retryCount: number): Promise<void> {
     const delayMillis =
       RETENTION_RETRY_BASE_DELAY_MILLIS * 2 ** (retryCount - 1) +
       Math.floor(Math.random() * RETENTION_RETRY_BASE_DELAY_MILLIS);
     await new Promise((resolve) => setTimeout(resolve, delayMillis));
   }
 
-  private async sendBatchWriteDeleteRequests(
+  async function sendBatchWriteDeleteRequests(
     requests: WriteRequest[],
   ): Promise<BatchWriteItemCommandOutput> {
-    return await this.dynamodbClient.send(
+    return await dynamodbClient.send(
       new BatchWriteItemCommand({
         RequestItems: {
-          [this.snapshotTableName]: requests,
+          [snapshotTableName]: requests,
         },
       }),
     );
   }
 
-  private async sendUpdateTtlRequest(request: UpdateItemInput): Promise<void> {
+  async function sendUpdateTtlRequest(request: UpdateItemInput): Promise<void> {
     for (
       let retryCount = 0;
       retryCount <= MAX_TTL_UPDATE_RETRY_COUNT;
       retryCount++
     ) {
       if (retryCount > 0) {
-        await this.waitBeforeRetry(retryCount);
+        await waitBeforeRetry(retryCount);
       }
       try {
-        await this.dynamodbClient.send(new UpdateItemCommand(request));
+        await dynamodbClient.send(new UpdateItemCommand(request));
         return;
       } catch (e) {
         if (e instanceof ConditionalCheckFailedException) {
@@ -361,7 +353,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
         }
         if (
           retryCount < MAX_TTL_UPDATE_RETRY_COUNT &&
-          this.isRetryableDynamoDBError(e)
+          isRetryableDynamoDBError(e)
         ) {
           continue;
         }
@@ -370,7 +362,7 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     }
   }
 
-  private isRetryableDynamoDBError(e: unknown): boolean {
+  function isRetryableDynamoDBError(e: unknown): boolean {
     if (typeof e !== "object" || e === null) {
       return false;
     }
@@ -382,6 +374,9 @@ class DynamoDBSnapshotRetentionExecutor<AID extends AggregateId> {
     const name = (e as { name?: unknown }).name;
     return typeof name === "string" && RETRYABLE_DYNAMODB_ERROR_NAMES.has(name);
   }
+  return Object.freeze({
+    purgeExcessSnapshots,
+  });
 }
 
-export { DynamoDBSnapshotRetentionExecutor };
+export { createDynamoDBSnapshotRetentionExecutor };

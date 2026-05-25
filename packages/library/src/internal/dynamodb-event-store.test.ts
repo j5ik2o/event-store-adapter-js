@@ -1,4 +1,9 @@
-import { type DynamoDBClient, QueryCommand } from "@aws-sdk/client-dynamodb";
+import {
+  type DynamoDBClient,
+  QueryCommand,
+  TransactionCanceledException,
+  TransactWriteItemsCommand,
+} from "@aws-sdk/client-dynamodb";
 import {
   GenericContainer,
   type StartedTestContainer,
@@ -6,9 +11,17 @@ import {
   Wait,
 } from "testcontainers";
 import { ulid } from "ulid";
-import { createShardId } from "../shard-id";
-import type { ShardSelector } from "../types";
-import { DynamoDBEventStore } from "./dynamodb-event-store";
+import { ShardId } from "../shard-id";
+import type {
+  EventSerializer,
+  EventStore,
+  EventStoreError,
+  Logger,
+  Result,
+  ShardSelector,
+  SnapshotSerializer,
+} from "../types";
+import { createDynamoDBEventStore } from "./dynamodb-event-store";
 import {
   createDynamoDBClient,
   createJournalTable,
@@ -49,22 +62,24 @@ describe("DynamoDBEventStore", () => {
       shardCount?: number;
       shardSelector?: ShardSelector<UserAccountId>;
     } = {},
-  ): DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent> {
-    return new DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>(
-      {
-        client: dynamodbClient,
-        journalTableName: JOURNAL_TABLE_NAME,
-        snapshotTableName: SNAPSHOT_TABLE_NAME,
-        journalAidIndexName: JOURNAL_AID_INDEX_NAME,
-        snapshotAidIndexName: SNAPSHOTS_AID_INDEX_NAME,
-        snapshotActiveTtlIndexName: SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
-        shardCount: 32,
-        eventConverter: convertJSONtoUserAccountEvent,
-        snapshotConverter: convertJSONToUserAccount,
-        keepSnapshotCount,
-        ...options,
-      },
-    );
+  ): EventStore<UserAccountId, UserAccount, UserAccountEvent> {
+    return createDynamoDBEventStore<
+      UserAccountId,
+      UserAccount,
+      UserAccountEvent
+    >({
+      client: dynamodbClient,
+      journalTableName: JOURNAL_TABLE_NAME,
+      snapshotTableName: SNAPSHOT_TABLE_NAME,
+      journalAidIndexName: JOURNAL_AID_INDEX_NAME,
+      snapshotAidIndexName: SNAPSHOTS_AID_INDEX_NAME,
+      snapshotActiveTtlIndexName: SNAPSHOTS_ACTIVE_TTL_INDEX_NAME,
+      shardCount: 32,
+      eventConverter: convertJSONtoUserAccountEvent,
+      snapshotConverter: convertJSONToUserAccount,
+      keepSnapshotCount,
+      ...options,
+    });
   }
 
   beforeAll(async () => {
@@ -124,7 +139,7 @@ describe("DynamoDBEventStore", () => {
     ],
   ])("rejects invalid deleteTtlMillis %s", (deleteTtlMillis, message) => {
     expect(() => {
-      new DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>({
+      createDynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>({
         client: {} as DynamoDBClient,
         journalTableName: JOURNAL_TABLE_NAME,
         snapshotTableName: SNAPSHOT_TABLE_NAME,
@@ -157,7 +172,7 @@ describe("DynamoDBEventStore", () => {
     };
 
     expect(() => {
-      new DynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>(
+      createDynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>(
         input,
       );
     }).toThrow("must be a function");
@@ -181,15 +196,15 @@ describe("DynamoDBEventStore", () => {
     "uses custom shard selector for DynamoDB keys",
     async () => {
       const shardSelector: ShardSelector<UserAccountId> = {
-        selectShardId: jest.fn(() => createShardId(7)),
+        selectShardId: jest.fn(() => ShardId.create(7)),
       };
       const eventStore = createEventStore(dynamodbClient, undefined, {
         shardSelector,
       });
-      const id = new UserAccountId(ulid());
+      const id = UserAccountId.create(ulid());
       const [userAccount1, created] = UserAccount.create(id, "Alice");
 
-      await eventStore.persistEventAndSnapshot(created, userAccount1);
+      await expectOk(eventStore.persistEventAndSnapshot(created, userAccount1));
 
       const result = await dynamodbClient.send(
         new QueryCommand({
@@ -216,13 +231,17 @@ describe("DynamoDBEventStore", () => {
     "persists redundant snapshots when retention is enabled",
     async () => {
       const retainedEventStore = createEventStore(dynamodbClient, 1);
-      const id = new UserAccountId(ulid());
+      const id = UserAccountId.create(ulid());
       const [userAccount1, created] = UserAccount.create(id, "Alice");
 
-      await retainedEventStore.persistEventAndSnapshot(created, userAccount1);
+      await expectOk(
+        retainedEventStore.persistEventAndSnapshot(created, userAccount1),
+      );
 
       const [userAccount2, renamed] = userAccount1.rename("Bob");
-      await retainedEventStore.persistEventAndSnapshot(renamed, userAccount2);
+      await expectOk(
+        retainedEventStore.persistEventAndSnapshot(renamed, userAccount2),
+      );
 
       const result = await dynamodbClient.send(
         new QueryCommand({
@@ -265,3 +284,414 @@ describe("DynamoDBEventStore", () => {
     TIMEOUT,
   );
 });
+
+describe("DynamoDBEventStore failure mapping", () => {
+  const snapshotPayload = new TextEncoder().encode(
+    JSON.stringify({
+      type: "UserAccount",
+      data: {
+        typeName: "UserAccount",
+        id: { typeName: "user-account", value: "1" },
+        name: "Alice",
+        sequenceNumber: 1,
+        version: 1,
+      },
+    }),
+  );
+
+  test("rejects journal rows without payloads", async () => {
+    const eventStore = createUnitEventStore(async (command) => {
+      expect(command).toBeInstanceOf(QueryCommand);
+      return { Items: [{}] };
+    });
+
+    await expect(
+      eventStore.getEventsByIdSinceSequenceNumber(UserAccountId.create("1"), 1),
+    ).rejects.toThrow("Payload is undefined");
+  });
+
+  test("rejects snapshot rows without versions", async () => {
+    const eventStore = createUnitEventStore(async (command) => {
+      expect(command).toBeInstanceOf(QueryCommand);
+      return { Items: [{ payload: { B: snapshotPayload } }] };
+    });
+
+    await expect(
+      eventStore.getLatestSnapshotById(UserAccountId.create("1")),
+    ).rejects.toThrow("Version is undefined");
+  });
+
+  test("rejects snapshot rows without payloads", async () => {
+    const eventStore = createUnitEventStore(async (command) => {
+      expect(command).toBeInstanceOf(QueryCommand);
+      return { Items: [{ version: { N: "1" } }] };
+    });
+
+    await expect(
+      eventStore.getLatestSnapshotById(UserAccountId.create("1")),
+    ).rejects.toThrow("Payload is undefined");
+  });
+
+  test("converts DynamoDB write failures to storage errors", async () => {
+    const cause = new Error("write failed");
+    const eventStore = createUnitEventStore(async (command) => {
+      expect(command).toBeInstanceOf(TransactWriteItemsCommand);
+      throw cause;
+    });
+    const id = UserAccountId.create("1");
+    const [userAccount, created] = UserAccount.create(id, "Alice");
+
+    await expectErr(
+      eventStore.persistEventAndSnapshot(created, userAccount),
+      "storage-error",
+      cause,
+    );
+  });
+
+  test("converts serializer failures before DynamoDB writes to serialization errors", async () => {
+    const cause = new Error("snapshot serialization failed");
+    const eventStore = createUnitEventStore(
+      async () => {
+        throw new Error("send should not be called");
+      },
+      undefined,
+      {
+        snapshotSerializer: {
+          serialize: jest.fn(() => {
+            throw cause;
+          }),
+          deserialize: jest.fn(),
+        },
+      },
+    );
+    const id = UserAccountId.create("1");
+    const [userAccount, created] = UserAccount.create(id, "Alice");
+
+    await expectErr(
+      eventStore.persistEventAndSnapshot(created, userAccount),
+      "serialization-error",
+      cause,
+    );
+  });
+
+  test("converts event serializer failures before DynamoDB updates to serialization errors", async () => {
+    const cause = new Error("event serialization failed");
+    const eventStore = createUnitEventStore(
+      async () => {
+        throw new Error("send should not be called");
+      },
+      undefined,
+      {
+        eventSerializer: {
+          serialize: jest.fn(() => {
+            throw cause;
+          }),
+          deserialize: jest.fn(),
+        },
+      },
+    );
+    const id = UserAccountId.create("1");
+    const [aggregate] = UserAccount.create(id, "Alice");
+    const [renamedAggregate, renamed] = aggregate.rename("Bob");
+
+    await expectErr(
+      eventStore.persistEvent(renamed, renamedAggregate.version),
+      "serialization-error",
+      cause,
+    );
+  });
+
+  test("does not convert shard selector failures to serialization errors", async () => {
+    const cause = new Error("shard selection failed");
+    const eventStore = createUnitEventStore(
+      async () => {
+        throw new Error("send should not be called");
+      },
+      undefined,
+      {
+        shardSelector: {
+          selectShardId: jest.fn(() => {
+            throw cause;
+          }),
+        },
+      },
+    );
+    const id = UserAccountId.create("1");
+    const [userAccount, created] = UserAccount.create(id, "Alice");
+
+    await expect(
+      eventStore.persistEventAndSnapshot(created, userAccount),
+    ).rejects.toThrow(cause);
+  });
+
+  test("does not convert update shard selector failures to serialization errors", async () => {
+    const cause = new Error("update shard selection failed");
+    const eventStore = createUnitEventStore(
+      async () => {
+        throw new Error("send should not be called");
+      },
+      undefined,
+      {
+        shardSelector: {
+          selectShardId: jest.fn(() => {
+            throw cause;
+          }),
+        },
+      },
+    );
+    const id = UserAccountId.create("1");
+    const [aggregate] = UserAccount.create(id, "Alice");
+    const [renamedAggregate, renamed] = aggregate.rename("Bob");
+
+    await expect(
+      eventStore.persistEvent(renamed, renamedAggregate.version),
+    ).rejects.toThrow(cause);
+  });
+
+  test("returns snapshot retention errors after update writes", async () => {
+    const cause = new Error("retention query failed");
+    const eventStore = createUnitEventStore(async (command) => {
+      if (command instanceof TransactWriteItemsCommand) {
+        return {};
+      }
+      if (command instanceof QueryCommand) {
+        throw cause;
+      }
+      throw new Error("unexpected command");
+    }, 1);
+    const id = UserAccountId.create("1");
+    const [aggregate] = UserAccount.create(id, "Alice");
+    const [renamedAggregate, renamed] = aggregate.rename("Bob");
+
+    await expectErr(
+      eventStore.persistEvent(renamed, renamedAggregate.version),
+      "storage-error",
+      cause,
+    );
+  });
+
+  test("returns snapshot retention errors after snapshot writes", async () => {
+    const cause = new Error("retention query failed");
+    const eventStore = createUnitEventStore(async (command) => {
+      if (command instanceof TransactWriteItemsCommand) {
+        return {};
+      }
+      if (command instanceof QueryCommand) {
+        throw cause;
+      }
+      throw new Error("unexpected command");
+    }, 1);
+    const id = UserAccountId.create("1");
+    const [userAccount, created] = UserAccount.create(id, "Alice");
+
+    await expectErr(
+      eventStore.persistEventAndSnapshot(created, userAccount),
+      "storage-error",
+      cause,
+    );
+  });
+
+  test("uses optional collaborators on successful operations", async () => {
+    const id = UserAccountId.create("1");
+    const [userAccount, created] = UserAccount.create(id, "Alice");
+    const [renamedAggregate, renamed] = userAccount.rename("Bob");
+    const logger: Logger = {
+      debug: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+    const eventSerializer: EventSerializer<UserAccountId, UserAccountEvent> = {
+      serialize: jest.fn(() => new Uint8Array([1])),
+      deserialize: jest.fn(() => renamed),
+    };
+    const snapshotSerializer: SnapshotSerializer<UserAccountId, UserAccount> = {
+      serialize: jest.fn(() => new Uint8Array([2])),
+      deserialize: jest.fn(() => renamedAggregate),
+    };
+    const eventStore = createUnitEventStore(
+      async (command) => {
+        if (command instanceof TransactWriteItemsCommand) {
+          return {};
+        }
+        if (command instanceof QueryCommand) {
+          const tableName = command.input.TableName;
+          if (tableName === "journal") {
+            return { Items: [{ payload: { B: new Uint8Array([1]) } }] };
+          }
+          return {
+            Items: [
+              { version: { N: "2" }, payload: { B: new Uint8Array([2]) } },
+            ],
+          };
+        }
+        throw new Error("unexpected command");
+      },
+      undefined,
+      {
+        eventSerializer,
+        logger,
+        snapshotSerializer,
+      },
+    );
+
+    await expectOk(eventStore.persistEvent(renamed, renamedAggregate.version));
+    await expectOk(eventStore.persistEventAndSnapshot(created, userAccount));
+    await expect(
+      eventStore.getEventsByIdSinceSequenceNumber(id, 1),
+    ).resolves.toEqual([renamed]);
+    const latestSnapshot = await eventStore.getLatestSnapshotById(id);
+
+    expect(latestSnapshot?.name).toBe("Bob");
+    expect(latestSnapshot?.version).toBe(2);
+    expect(logger.debug).toHaveBeenCalled();
+    expect(eventSerializer.serialize).toHaveBeenCalled();
+    expect(eventSerializer.deserialize).toHaveBeenCalled();
+    expect(snapshotSerializer.serialize).toHaveBeenCalled();
+    expect(snapshotSerializer.deserialize).toHaveBeenCalled();
+  });
+
+  test("writes full epoch milliseconds to DynamoDB timestamps", async () => {
+    let requestInput: TransactWriteItemsCommand["input"] | undefined;
+    const eventStore = createUnitEventStore(async (command) => {
+      if (command instanceof TransactWriteItemsCommand) {
+        requestInput = command.input;
+        return {};
+      }
+      if (command instanceof QueryCommand) {
+        return { Items: [] };
+      }
+      throw new Error("unexpected command");
+    }, 1);
+    const id = UserAccountId.create("1");
+    const [userAccount, created] = UserAccount.create(id, "Alice");
+    const occurredAt = new Date("2026-05-24T12:34:56.789Z");
+    const createdAtFixedTime = {
+      ...created,
+      occurredAt,
+    };
+
+    await expectOk(
+      eventStore.persistEventAndSnapshot(createdAtFixedTime, userAccount),
+    );
+
+    const transactItems = requestInput?.TransactItems;
+    expect(transactItems?.[0].Put?.Item?.last_updated_at).toEqual({
+      N: occurredAt.getTime().toString(),
+    });
+    expect(transactItems?.[1].Put?.Item?.occurred_at).toEqual({
+      N: occurredAt.getTime().toString(),
+    });
+    expect(transactItems?.[2].Put?.Item?.last_updated_at).toEqual({
+      N: occurredAt.getTime().toString(),
+    });
+  });
+
+  test("skips redundant snapshot writes when keepSnapshotCount is zero", async () => {
+    let requestInput: TransactWriteItemsCommand["input"] | undefined;
+    const eventStore = createUnitEventStore(async (command) => {
+      if (command instanceof TransactWriteItemsCommand) {
+        requestInput = command.input;
+        return {};
+      }
+      if (command instanceof QueryCommand) {
+        return { Items: [] };
+      }
+      throw new Error("unexpected command");
+    }, 0);
+    const id = UserAccountId.create("1");
+    const [userAccount, created] = UserAccount.create(id, "Alice");
+
+    await expectOk(eventStore.persistEventAndSnapshot(created, userAccount));
+
+    expect(requestInput?.TransactItems).toHaveLength(2);
+  });
+
+  test("rejects invalid keepSnapshotCount at construction", () => {
+    expect(() =>
+      createUnitEventStore(async () => {
+        throw new Error("send should not be called");
+      }, Number.NaN),
+    ).toThrow("Invalid keepSnapshotCount configuration: must be finite");
+  });
+
+  test("returns an empty event list when DynamoDB returns no rows", async () => {
+    const eventStore = createUnitEventStore(async (command) => {
+      expect(command).toBeInstanceOf(QueryCommand);
+      return {};
+    });
+
+    await expect(
+      eventStore.getEventsByIdSinceSequenceNumber(UserAccountId.create("1"), 1),
+    ).resolves.toEqual([]);
+  });
+
+  test("converts transaction cancellations without reasons to storage errors", async () => {
+    const cause = new TransactionCanceledException({
+      $metadata: {},
+      message: "cancelled",
+    });
+    const eventStore = createUnitEventStore(async (command) => {
+      expect(command).toBeInstanceOf(TransactWriteItemsCommand);
+      throw cause;
+    });
+    const id = UserAccountId.create("1");
+    const [userAccount, created] = UserAccount.create(id, "Alice");
+
+    await expectErr(
+      eventStore.persistEventAndSnapshot(created, userAccount),
+      "storage-error",
+      cause,
+    );
+  });
+});
+
+function createUnitEventStore(
+  send: (command: unknown) => Promise<unknown>,
+  keepSnapshotCount?: number,
+  options: {
+    eventSerializer?: EventSerializer<UserAccountId, UserAccountEvent>;
+    logger?: Logger;
+    shardSelector?: ShardSelector<UserAccountId>;
+    snapshotSerializer?: SnapshotSerializer<UserAccountId, UserAccount>;
+  } = {},
+): EventStore<UserAccountId, UserAccount, UserAccountEvent> {
+  return createDynamoDBEventStore<UserAccountId, UserAccount, UserAccountEvent>(
+    {
+      client: { send } as unknown as DynamoDBClient,
+      journalTableName: "journal",
+      snapshotTableName: "snapshot",
+      journalAidIndexName: "journal-aid-index",
+      snapshotAidIndexName: "snapshot-aid-index",
+      snapshotActiveTtlIndexName: "snapshot-active-ttl-index",
+      shardCount: 32,
+      eventConverter: convertJSONtoUserAccountEvent,
+      snapshotConverter: convertJSONToUserAccount,
+      keepSnapshotCount,
+      ...options,
+    },
+  );
+}
+
+async function expectOk(
+  resultPromise: Promise<Result<void, EventStoreError>>,
+): Promise<void> {
+  const result = await resultPromise;
+  expect(result).toEqual({ type: "ok", value: undefined });
+}
+
+async function expectErr(
+  resultPromise: Promise<Result<void, EventStoreError>>,
+  type: EventStoreError["type"],
+  cause?: unknown,
+): Promise<void> {
+  const result = await resultPromise;
+  expect(result.type).toBe("err");
+  if (result.type !== "err") {
+    return;
+  }
+  expect(result.error.type).toBe(type);
+  if (cause !== undefined) {
+    expect(result.error.cause).toBe(cause);
+  }
+}

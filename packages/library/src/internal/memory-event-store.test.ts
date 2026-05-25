@@ -1,29 +1,33 @@
 import { EventStore } from "../event-store";
-import type { Aggregate } from "../types";
+import type { EventStoreError, Result } from "../types";
+import { createMemoryEventStore } from "./memory-event-store";
 import { runEventStoreContractTests } from "./test/event-store-contract";
 import { UserAccount } from "./test/user-account";
 import type { UserAccountEvent } from "./test/user-account-event";
 import { UserAccountId } from "./test/user-account-id";
 
-class SameReferenceAggregate
-  implements Aggregate<SameReferenceAggregate, UserAccountId>
-{
-  public readonly typeName: string = "SameReferenceAggregate";
-  public readonly sequenceNumber: number = 1;
+type SameReferenceAggregate = {
+  typeName: "SameReferenceAggregate";
+  id: UserAccountId;
+  sequenceNumber: number;
+  version: number;
+  withVersion(version: number): SameReferenceAggregate;
+  updateVersion(version: (value: number) => number): SameReferenceAggregate;
+};
 
-  constructor(
-    public readonly id: UserAccountId,
-    public readonly version: number,
-  ) {}
-
-  withVersion(_version: number): SameReferenceAggregate {
-    return this;
-  }
-
-  updateVersion(_version: (value: number) => number): SameReferenceAggregate {
-    return this;
-  }
-}
+const SameReferenceAggregate = Object.freeze({
+  create(id: UserAccountId, version: number): SameReferenceAggregate {
+    const aggregate: SameReferenceAggregate = Object.freeze({
+      typeName: "SameReferenceAggregate",
+      id,
+      sequenceNumber: 1,
+      version,
+      withVersion: () => aggregate,
+      updateVersion: () => aggregate,
+    });
+    return aggregate;
+  },
+});
 
 afterEach(() => {
   jest.useRealTimers();
@@ -38,15 +42,26 @@ runEventStoreContractTests({
   name: "MemoryEventStore",
   timeout: TIMEOUT,
   createEventStore: () =>
-    EventStore.ofMemory<UserAccountId, UserAccount, UserAccountEvent>(),
+    EventStore.createMemory<UserAccountId, UserAccount, UserAccountEvent>(),
 });
 
 describe("MemoryEventStore input isolation", () => {
+  test("creates an empty store with the internal default input", async () => {
+    const eventStore = createMemoryEventStore<
+      UserAccountId,
+      UserAccount,
+      UserAccountEvent
+    >();
+    await expect(
+      eventStore.getLatestSnapshotById(UserAccountId.create("0")),
+    ).resolves.toBeUndefined();
+  });
+
   test("uses seeded events and snapshots", async () => {
-    const id = new UserAccountId("user-account-0");
+    const id = UserAccountId.create("user-account-0");
     const [userAccount1, created] = UserAccount.create(id, "Alice");
     const [userAccount2, renamed] = userAccount1.rename("Bob");
-    const eventStore = EventStore.ofMemory<
+    const eventStore = EventStore.createMemory<
       UserAccountId,
       UserAccount,
       UserAccountEvent
@@ -64,9 +79,9 @@ describe("MemoryEventStore input isolation", () => {
   });
 
   test("does not expose seeded snapshot references", async () => {
-    const id = new UserAccountId("user-account-1");
+    const id = UserAccountId.create("user-account-1");
     const [snapshot] = UserAccount.create(id, "Alice");
-    const eventStore = EventStore.ofMemory<
+    const eventStore = EventStore.createMemory<
       UserAccountId,
       UserAccount,
       UserAccountEvent
@@ -77,18 +92,26 @@ describe("MemoryEventStore input isolation", () => {
     const latestSnapshot = await eventStore.getLatestSnapshotById(id);
     const latestSnapshotAgain = await eventStore.getLatestSnapshotById(id);
 
-    expect(latestSnapshot).toEqual(snapshot);
+    expect(latestSnapshot?.id.asString()).toEqual(snapshot.id.asString());
+    expect(latestSnapshot?.name).toEqual(snapshot.name);
+    expect(latestSnapshot?.sequenceNumber).toEqual(snapshot.sequenceNumber);
+    expect(latestSnapshot?.version).toEqual(snapshot.version);
     expect(latestSnapshot).not.toBe(snapshot);
-    expect(latestSnapshotAgain).toEqual(snapshot);
+    expect(latestSnapshotAgain?.id.asString()).toEqual(snapshot.id.asString());
+    expect(latestSnapshotAgain?.name).toEqual(snapshot.name);
+    expect(latestSnapshotAgain?.sequenceNumber).toEqual(
+      snapshot.sequenceNumber,
+    );
+    expect(latestSnapshotAgain?.version).toEqual(snapshot.version);
     expect(latestSnapshotAgain).not.toBe(latestSnapshot);
   });
 
   test("rejects snapshot copies that keep the same aggregate reference", () => {
-    const id = new UserAccountId("2");
-    const snapshot = new SameReferenceAggregate(id, 1);
+    const id = UserAccountId.create("2");
+    const snapshot = SameReferenceAggregate.create(id, 1);
 
     expect(() =>
-      EventStore.ofMemory<
+      EventStore.createMemory<
         UserAccountId,
         SameReferenceAggregate,
         UserAccountEvent
@@ -100,11 +123,33 @@ describe("MemoryEventStore input isolation", () => {
     );
   });
 
+  test("rejects seeded snapshot copy failures with non-error causes", () => {
+    const id = UserAccountId.create("8");
+    const snapshot: SameReferenceAggregate = {
+      ...SameReferenceAggregate.create(id, 1),
+      withVersion: () => {
+        throw "copy failed";
+      },
+    };
+
+    expect(() =>
+      EventStore.createMemory<
+        UserAccountId,
+        SameReferenceAggregate,
+        UserAccountEvent
+      >({
+        snapshots: new Map([[id, snapshot]]),
+      }),
+    ).toThrow(
+      "Invalid seeded snapshot for aggregate user-account-8: copy failed",
+    );
+  });
+
   test("does not mutate seeded event arrays", async () => {
-    const id = new UserAccountId("user-account-3");
+    const id = UserAccountId.create("user-account-3");
     const [snapshot, created] = UserAccount.create(id, "Alice");
     const seededEvents = [created];
-    const eventStore = EventStore.ofMemory<
+    const eventStore = EventStore.createMemory<
       UserAccountId,
       UserAccount,
       UserAccountEvent
@@ -114,16 +159,16 @@ describe("MemoryEventStore input isolation", () => {
     });
     const [renamedSnapshot, renamed] = snapshot.rename("Bob");
 
-    await eventStore.persistEvent(renamed, renamedSnapshot.version);
+    await expectOk(eventStore.persistEvent(renamed, renamedSnapshot.version));
 
     expect(seededEvents).toEqual([created]);
   });
 
   test("rejects seeded snapshot aggregate id mismatches", async () => {
-    const id = new UserAccountId("user-account-4");
-    const otherId = new UserAccountId("user-account-5");
+    const id = UserAccountId.create("user-account-4");
+    const otherId = UserAccountId.create("user-account-5");
     const [snapshot] = UserAccount.create(otherId, "Alice");
-    const eventStore = EventStore.ofMemory<
+    const eventStore = EventStore.createMemory<
       UserAccountId,
       UserAccount,
       UserAccountEvent
@@ -132,11 +177,72 @@ describe("MemoryEventStore input isolation", () => {
       // `otherId`; this simulates corrupted input state.
       snapshots: new Map([[id, snapshot]]),
     });
-    const aggregate = new UserAccount(id, "Bob", 1, snapshot.version);
+    const aggregate = UserAccount.createSnapshot(
+      id,
+      "Bob",
+      1,
+      snapshot.version,
+    );
     const [renamedSnapshot, renamed] = aggregate.rename("Bob");
 
     await expect(
       eventStore.persistEvent(renamed, renamedSnapshot.version),
     ).rejects.toThrow("aggregateId mismatch");
   });
+
+  test("rejects snapshot updates for missing aggregates", async () => {
+    const id = UserAccountId.create("user-account-6");
+    const [aggregate, created] = UserAccount.create(id, "Alice");
+    const eventStore = EventStore.createMemory<
+      UserAccountId,
+      UserAccount,
+      UserAccountEvent
+    >({
+      events: new Map([[id, [created]]]),
+    });
+    const [, renamed] = aggregate.rename("Bob");
+
+    await expectErr(
+      eventStore.persistEventAndSnapshot(renamed, aggregate),
+      "optimistic-lock-conflict",
+    );
+  });
+
+  test("rejects stale snapshot updates", async () => {
+    const id = UserAccountId.create("user-account-7");
+    const [aggregate, created] = UserAccount.create(id, "Alice");
+    const [renamedAggregate, renamed] = aggregate.rename("Bob");
+    const eventStore = EventStore.createMemory<
+      UserAccountId,
+      UserAccount,
+      UserAccountEvent
+    >({
+      events: new Map([[id, [created]]]),
+      snapshots: new Map([[id, aggregate.withVersion(2)]]),
+    });
+
+    await expectErr(
+      eventStore.persistEventAndSnapshot(renamed, renamedAggregate),
+      "optimistic-lock-conflict",
+    );
+  });
 });
+
+async function expectOk(
+  resultPromise: Promise<Result<void, EventStoreError>>,
+): Promise<void> {
+  const result = await resultPromise;
+  expect(result).toEqual({ type: "ok", value: undefined });
+}
+
+async function expectErr(
+  resultPromise: Promise<Result<void, EventStoreError>>,
+  type: EventStoreError["type"],
+): Promise<void> {
+  const result = await resultPromise;
+  expect(result.type).toBe("err");
+  if (result.type !== "err") {
+    return;
+  }
+  expect(result.error.type).toBe(type);
+}

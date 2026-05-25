@@ -1,7 +1,7 @@
 # GCPにおけるイベント駆動連携の選択肢
 
 このドキュメントは、`DynamoDB Streams + Lambda` に近い後段処理を GCP 上で実現する場合の選択肢を整理した設計メモです。
-対象日時は `2026-03-12` 時点です。現在のライブラリには `EventStore.ofSpanner(...)` が実装済みで、Firestore adapter は未実装です。
+対象日時は `2026-03-12` 時点です。現在のライブラリには `EventStore.createSpanner(...)` が実装済みで、Firestore adapter は未実装です。
 
 ## 結論
 
@@ -133,12 +133,12 @@
 
 ## このライブラリに対する示唆
 
-GCP 対応の検討では、候補は次の 2 つでした。現在は Spanner adapter が `EventStore.ofSpanner(...)` として実装済みです。
+GCP 対応の検討では、候補は次の 2 つでした。現在は Spanner adapter が `EventStore.createSpanner(...)` として実装済みです。
 
 | 候補 | 判断 |
 |:--|:--|
 | Firestore adapter | 実装量優先なら候補。現在は未実装 |
-| `EventStore.ofSpanner(...)` | `DynamoDB Streams` に近い構成を重視する候補。現在は実装済み |
+| `EventStore.createSpanner(...)` | `DynamoDB Streams` に近い構成を重視する候補。現在は実装済み |
 
 `Bigtable` 向けアダプタは、少なくとも最初の GCP 対応としては推奨しません。
 

@@ -5,7 +5,7 @@ import type { UserAccountId } from "./domain/user-account-id";
 import { runUserAccountExample } from "./run-user-account-example";
 
 async function main(): Promise<void> {
-  const eventStore = EventStore.ofMemory<
+  const eventStore = EventStore.createMemory<
     UserAccountId,
     UserAccount,
     UserAccountEvent

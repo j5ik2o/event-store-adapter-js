@@ -9,11 +9,11 @@ import type {
   SnapshotSerializer,
 } from "./types";
 
-interface SpannerEventStoreInput<
+type SpannerEventStoreInput<
   AID extends AggregateId,
   A extends Aggregate<A, AID>,
   E extends Event<AID>,
-> {
+> = {
   database: Database;
   journalTableName: string;
   snapshotTableName: string;
@@ -27,6 +27,6 @@ interface SpannerEventStoreInput<
   eventSerializer?: EventSerializer<AID, E>;
   snapshotSerializer?: SnapshotSerializer<AID, A>;
   logger?: Logger;
-}
+};
 
 export type { SpannerEventStoreInput };

@@ -46,7 +46,11 @@ describe("UserAccountRepository", () => {
   function createEventStore(
     dynamodbClient: DynamoDBClient,
   ): EventStoreType<UserAccountId, UserAccount, UserAccountEvent> {
-    return EventStore.ofDynamoDB<UserAccountId, UserAccount, UserAccountEvent>({
+    return EventStore.createDynamoDB<
+      UserAccountId,
+      UserAccount,
+      UserAccountEvent
+    >({
       client: dynamodbClient,
       journalTableName: JOURNAL_TABLE_NAME,
       snapshotTableName: SNAPSHOT_TABLE_NAME,
@@ -95,24 +99,34 @@ describe("UserAccountRepository", () => {
   test(
     "storeAndFindById",
     async () => {
-      const userAccountRepository = new UserAccountRepository(eventStore);
+      const userAccountRepository = UserAccountRepository.create(eventStore);
 
-      const id = new UserAccountId(ulid());
+      const id = UserAccountId.create(ulid());
       const name = "Alice";
       const [userAccount1, created] = UserAccount.create(id, name);
 
-      await userAccountRepository.storeEventAndSnapshot(created, userAccount1);
+      await expect(
+        userAccountRepository.storeEventAndSnapshot(created, userAccount1),
+      ).resolves.toEqual({
+        type: "ok",
+        value: undefined,
+      });
 
       const [userAccount2, renamed] = userAccount1.rename("Bob");
 
-      await userAccountRepository.storeEvent(renamed, userAccount2.version);
+      await expect(
+        userAccountRepository.storeEvent(renamed, userAccount2.version),
+      ).resolves.toEqual({
+        type: "ok",
+        value: undefined,
+      });
 
       const userAccount3 = await userAccountRepository.findById(id);
       if (userAccount3 === undefined) {
         throw new Error("userAccount3 is undefined");
       }
 
-      expect(userAccount3.id).toEqual(id);
+      expect(userAccount3.id.asString()).toEqual(id.asString());
       expect(userAccount3.name).toEqual("Bob");
       expect(userAccount3.sequenceNumber).toEqual(2);
       expect(userAccount3.version).toEqual(2);
