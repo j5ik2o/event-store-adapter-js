@@ -34,6 +34,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
   checks: write
   issues: read
   pull-requests: read
@@ -336,9 +337,7 @@ jobs:
             if [[ "$WAIT_FOR_OTHER_CHECKS" == "0" ]]; then
               echo "Skipping other-check wait because the caller already ordered this gate after CI jobs."
             else
-              if [[ "${REFRESH_OPEN_PRS:-0}" == "1" ]]; then
-                max_attempts=1
-              elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+              if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
                 max_attempts=3
               else
                 max_attempts=60
@@ -400,12 +399,6 @@ jobs:
                 if [[ -z "$pending_checks" ]]; then
                   echo "All other PR checks have reached a terminal state."
                   break
-                fi
-
-                if [[ "${REFRESH_OPEN_PRS:-0}" == "1" && "$attempt" -eq "$max_attempts" ]]; then
-                  echo "::notice::Skipping PR #$PR_NUMBER because other checks are still pending."
-                  echo "$pending_checks"
-                  exit 0
                 fi
 
                 if [[ "$attempt" -eq "$max_attempts" ]]; then
@@ -686,6 +679,10 @@ jobs:
                     or (
                       $author == "cursor"
                       and ($body | contains("<!-- BUGBOT_REVIEW -->"))
+                    )
+                    or (
+                      $author == "chatgpt-codex-connector"
+                      and ($body | contains("### 💡 Codex Review"))
                     );
                 . as $comments
                 | [
@@ -756,20 +753,17 @@ jobs:
               publish_head_check "failure" "$summary"
             fi
 
-            if [[ "${REFRESH_OPEN_PRS:-0}" == "1" ]]; then
-              echo "::notice::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) or review summary comment(s) remain."
-              exit 0
-            fi
-
             echo "::error::$unresolved_count unresolved PR review thread(s) and $unacknowledged_top_level_count unacknowledged top-level PR comment(s) or review summary comment(s) remain. Resolve or acknowledge all review conversations before merging."
             exit 1
 
 
           )
 
-          refresh_all_open_prs() {
+          dispatch_refresh_for_open_prs() {
             local pr_list_response
             local listed_pr_number
+            local dispatch_payload
+            local dispatch_errors=0
             local pr_number
             local pr_numbers=()
 
@@ -797,25 +791,41 @@ jobs:
               return 0
             fi
 
-            local failed=0
             for pr_number in "${pr_numbers[@]}"; do
-              echo "::group::Review thread resolution for PR #$pr_number"
-              if ! REFRESH_OPEN_PRS=1 check_pr "$pr_number"; then
-                failed=1
+              dispatch_payload="$(
+                jq -n \
+                  --arg ref "main" \
+                  --arg pr_number "$pr_number" \
+                  '{ref: $ref, inputs: {pr_number: $pr_number}}'
+              )"
+              if gh api \
+                --method POST \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "repos/$OWNER/$REPO/actions/workflows/review-thread-resolution.yml/dispatches" \
+                --input - <<< "$dispatch_payload"; then
+                echo "Dispatched review-thread refresh for PR #$pr_number."
+              else
+                echo "::error::Failed to dispatch review-thread refresh for PR #$pr_number."
+                dispatch_errors=$((dispatch_errors + 1))
               fi
-              echo "::endgroup::"
             done
 
-            return "$failed"
+            if [[ "$dispatch_errors" -gt 0 ]]; then
+              echo "::error::Failed to dispatch review-thread refresh for $dispatch_errors PR(s)."
+              return 1
+            fi
+
+            return 0
           }
 
           if [[ "$EVENT_NAME" == "schedule" ]]; then
-            refresh_all_open_prs
+            dispatch_refresh_for_open_prs
             exit $?
           fi
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" && -z "${PR_NUMBER:-}" ]]; then
-            refresh_all_open_prs
+            dispatch_refresh_for_open_prs
             exit $?
           fi
 
