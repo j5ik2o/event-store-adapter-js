@@ -122,21 +122,6 @@ jobs:
             head_ref_oid="$(jq -r '.data.repository.pullRequest.headRefOid' <<< "$pr_response")"
             pr_url="$(jq -r '.data.repository.pullRequest.url' <<< "$pr_response")"
 
-            find_existing_head_check() {
-              gh api \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                "repos/$OWNER/$REPO/commits/$head_ref_oid/check-runs?check_name=Check%20unresolved%20comments&per_page=100" \
-                --jq '
-                  [
-                    .check_runs[]
-                    | select(.output.title == "Review Thread Resolution")
-                    | .id
-                  ]
-                  | first // empty
-                '
-            }
-
             should_publish_head_check() {
               if [[ -z "$head_repository" ]]; then
                 echo "::warning::Skipping synthetic check-run publication because PR head repository metadata is unavailable." >&2
@@ -180,15 +165,9 @@ jobs:
               local truncation_suffix
               local available_chars
               local create_payload
-              local update_payload
               local check_run_response
               local check_run_error
-              local existing_check_run_id
               local check_run_url
-              # The synthetic check is the stable required context. Create it
-              # on every eligible event because the Actions job intentionally
-              # uses a distinct name for UI clarity.
-              local create_if_missing="true"
 
               if (( ${#check_summary} > max_summary_chars )); then
                 truncation_suffix=$'\n\n... truncated for GitHub Checks API summary limit ...'
@@ -220,62 +199,20 @@ jobs:
                     }
                   }'
               )"
-              update_payload="$(
-                jq -n \
-                  --arg name "Check unresolved comments" \
-                  --arg conclusion "$conclusion" \
-                  --arg details_url "$RUN_URL" \
-                  --arg title "Review Thread Resolution" \
-                  --arg summary "$check_summary" \
-                  '{
-                    name: $name,
-                    status: "completed",
-                    conclusion: $conclusion,
-                    details_url: $details_url,
-                    output: {
-                      title: $title,
-                      summary: $summary
-                    }
-                  }'
-              )"
-
-            existing_check_run_id="$(find_existing_head_check)"
-
-            check_run_error="$(mktemp)"
+              check_run_error="$(mktemp)"
               trap 'rm -f "$check_run_error"; trap - RETURN' RETURN
-              if [[ -n "$existing_check_run_id" ]]; then
-                if ! check_run_response="$(
-                  gh api \
-                    --method PATCH \
-                    -H "Accept: application/vnd.github+json" \
-                    -H "X-GitHub-Api-Version: 2022-11-28" \
-                    "repos/$OWNER/$REPO/check-runs/$existing_check_run_id" \
-                    --input - \
-                    2> "$check_run_error" <<< "$update_payload"
-                )"; then
-                  echo "::error::Failed to update check run via GitHub API."
-                  cat "$check_run_error" >&2
-                  return 1
-                fi
-              else
-                if [[ "$create_if_missing" != "true" ]]; then
-                  echo "No existing synthetic check run to update."
-                  return 0
-                fi
-
-                if ! check_run_response="$(
-                  gh api \
-                    --method POST \
-                    -H "Accept: application/vnd.github+json" \
-                    -H "X-GitHub-Api-Version: 2022-11-28" \
-                    "repos/$OWNER/$REPO/check-runs" \
-                    --input - \
-                    2> "$check_run_error" <<< "$create_payload"
-                )"; then
-                  echo "::error::Failed to create check run via GitHub API."
-                  cat "$check_run_error" >&2
-                  return 1
-                fi
+              if ! check_run_response="$(
+                gh api \
+                  --method POST \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "repos/$OWNER/$REPO/check-runs" \
+                  --input - \
+                  2> "$check_run_error" <<< "$create_payload"
+              )"; then
+                echo "::error::Failed to create check run via GitHub API."
+                cat "$check_run_error" >&2
+                return 1
               fi
               if [[ -s "$check_run_error" ]]; then
                 cat "$check_run_error" >&2
