@@ -273,6 +273,24 @@ jobs:
               return response.data.statuses.find((status) => status.context === checkName);
             }
 
+  review-thread-resolution:
+    name: CI Review Thread Gate
+    needs:
+      - changes
+      - lint
+      - test
+      - codecov-status
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+      checks: write
+      issues: read
+      pull-requests: read
+    uses: ./.github/workflows/review-thread-resolution.yml
+    with:
+      pr_number: ${{ format('{0}', github.event.pull_request.number) }}
+      wait_for_other_checks: false
+
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
@@ -281,11 +299,13 @@ jobs:
       - lint
       - test
       - codecov-status
+      - review-thread-resolution
     if: always()
     steps:
       - name: All checks passed
         env:
           RUN_CODE_CHECKS: ${{ needs.changes.outputs.run_code_checks }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
@@ -321,4 +341,10 @@ jobs:
           require_result "lint" "${{ needs.lint.result }}" "${expected_code_job_result}"
           require_result "test" "${{ needs.test.result }}" "${expected_code_job_result}"
           require_result "codecov-status" "${{ needs['codecov-status'].result }}" "${expected_code_job_result}"
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            expected_review_thread_result="success"
+          else
+            expected_review_thread_result="skipped"
+          fi
+          require_result "review-thread-resolution" "${{ needs['review-thread-resolution'].result }}" "${expected_review_thread_result}"
           echo "All CI checks passed successfully"
