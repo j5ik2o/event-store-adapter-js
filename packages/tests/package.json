@@ -1,5 +1,11 @@
 {
   "name": "@event-store-adapter-js/tests",
   "private": true,
-  "version": "0.0.0"
+  "version": "0.0.0",
+  "scripts": {
+    "test": "node --test e2e/*.test.cjs"
+  },
+  "dependencies": {
+    "event-store-adapter-js": "workspace:*"
+  }
 }

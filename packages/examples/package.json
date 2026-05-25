@@ -8,6 +8,7 @@
     "memory": "pnpm run build:library && node -r ts-node/register src/memory-basic.ts",
     "dynamodb": "pnpm run build:library && node -r ts-node/register src/dynamodb-basic.ts",
     "spanner": "pnpm run build:library && node -r ts-node/register src/spanner-basic.ts",
+    "test": "pnpm run typecheck && pnpm run memory && pnpm run dynamodb && pnpm run spanner",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
