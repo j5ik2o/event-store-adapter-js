@@ -97,7 +97,11 @@ importers:
         specifier: ^6.0.0
         version: 6.0.3
 
-  packages/tests: {}
+  packages/tests:
+    dependencies:
+      event-store-adapter-js:
+        specifier: workspace:*
+        version: link:../library
 
 packages:
 
