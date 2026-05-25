@@ -347,6 +347,7 @@ jobs:
       checks: write
       issues: read
       pull-requests: read
+      statuses: write
     uses: ./.github/workflows/review-thread-resolution.yml
     with:
       pr_number: ${{ format('{0}', github.event.pull_request.number) }}

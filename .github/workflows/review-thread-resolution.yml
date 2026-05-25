@@ -38,6 +38,7 @@ permissions:
   checks: write
   issues: read
   pull-requests: read
+  statuses: write
 
 concurrency:
   group: review-thread-resolution-${{ (toJSON(inputs.wait_for_other_checks) == 'false' || inputs.wait_for_other_checks == 'false') && 'ci-' || 'event-' }}${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || 'refresh-all' }}
@@ -164,105 +165,63 @@ jobs:
             publish_head_check() {
               local conclusion="$1"
               local summary="$2"
-              local check_summary="$summary"
-              local max_summary_chars=60000
-              local truncation_suffix
-              local available_chars
-              local check_name="Check unresolved comments"
-              local check_payload
-              local existing_check_run_id
-              local check_run_response
-              local check_run_error
-              local check_run_url
-              local request_method
-              local request_path
+              local state="$conclusion"
+              local status_payload
+              local status_response
+              local status_error
+              local status_url
 
-              if (( ${#check_summary} > max_summary_chars )); then
-                truncation_suffix=$'\n\n... truncated for GitHub Checks API summary limit ...'
-                available_chars=$(( max_summary_chars - ${#truncation_suffix} ))
-                if (( available_chars < 1 )); then
-                  check_summary="${truncation_suffix:0:max_summary_chars}"
-                else
-                  check_summary="${check_summary:0:available_chars}${truncation_suffix}"
-                fi
-              fi
-
-              existing_check_run_id="$(
-                gh api \
-                  --method GET \
-                  -H "Accept: application/vnd.github+json" \
-                  -H "X-GitHub-Api-Version: 2022-11-28" \
-                  "repos/$OWNER/$REPO/commits/$head_ref_oid/check-runs" \
-                  -f check_name="$check_name" \
-                  --jq '[.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.started_at // .completed_at // "") | last | .id // empty'
-              )"
-              if [[ -n "$existing_check_run_id" ]]; then
-                request_method="PATCH"
-                request_path="repos/$OWNER/$REPO/check-runs/$existing_check_run_id"
-              else
-                request_method="POST"
-                request_path="repos/$OWNER/$REPO/check-runs"
-              fi
-              check_payload="$(
+              status_payload="$(
                 jq -n \
-                  --arg name "$check_name" \
-                  --arg head_sha "$head_ref_oid" \
-                  --arg conclusion "$conclusion" \
-                  --arg details_url "$RUN_URL" \
-                  --arg title "Review Thread Resolution" \
-                  --arg summary "$check_summary" \
-                  --arg method "$request_method" \
+                  --arg state "$state" \
+                  --arg target_url "$RUN_URL" \
+                  --arg description "Review-thread gate ${state}." \
+                  --arg context "Check unresolved comments" \
                   '{
-                    status: "completed",
-                    conclusion: $conclusion,
-                    details_url: $details_url,
-                    output: {
-                      title: $title,
-                      summary: $summary
-                    }
-                  } + if $method == "POST" then {
-                    name: $name,
-                    head_sha: $head_sha
-                  } else {} end'
+                    state: $state,
+                    target_url: $target_url,
+                    description: $description,
+                    context: $context
+                  }'
               )"
 
-              check_run_error="$(mktemp)"
-              trap 'rm -f "$check_run_error"; trap - RETURN' RETURN
-              if ! check_run_response="$(
+              status_error="$(mktemp)"
+              trap 'rm -f "$status_error"; trap - RETURN' RETURN
+              if ! status_response="$(
                 gh api \
-                  --method "$request_method" \
+                  --method POST \
                   -H "Accept: application/vnd.github+json" \
                   -H "X-GitHub-Api-Version: 2022-11-28" \
-                  "$request_path" \
+                  "repos/$OWNER/$REPO/statuses/$head_ref_oid" \
                   --input - \
-                  2> "$check_run_error" <<< "$check_payload"
+                  2> "$status_error" <<< "$status_payload"
               )"; then
-                echo "::error::Failed to publish check run via GitHub API."
-                cat "$check_run_error" >&2
+                echo "::error::Failed to publish commit status via GitHub API."
+                cat "$status_error" >&2
                 return 1
               fi
-              if [[ -s "$check_run_error" ]]; then
-                cat "$check_run_error" >&2
+              if [[ -s "$status_error" ]]; then
+                cat "$status_error" >&2
               fi
 
-              if jq -e '(.errors? // []) | length > 0' <<< "$check_run_response" > /dev/null; then
-                echo "::error::GitHub API returned errors while publishing check run."
-                jq -r '.errors[]?.message // empty' <<< "$check_run_response" >&2
+              if jq -e '(.errors? // []) | length > 0' <<< "$status_response" > /dev/null; then
+                echo "::error::GitHub API returned errors while publishing commit status."
+                jq -r '.errors[]?.message // empty' <<< "$status_response" >&2
                 return 1
               fi
-              if jq -e '.message? // empty' <<< "$check_run_response" > /dev/null; then
-                echo "::error::GitHub API returned an error message while publishing check run."
-                jq -r '.message' <<< "$check_run_response" >&2
+              if jq -e '.message? // empty' <<< "$status_response" > /dev/null; then
+                echo "::error::GitHub API returned an error message while publishing commit status."
+                jq -r '.message' <<< "$status_response" >&2
                 return 1
               fi
-              if ! jq -e '.id and (.html_url // .url)' <<< "$check_run_response" > /dev/null; then
-                echo "::error::GitHub API response did not include check-run metadata."
-                jq -c '.' <<< "$check_run_response" >&2
+              if ! jq -e '.id and (.target_url // .url)' <<< "$status_response" > /dev/null; then
+                echo "::error::GitHub API response did not include commit status metadata."
+                jq -c '.' <<< "$status_response" >&2
                 return 1
               fi
 
-              check_run_url="$(jq -r '.html_url // .url' <<< "$check_run_response")"
-              echo "Published check run with $request_method: $check_run_url"
+              status_url="$(jq -r '.target_url // .url' <<< "$status_response")"
+              echo "Published commit status '$state': $status_url"
             }
 
             build_summary() {
