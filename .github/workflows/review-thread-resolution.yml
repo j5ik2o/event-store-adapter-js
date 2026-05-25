@@ -168,10 +168,14 @@ jobs:
               local max_summary_chars=60000
               local truncation_suffix
               local available_chars
-              local create_payload
+              local check_name="Check unresolved comments"
+              local check_payload
+              local existing_check_run_id
               local check_run_response
               local check_run_error
               local check_run_url
+              local request_method
+              local request_path
 
               if (( ${#check_summary} > max_summary_chars )); then
                 truncation_suffix=$'\n\n... truncated for GitHub Checks API summary limit ...'
@@ -183,17 +187,32 @@ jobs:
                 fi
               fi
 
-              create_payload="$(
+              existing_check_run_id="$(
+                gh api \
+                  --method GET \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "repos/$OWNER/$REPO/commits/$head_ref_oid/check-runs" \
+                  -f check_name="$check_name" \
+                  --jq '[.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.started_at // .completed_at // "") | last | .id // empty'
+              )"
+              if [[ -n "$existing_check_run_id" ]]; then
+                request_method="PATCH"
+                request_path="repos/$OWNER/$REPO/check-runs/$existing_check_run_id"
+              else
+                request_method="POST"
+                request_path="repos/$OWNER/$REPO/check-runs"
+              fi
+              check_payload="$(
                 jq -n \
-                  --arg name "Check unresolved comments" \
+                  --arg name "$check_name" \
                   --arg head_sha "$head_ref_oid" \
                   --arg conclusion "$conclusion" \
                   --arg details_url "$RUN_URL" \
                   --arg title "Review Thread Resolution" \
                   --arg summary "$check_summary" \
+                  --arg method "$request_method" \
                   '{
-                    name: $name,
-                    head_sha: $head_sha,
                     status: "completed",
                     conclusion: $conclusion,
                     details_url: $details_url,
@@ -201,20 +220,24 @@ jobs:
                       title: $title,
                       summary: $summary
                     }
-                  }'
+                  } + if $method == "POST" then {
+                    name: $name,
+                    head_sha: $head_sha
+                  } else {} end'
               )"
+
               check_run_error="$(mktemp)"
               trap 'rm -f "$check_run_error"; trap - RETURN' RETURN
               if ! check_run_response="$(
                 gh api \
-                  --method POST \
+                  --method "$request_method" \
                   -H "Accept: application/vnd.github+json" \
                   -H "X-GitHub-Api-Version: 2022-11-28" \
-                  "repos/$OWNER/$REPO/check-runs" \
+                  "$request_path" \
                   --input - \
-                  2> "$check_run_error" <<< "$create_payload"
+                  2> "$check_run_error" <<< "$check_payload"
               )"; then
-                echo "::error::Failed to create check run via GitHub API."
+                echo "::error::Failed to publish check run via GitHub API."
                 cat "$check_run_error" >&2
                 return 1
               fi
@@ -223,12 +246,12 @@ jobs:
               fi
 
               if jq -e '(.errors? // []) | length > 0' <<< "$check_run_response" > /dev/null; then
-                echo "::error::GitHub API returned errors while creating check run."
+                echo "::error::GitHub API returned errors while publishing check run."
                 jq -r '.errors[]?.message // empty' <<< "$check_run_response" >&2
                 return 1
               fi
               if jq -e '.message? // empty' <<< "$check_run_response" > /dev/null; then
-                echo "::error::GitHub API returned an error message while creating check run."
+                echo "::error::GitHub API returned an error message while publishing check run."
                 jq -r '.message' <<< "$check_run_response" >&2
                 return 1
               fi
@@ -239,7 +262,7 @@ jobs:
               fi
 
               check_run_url="$(jq -r '.html_url // .url' <<< "$check_run_response")"
-              echo "Published check run: $check_run_url"
+              echo "Published check run with $request_method: $check_run_url"
             }
 
             build_summary() {
