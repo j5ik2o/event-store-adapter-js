@@ -641,8 +641,10 @@ jobs:
             # Ignore generated report comments that do not require PR-author acknowledgement.
             unacknowledged_top_level="$(
               jq -c --arg pr_author "$pr_author" --arg pr_author_type "$pr_author_type" '
+                def report_author_login:
+                  (.author.login // "") | sub("\\[bot\\]$"; "");
                 def ignored_auto_report:
-                  (.author.login // "") as $author
+                  report_author_login as $author
                   | (.body // "") as $body
                   | (
                       $author == "coderabbitai"
