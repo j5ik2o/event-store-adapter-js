@@ -67,7 +67,7 @@ export namespace UserAccount {
     snapshot: UserAccount,
   ): UserAccount {
     return events.reduce(
-      (account, event) => applyEvent(account, event, account.version + 1),
+      (account, event) => applyEvent(account, event, account.version),
       snapshot,
     );
   }

@@ -28,7 +28,7 @@ jobs:
       run_code_checks: ${{ steps.filter.outputs.run_code_checks }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -111,7 +111,7 @@ jobs:
     if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
       - name: Setup pnpm
@@ -119,7 +119,7 @@ jobs:
         with:
           run_install: false
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 24.x
           cache: pnpm
@@ -146,13 +146,13 @@ jobs:
         node-version: [24.x]
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Setup pnpm
         uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
         with:
           run_install: false
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
@@ -173,6 +173,66 @@ jobs:
           files: ./packages/library/coverage/lcov.info
           use_oidc: true
           fail_ci_if_error: true
+
+  examples:
+    name: Run examples
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - lint
+    if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
+        with:
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 24.x
+          cache: pnpm
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run examples
+        run: pnpm run test:examples
+
+  package-tests:
+    name: Run package tests
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - lint
+    if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
+        with:
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 24.x
+          cache: pnpm
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run package tests
+        run: pnpm run test:packages
 
   codecov-status:
     name: Codecov Status
@@ -298,6 +358,8 @@ jobs:
       - changes
       - lint
       - test
+      - examples
+      - package-tests
       - codecov-status
       - review-thread-resolution
     if: always()
@@ -340,6 +402,8 @@ jobs:
 
           require_result "lint" "${{ needs.lint.result }}" "${expected_code_job_result}"
           require_result "test" "${{ needs.test.result }}" "${expected_code_job_result}"
+          require_result "examples" "${{ needs.examples.result }}" "${expected_code_job_result}"
+          require_result "package-tests" "${{ needs['package-tests'].result }}" "${expected_code_job_result}"
           require_result "codecov-status" "${{ needs['codecov-status'].result }}" "${expected_code_job_result}"
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
             expected_review_thread_result="success"

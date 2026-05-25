@@ -8,6 +8,8 @@
   "scripts": {
     "build": "pnpm --filter event-store-adapter-js run build",
     "test": "pnpm --filter event-store-adapter-js run test",
+    "test:examples": "pnpm --filter @event-store-adapter-js/examples run test",
+    "test:packages": "pnpm run build && pnpm --filter @event-store-adapter-js/tests run test",
     "coverage": "pnpm --filter event-store-adapter-js run coverage",
     "lint": "pnpm --filter event-store-adapter-js run lint",
     "fmt": "pnpm --filter event-store-adapter-js run fmt",
