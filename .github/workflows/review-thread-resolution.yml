@@ -32,12 +32,15 @@ concurrency:
 
 jobs:
   unresolved-comments:
-    name: Check unresolved comments
+    # Keep this Actions job name distinct from the synthetic required check-run
+    # named "Check unresolved comments" so cancelled workflow runs are not
+    # confused with the current branch-protection result.
+    name: Evaluate unresolved comments
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event.pull_request != null || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Check unresolved comments
+      - name: Evaluate review-thread state
         env:
           GH_TOKEN: ${{ github.token }}
           OWNER: ${{ github.repository_owner }}
@@ -168,11 +171,10 @@ jobs:
               local check_run_error
               local existing_check_run_id
               local check_run_url
-              local create_if_missing="false"
-
-              if [[ "$EVENT_NAME" == "issue_comment" || "$EVENT_NAME" == "schedule" || "$EVENT_NAME" == "workflow_dispatch" ]]; then
-                create_if_missing="true"
-              fi
+              # The synthetic check is the stable required context. Create it
+              # on every eligible event because the Actions job intentionally
+              # uses a distinct name for UI clarity.
+              local create_if_missing="true"
 
               if (( ${#check_summary} > max_summary_chars )); then
                 truncation_suffix=$'\n\n... truncated for GitHub Checks API summary limit ...'
