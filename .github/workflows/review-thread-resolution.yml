@@ -514,6 +514,7 @@ jobs:
                             }
                             nodes {
                               url
+                              body
                               createdAt
                               updatedAt
                               authorAssociation
@@ -617,6 +618,7 @@ jobs:
                   | map(select((.body // "") != "" and .state != "DISMISSED"))
                   | map({
                       url,
+                      body,
                       createdAt: .submittedAt,
                       updatedAt: (.updatedAt // .submittedAt),
                       authorAssociation,
@@ -636,13 +638,27 @@ jobs:
               page=$((page + 1))
             done
 
+            # Ignore generated report comments that do not require PR-author acknowledgement.
             unacknowledged_top_level="$(
               jq -c --arg pr_author "$pr_author" --arg pr_author_type "$pr_author_type" '
+                def ignored_auto_report:
+                  (.author.login // "") as $author
+                  | (.body // "") as $body
+                  | (
+                      $author == "coderabbitai"
+                      and ($body | contains("<!-- This is an auto-generated comment: summarize by coderabbit.ai -->"))
+                    )
+                    or (
+                      $author == "codecov"
+                      and ($body | startswith("## [Codecov]("))
+                      and ($body | contains(" Report"))
+                    );
                 . as $comments
                 | [
                     $comments[]
                     | select(
-                        ((.author.login // "") != $pr_author)
+                        (ignored_auto_report | not)
+                        and ((.author.login // "") != $pr_author)
                         and (
                           $pr_author_type != "Bot"
                           or (
