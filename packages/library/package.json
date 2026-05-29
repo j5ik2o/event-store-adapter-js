@@ -2,7 +2,7 @@
   "name": "event-store-adapter-js",
   "version": "3.0.2-snapshot.14",
   "description": "This library is designed to turn DynamoDB into an Event Store for Event Sourcing.",
-  "packageManager": "pnpm@11.4.0",
+  "packageManager": "pnpm@11.5.0",
   "engines": {
     "node": ">=24.0.0"
   },
