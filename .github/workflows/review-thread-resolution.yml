@@ -43,5 +43,5 @@ jobs:
       statuses: write
     with:
       pr_number: ${{ inputs.pr_number }}
-      wait_for_other_checks: ${{ inputs.wait_for_other_checks }}
+      wait_for_other_checks: ${{ inputs.wait_for_other_checks || 'true' }}
       ci_ref: a672e3d9fca1de4b7b6b648c08c9ad263267dff6
