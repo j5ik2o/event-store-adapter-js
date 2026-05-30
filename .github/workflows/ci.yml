@@ -343,15 +343,14 @@ jobs:
     if: ${{ always() && github.event_name == 'pull_request' }}
     permissions:
       contents: read
-      actions: write
       checks: write
       issues: read
       pull-requests: read
       statuses: write
-    uses: ./.github/workflows/review-thread-resolution.yml
+    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@a672e3d9fca1de4b7b6b648c08c9ad263267dff6
     with:
-      pr_number: ${{ format('{0}', github.event.pull_request.number) }}
-      wait_for_other_checks: false
+      wait_for_other_checks: "false"
+      ci_ref: a672e3d9fca1de4b7b6b648c08c9ad263267dff6
 
   ci-success:
     name: CI Success
