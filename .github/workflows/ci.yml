@@ -347,10 +347,10 @@ jobs:
       issues: read
       pull-requests: read
       statuses: write
-    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@a672e3d9fca1de4b7b6b648c08c9ad263267dff6
+    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@560170b61c74a9a643a483a052ccbad0d6ad409a
     with:
       wait_for_other_checks: "false"
-      ci_ref: a672e3d9fca1de4b7b6b648c08c9ad263267dff6
+      ci_ref: 560170b61c74a9a643a483a052ccbad0d6ad409a
 
   ci-success:
     name: CI Success

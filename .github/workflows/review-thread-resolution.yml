@@ -34,7 +34,7 @@ permissions:
 jobs:
   refresh:
     name: Refresh review-thread state
-    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@a672e3d9fca1de4b7b6b648c08c9ad263267dff6
+    uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@560170b61c74a9a643a483a052ccbad0d6ad409a
     permissions:
       contents: read
       checks: write
@@ -44,4 +44,4 @@ jobs:
     with:
       pr_number: ${{ inputs.pr_number }}
       wait_for_other_checks: ${{ inputs.wait_for_other_checks || 'true' }}
-      ci_ref: a672e3d9fca1de4b7b6b648c08c9ad263267dff6
+      ci_ref: 560170b61c74a9a643a483a052ccbad0d6ad409a
