@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
 allowBuilds:
+  "@parcel/watcher": false
   aws-sdk: false
   cpu-features: false
   protobufjs: false

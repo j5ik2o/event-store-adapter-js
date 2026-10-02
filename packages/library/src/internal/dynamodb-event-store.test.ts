@@ -178,19 +178,16 @@ describe("DynamoDBEventStore", () => {
     }).toThrow("must be a function");
   });
 
-  test.each([
-    0,
-    -1,
-    1.5,
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-  ])("rejects invalid shardCount %s", (shardCount) => {
-    expect(() => {
-      createEventStore(dynamodbClient, undefined, {
-        shardCount,
-      });
-    }).toThrow("Invalid shardCount configuration");
-  });
+  test.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid shardCount %s",
+    (shardCount) => {
+      expect(() => {
+        createEventStore(dynamodbClient, undefined, {
+          shardCount,
+        });
+      }).toThrow("Invalid shardCount configuration");
+    },
+  );
 
   test(
     "uses custom shard selector for DynamoDB keys",

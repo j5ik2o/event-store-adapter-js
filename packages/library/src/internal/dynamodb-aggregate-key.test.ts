@@ -23,25 +23,23 @@ describe("DynamoDBAggregateKey", () => {
     expect(shardSelector.selectShardId).toHaveBeenCalledWith(aggregateId, 32);
   });
 
-  test.each([
-    -1,
-    1.5,
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-  ])("rejects invalid sequenceNumber %s", (sequenceNumber) => {
-    const shardSelector: ShardSelector<UserAccountId> = {
-      selectShardId: jest.fn(() => ShardId.create(7)),
-    };
-    const aggregateId = UserAccountId.create("user-1");
+  test.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid sequenceNumber %s",
+    (sequenceNumber) => {
+      const shardSelector: ShardSelector<UserAccountId> = {
+        selectShardId: jest.fn(() => ShardId.create(7)),
+      };
+      const aggregateId = UserAccountId.create("user-1");
 
-    expect(() =>
-      createDynamoDBAggregateKey(
-        aggregateId,
-        sequenceNumber,
-        shardSelector,
-        ShardCount.create(32),
-      ),
-    ).toThrow("sequenceNumber must be a non-negative safe integer");
-    expect(shardSelector.selectShardId).not.toHaveBeenCalled();
-  });
+      expect(() =>
+        createDynamoDBAggregateKey(
+          aggregateId,
+          sequenceNumber,
+          shardSelector,
+          ShardCount.create(32),
+        ),
+      ).toThrow("sequenceNumber must be a non-negative safe integer");
+      expect(shardSelector.selectShardId).not.toHaveBeenCalled();
+    },
+  );
 });

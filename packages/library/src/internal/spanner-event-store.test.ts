@@ -472,24 +472,21 @@ describe("SpannerEventStore configuration", () => {
     }).toThrow("must be a function");
   });
 
-  test.each([
-    0,
-    -1,
-    1.5,
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-  ])("rejects invalid shardCount %s", (shardCount) => {
-    expect(() => {
-      createSpannerEventStore<UserAccountId, UserAccount, UserAccountEvent>({
-        database,
-        journalTableName: JOURNAL_TABLE_NAME,
-        snapshotTableName: SNAPSHOT_TABLE_NAME,
-        shardCount,
-        eventConverter: convertJSONtoUserAccountEvent,
-        snapshotConverter: convertJSONToUserAccount,
-      });
-    }).toThrow("Invalid shardCount configuration");
-  });
+  test.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid shardCount %s",
+    (shardCount) => {
+      expect(() => {
+        createSpannerEventStore<UserAccountId, UserAccount, UserAccountEvent>({
+          database,
+          journalTableName: JOURNAL_TABLE_NAME,
+          snapshotTableName: SNAPSHOT_TABLE_NAME,
+          shardCount,
+          eventConverter: convertJSONtoUserAccountEvent,
+          snapshotConverter: convertJSONToUserAccount,
+        });
+      }).toThrow("Invalid shardCount configuration");
+    },
+  );
 
   test("rejects invalid Spanner table names", () => {
     expect(() => {
@@ -854,21 +851,24 @@ describe("SpannerEventStore", () => {
   test.each([
     ["string", "string"],
     ["wrapped", "wrapped"],
-  ] as const)("purges retained snapshots when sequence numbers are returned as %s", async (_, retainedSequenceNumberFormat) => {
-    const eventStore = createFakeEventStore(
-      1,
-      createFakeSpannerDatabase({ retainedSequenceNumberFormat }),
-    );
-    const id = UserAccountId.create(ulid());
-    const [userAccount1, created] = UserAccount.create(id, "Alice");
-    await expectOk(eventStore.persistEventAndSnapshot(created, userAccount1));
+  ] as const)(
+    "purges retained snapshots when sequence numbers are returned as %s",
+    async (_, retainedSequenceNumberFormat) => {
+      const eventStore = createFakeEventStore(
+        1,
+        createFakeSpannerDatabase({ retainedSequenceNumberFormat }),
+      );
+      const id = UserAccountId.create(ulid());
+      const [userAccount1, created] = UserAccount.create(id, "Alice");
+      await expectOk(eventStore.persistEventAndSnapshot(created, userAccount1));
 
-    const [userAccount2, renamed] = userAccount1.rename("Bob");
-    await expectOk(eventStore.persistEventAndSnapshot(renamed, userAccount2));
+      const [userAccount2, renamed] = userAccount1.rename("Bob");
+      await expectOk(eventStore.persistEventAndSnapshot(renamed, userAccount2));
 
-    const latestSnapshot = await eventStore.getLatestSnapshotById(id);
-    expect(latestSnapshot?.name).toBe("Bob");
-  });
+      const latestSnapshot = await eventStore.getLatestSnapshotById(id);
+      expect(latestSnapshot?.name).toBe("Bob");
+    },
+  );
 
   test.each([
     ["base64 payload", { snapshotPayloadFormat: "base64" }],
@@ -930,17 +930,22 @@ describe("SpannerEventStore", () => {
       { missingSnapshotPayloadField: true },
       "payload is undefined",
     ],
-  ] as const)("rejects malformed Spanner rows with %s", async (_, options, message) => {
-    const eventStore = createFakeEventStore(
-      undefined,
-      createFakeSpannerDatabase(options),
-    );
-    const id = UserAccountId.create(ulid());
-    const [userAccount1, created] = UserAccount.create(id, "Alice");
-    await expectOk(eventStore.persistEventAndSnapshot(created, userAccount1));
+  ] as const)(
+    "rejects malformed Spanner rows with %s",
+    async (_, options, message) => {
+      const eventStore = createFakeEventStore(
+        undefined,
+        createFakeSpannerDatabase(options),
+      );
+      const id = UserAccountId.create(ulid());
+      const [userAccount1, created] = UserAccount.create(id, "Alice");
+      await expectOk(eventStore.persistEventAndSnapshot(created, userAccount1));
 
-    await expect(eventStore.getLatestSnapshotById(id)).rejects.toThrow(message);
-  });
+      await expect(eventStore.getLatestSnapshotById(id)).rejects.toThrow(
+        message,
+      );
+    },
+  );
 
   test("rejects invalid keepSnapshotCount at construction", () => {
     expect(() => createFakeEventStore(Number.NaN)).toThrow(

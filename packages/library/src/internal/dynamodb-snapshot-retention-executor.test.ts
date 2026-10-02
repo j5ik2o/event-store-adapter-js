@@ -250,72 +250,80 @@ describe("DynamoDBSnapshotRetentionExecutor", () => {
     [Number.NaN, "NaN"],
     [Number.POSITIVE_INFINITY, "Infinity"],
     [Number.NEGATIVE_INFINITY, "-Infinity"],
-  ])("rejects non-finite keep snapshot count %s", async (keepSnapshotCount, expectedValue) => {
-    const sentCommands: unknown[] = [];
-    const dynamodbClient = {
-      send: jest.fn(async (command: unknown) => {
-        sentCommands.push(command);
-        if (command instanceof QueryCommand) {
-          return {
-            Items: [
-              {
-                pkey: { S: "snapshot-pkey-1" },
-                skey: { S: "snapshot-skey-1" },
-                ttl: { N: "0" },
-              },
-              {
-                pkey: { S: "snapshot-pkey-2" },
-                skey: { S: "snapshot-skey-2" },
-                ttl: { N: "0" },
-              },
-            ],
-          };
-        }
-        return {};
-      }),
-    } as unknown as DynamoDBClient;
-    const executor = createDynamoDBSnapshotRetentionExecutor(
-      dynamodbClient,
-      "snapshot",
-      "snapshot-aid-index",
-      "snapshot-active-ttl-index",
-    );
+  ])(
+    "rejects non-finite keep snapshot count %s",
+    async (keepSnapshotCount, expectedValue) => {
+      const sentCommands: unknown[] = [];
+      const dynamodbClient = {
+        send: jest.fn(async (command: unknown) => {
+          sentCommands.push(command);
+          if (command instanceof QueryCommand) {
+            return {
+              Items: [
+                {
+                  pkey: { S: "snapshot-pkey-1" },
+                  skey: { S: "snapshot-skey-1" },
+                  ttl: { N: "0" },
+                },
+                {
+                  pkey: { S: "snapshot-pkey-2" },
+                  skey: { S: "snapshot-skey-2" },
+                  ttl: { N: "0" },
+                },
+              ],
+            };
+          }
+          return {};
+        }),
+      } as unknown as DynamoDBClient;
+      const executor = createDynamoDBSnapshotRetentionExecutor(
+        dynamodbClient,
+        "snapshot",
+        "snapshot-aid-index",
+        "snapshot-active-ttl-index",
+      );
 
-    await expect(
-      executor.purgeExcessSnapshots(
-        TestAggregateId.create("1"),
-        keepSnapshotCount,
-        undefined,
-      ),
-    ).rejects.toThrow(`keepSnapshotCount must be finite, got ${expectedValue}`);
-    expect(sentCommands).toHaveLength(0);
-  });
+      await expect(
+        executor.purgeExcessSnapshots(
+          TestAggregateId.create("1"),
+          keepSnapshotCount,
+          undefined,
+        ),
+      ).rejects.toThrow(
+        `keepSnapshotCount must be finite, got ${expectedValue}`,
+      );
+      expect(sentCommands).toHaveLength(0);
+    },
+  );
 
   test.each([
     [Number.NaN, "deleteTtlMillis must be finite"],
     [Number.POSITIVE_INFINITY, "deleteTtlMillis must be finite"],
     [-1, "deleteTtlMillis must be non-negative"],
     [-0, "deleteTtlMillis must be non-negative, got -0"],
-  ])("rejects invalid delete ttl millis %s", async (deleteTtlMillis, message) => {
-    const dynamodbClient = {
-      send: jest.fn(),
-    } as unknown as DynamoDBClient;
-    const executor = createDynamoDBSnapshotRetentionExecutor(
-      dynamodbClient,
-      "snapshot",
-      "snapshot-aid-index",
-      "snapshot-active-ttl-index",
-    );
+  ])(
+    "rejects invalid delete ttl millis %s",
+    async (deleteTtlMillis, message) => {
+      const dynamodbClient = {
+        send: jest.fn(),
+      } as unknown as DynamoDBClient;
+      const executor = createDynamoDBSnapshotRetentionExecutor(
+        dynamodbClient,
+        "snapshot",
+        "snapshot-aid-index",
+        "snapshot-active-ttl-index",
+      );
 
-    await expect(
-      executor.purgeExcessSnapshots(
-        TestAggregateId.create("1"),
-        1,
-        deleteTtlMillis,
-      ),
-    ).rejects.toThrow(message);
-    expect(dynamodbClient.send).not.toHaveBeenCalled();
-  });
+      await expect(
+        executor.purgeExcessSnapshots(
+          TestAggregateId.create("1"),
+          1,
+          deleteTtlMillis,
+        ),
+      ).rejects.toThrow(message);
+      expect(dynamodbClient.send).not.toHaveBeenCalled();
+    },
+  );
 
   test("retries unprocessed snapshot deletes", async () => {
     const sentCommands: unknown[] = [];
