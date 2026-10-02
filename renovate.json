@@ -14,9 +14,8 @@
       "automerge": true
     },
     {
-      "description": "pnpm の24時間の公開後待機に合わせ、@types/node の公開直後の更新による CI の依存取得失敗を防ぐ",
+      "description": "pnpm の24時間の公開後待機に合わせ、npm 依存の公開直後の更新による CI の依存取得失敗を防ぐ",
       "matchDatasources": ["npm"],
-      "matchPackageNames": ["@types/node"],
       "minimumReleaseAge": "1 day"
     }
   ],
