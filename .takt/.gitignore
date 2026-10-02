@@ -9,10 +9,10 @@
 !runtime.yaml
 !.takt-workflows
 
-# Facets, workflows and tools (version-controlled)
-!tools/
-!tools/**
-tools/**/target/
+# Local tools (not version-controlled)
+tools/
+
+# Facets and workflows (version-controlled)
 !workflows/
 !workflows/**
 !steps/
