@@ -1,0 +1,46 @@
+# event-store-adapter グループ共通の TAKT の割り当てとプロファイル。
+#
+# 各リポジトリの .takt/runtime.yaml は、このファイルをそのまま写して置く(docs/operations/repository-policy.md の 8 章)。
+# 割り当てを変えるときは、まずこのファイルを変え、各リポジトリへ同じ内容を配る。
+# ~/.takt/runtime.yaml (全体) には何も書かない。全体の設定はすべてのプロジェクトに重ねて読まれるため。
+#
+# 役割の分担(オーナーの指定、2026-10-03):
+#   設計(計画・再計画)        … Opus 5.5
+#   レビュー(裁定・最終ゲート) … GPT-6.1-Sol(Codex)。TAKT 0.67 以上が要る
+#   実装(テスト・実装)        … Sonnet 5.5
+#
+# ステップの名前は takt-workflows の flash-default バンドル(ja)のもの。
+# 上流のテンプレート: https://github.com/ideo-plus/takt-workflows/blob/main/runtime.project.yaml
+version: 1
+companion:
+  enabled: true
+provider:
+  defaults: { profile: t2 }
+  profiles:
+    # T0: 実装。テストの作成と実装
+    t0-test-code:       { provider: claude, model: claude-sonnet-5-5 }
+    t0-production-code: { provider: claude, model: claude-sonnet-5-5 }
+    # T1: 構造化出力に対応した provider が要る(selector と companion で使う)
+    t1: { provider: claude, model: claude-sonnet-5-5 }
+    # T2: 既定。下の割り当てに当たらないステップ
+    t2: { provider: claude, model: claude-opus-5-5 }
+    # T3: 設計は Opus 5.5、レビューの裁定と最終ゲートは別ベンダーの GPT-6.1-Sol
+    t3-plan:  { provider: claude, model: claude-opus-5-5 }
+    t3-judge: { provider: codex,  model: gpt-6.1-sol, options: { reasoning_effort: high } }
+  targets:
+    steps:
+      development-core/plan:                     { profile: t3-plan }
+      development-core/replan:                   { profile: t3-plan }
+      peer-review/review-adjudication:           { profile: t3-judge }
+      peer-review/final-gate:                    { profile: t3-judge }
+      development-core/write_tests:              { ladder: [t0-test-code, t1, t2] }
+      flash-implement-dynamic/implement:         { profile: t0-production-code }
+      flash-implement-dynamic/reimplement:       { profile: t1 }
+      flash-implement-dynamic/reimplement_final: { profile: t2 }
+      flash-remediation-dynamic/fix:             { ladder: [t1, t2] }
+    internal_agents:
+      selector: { profile: t1 }
+    companions:
+      ai-antipattern-review-companion: { profile: t1 }
+      testing-review-companion:        { profile: t1 }
+      review-companion-moderator:      { profile: t1 }

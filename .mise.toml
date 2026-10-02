@@ -1,2 +1,3 @@
 [tools]
+"npm:takt" = "0.67.1"
 node = "24"

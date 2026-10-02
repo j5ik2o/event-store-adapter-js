@@ -1,0 +1,47 @@
+# builtin steps/development-core-write-tests.yaml の project 層 shadowing。
+# builtin development-core.yaml の write_tests step は `uses: development-core-write-tests` で
+# この fragment を参照し、fragment の解決順は project .takt/steps/ → global → builtin のため、
+# development-core をコピーせずに write_tests へ promotion を注入できる。
+#
+# 本文は builtin を写し、`promotion: [{at: 2}, {at: 3}]` のみ追加している。
+# runtime.yaml: development-core/write_tests → ladder [<t0-test-code>, <t1>, <t2>]
+#
+# 注意: project 層 shadowing のため、このプロジェクト内で development-core を使う全 workflow
+# （builtin default など）の write_tests にも同じ promotion が適用される。ladder が runtime.yaml に
+# 無い workflow では promotion は no-op（警告のみ）。
+params:
+  testing_policy:
+    type: facet_ref[]
+    facet_kind: policy
+  testing_knowledge:
+    type: facet_ref[]
+    facet_kind: knowledge
+  testing_instruction:
+    type: facet_ref
+    facet_kind: instruction
+  testing_report_format:
+    type: facet_ref
+    facet_kind: report_format
+name: write_tests
+capabilities: edit
+tags:
+  - coding
+  - test-planning
+edit: true
+persona: coder
+policy:
+  - contract-change
+  - $param: testing_policy
+knowledge:
+  $param: testing_knowledge
+required_permission_mode: edit
+instruction:
+  $param: testing_instruction
+output_contracts:
+  report:
+    - name: test-report.md
+      format:
+        $param: testing_report_format
+promotion:
+  - at: 2
+  - at: 3

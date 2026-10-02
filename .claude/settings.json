@@ -37,7 +37,12 @@
       "Bash(find:*)"
     ],
     "ask": [],
-    "deny": []
+    "deny": [
+      "Read(./.takt/tools/**)",
+      "Read(./.takt/facets/**)",
+      "Read(./.takt/workflows/**)",
+      "Read(./.takt/steps/**)"
+    ]
   },
   "statusLine": {
     "type": "command",

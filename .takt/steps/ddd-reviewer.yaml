@@ -1,0 +1,24 @@
+params:
+  review_policy_additions:
+    type: facet_ref[]
+    facet_kind: policy
+  review_knowledge_additions:
+    type: facet_ref[]
+    facet_kind: knowledge
+name: ddd-review
+capabilities: readonly
+tags: [review]
+edit: false
+persona: ddd-reviewer
+policy:
+  - contract-change
+  - review
+  - $param: review_policy_additions
+knowledge:
+  $param: review_knowledge_additions
+instruction: ddd-review
+pass_previous_response: false
+output_contracts:
+  report:
+    - name: ddd-review.md
+      format: ddd-review

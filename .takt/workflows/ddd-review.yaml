@@ -1,0 +1,192 @@
+name: ddd-review
+description: "DDD ワークフロー用の builtin development-review のコピー。DDD 規約と衝突する backend と CQRS+ES のレビュアーを外し、常に実行する DDD レビュアーを加えている。"
+all_steps:
+  rules:
+    - ref: findings-handling
+      position: before_instruction
+    - ref: peer-review-scope
+      position: before_instruction
+    - ref: existing-finding-lookup
+      position: before_instruction
+    - ref: plain-terminology
+      position: before_instruction
+
+subworkflow:
+  callable: true
+  visibility: internal
+  returns:
+    - needs_fix
+  params:
+    review_policy_additions:
+      type: facet_ref[]
+      facet_kind: policy
+      default: []
+    review_knowledge_additions:
+      type: facet_ref[]
+      facet_kind: knowledge
+      default: [ddd-modeling]
+    security_review_knowledge_additions:
+      type: facet_ref[]
+      facet_kind: knowledge
+      default: []
+    security_review_pool:
+      type: facet_pool_ref
+      default: security-review-facets
+    architecture_review_instruction:
+      type: facet_ref
+      facet_kind: instruction
+      default: architecture-review
+    security_review_instruction:
+      type: facet_ref
+      facet_kind: instruction
+      default: security-review
+    testing_review_instruction:
+      type: facet_ref
+      facet_kind: instruction
+      default: testing-review
+    coding_review_instruction:
+      type: facet_ref
+      facet_kind: instruction
+      default: coding-review
+    ai_antipattern_review_instruction:
+      type: facet_ref
+      facet_kind: instruction
+      default: ai-antipattern-review
+    frontend_review_instruction:
+      type: facet_ref
+      facet_kind: instruction
+      default: frontend-review
+    cqrs_es_review_instruction:
+      type: facet_ref
+      facet_kind: instruction
+      default: cqrs-es-review
+# builtin の親ワークフローからこの project workflow へ渡される facet 引数は、TAKT の信頼境界により、
+# この section map に名前で宣言されていなければ拒否される。バンドル固有の facet は実ファイルを、
+# builtin の facet は `{extends:<builtin名>}` だけの参照ファイルを指す。
+policies:
+  ddd-domain-model: ../facets/policies/ddd-domain-model.md
+  ddd-domain-layer: ../facets/policies/ddd-domain-layer.md
+  ddd-use-case-layer: ../facets/policies/ddd-use-case-layer.md
+  ddd-interface-adapter-layer: ../facets/policies/ddd-interface-adapter-layer.md
+  ddd-layer-dependency: ../facets/policies/ddd-layer-dependency.md
+  ddd-domain-packaging: ../facets/policies/ddd-domain-packaging.md
+  ddd-module-layout: ../facets/policies/ddd-module-layout.md
+  ddd-rust: ../facets/policies/ddd-rust.md
+  ddd-typescript: ../facets/policies/ddd-typescript.md
+knowledge:
+  architecture: ../facets/knowledge/builtin-architecture.md
+  unit-testing: ../facets/knowledge/builtin-unit-testing.md
+  e2e-testing: ../facets/knowledge/builtin-e2e-testing.md
+  ddd-modeling: ../facets/knowledge/ddd-modeling.md
+  ddd-rust: ../facets/knowledge/ddd-rust.md
+  ddd-typescript: ../facets/knowledge/ddd-typescript.md
+instructions:
+  architecture-review: ../facets/instructions/builtin-architecture-review.md
+  follow-up-architecture-review: ../facets/instructions/builtin-follow-up-architecture-review.md
+  security-review: ../facets/instructions/builtin-security-review.md
+  follow-up-security-review: ../facets/instructions/builtin-follow-up-security-review.md
+  testing-review: ../facets/instructions/builtin-testing-review.md
+  follow-up-testing-review: ../facets/instructions/builtin-follow-up-testing-review.md
+  coding-review: ../facets/instructions/builtin-coding-review.md
+  follow-up-coding-review: ../facets/instructions/builtin-follow-up-coding-review.md
+  frontend-review: ../facets/instructions/builtin-frontend-review.md
+  follow-up-frontend-review: ../facets/instructions/builtin-follow-up-frontend-review.md
+  cqrs-es-review: ../facets/instructions/builtin-cqrs-es-review.md
+  follow-up-cqrs-es-review: ../facets/instructions/builtin-follow-up-cqrs-es-review.md
+  initial-ai-antipattern-review: ../facets/instructions/builtin-initial-ai-antipattern-review.md
+  follow-up-ai-antipattern-review: ../facets/instructions/builtin-follow-up-ai-antipattern-review.md
+facet_pools:
+  security-review-facets:
+    uses: security-review-facets
+initial_step: review
+steps:
+  - name: review
+    uses: development-review
+    parallel:
+      fixed:
+        - uses: development-ai-antipattern-reviewer
+          with:
+            review_policy_additions:
+              $param: review_policy_additions
+            review_knowledge_additions:
+              $param: review_knowledge_additions
+            ai_antipattern_review_instruction:
+              $param: ai_antipattern_review_instruction
+          rules: &reviewer_rules
+            - condition: approved
+            - condition: needs_fix
+        - uses: ddd-reviewer
+          with:
+            review_policy_additions:
+              $param: review_policy_additions
+            review_knowledge_additions:
+              $param: review_knowledge_additions
+          rules: *reviewer_rules
+      pool:
+        - uses: development-architecture-reviewer
+          with:
+            review_policy_additions:
+              $param: review_policy_additions
+            review_knowledge_additions:
+              $param: review_knowledge_additions
+            architecture_review_instruction:
+              $param: architecture_review_instruction
+          rules: *reviewer_rules
+        - uses: peer-review-frontend-reviewer
+          description: UI、コンポーネント、状態管理、アクセシビリティをレビューする
+          pass_previous_response: false
+          with:
+            review_policy_additions:
+              $param: review_policy_additions
+            review_knowledge_additions:
+              $param: review_knowledge_additions
+            frontend_review_instruction:
+              $param: frontend_review_instruction
+          rules: *reviewer_rules
+        - uses: development-security-reviewer
+          with:
+            review_policy_additions:
+              $param: review_policy_additions
+            security_review_knowledge_additions:
+              $param: security_review_knowledge_additions
+            security_review_pool:
+              $param: security_review_pool
+            security_review_instruction:
+              $param: security_review_instruction
+          rules: *reviewer_rules
+        - uses: development-testing-reviewer
+          with:
+            review_policy_additions:
+              $param: review_policy_additions
+            review_knowledge_additions:
+              $param: review_knowledge_additions
+            testing_review_instruction:
+              $param: testing_review_instruction
+          rules: *reviewer_rules
+    rules:
+      self:
+        - condition: any("error")
+          next: review
+        - condition: all("approved")
+          next: COMPLETE
+        - condition: any("needs_fix")
+          return: needs_fix
+      parallel:
+        ddd-review:
+          - condition: approved
+          - condition: needs_fix
+        ai-antipattern-review:
+          - condition: approved
+          - condition: needs_fix
+        architecture-review:
+          - condition: approved
+          - condition: needs_fix
+        frontend-review:
+          - condition: approved
+          - condition: needs_fix
+        security-review:
+          - condition: approved
+          - condition: needs_fix
+        testing-review:
+          - condition: approved
+          - condition: needs_fix
