@@ -1,0 +1,11 @@
+# event-store-adapter グループ共通の TAKT のプロジェクト設定。
+# 各リポジトリの .takt/config.yaml は、このファイルをそのまま写して置く(docs/operations/repository-policy.md の 8 章)。
+# 上流のテンプレート: https://github.com/ideo-plus/takt-workflows/blob/main/config.project.yaml
+language: ja
+auto_pr: false
+concurrency: 1
+# 利用上限に当たったステップは、失敗させずに次の provider / model で実行し直す
+rate_limit_fallback:
+  switch_chain:
+    - { provider: claude, model: claude-opus-5-5 }
+    - { provider: codex,  model: gpt-6.1-sol }
