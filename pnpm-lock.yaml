@@ -15,7 +15,7 @@ importers:
         version: 3.1145.0
       '@google-cloud/spanner':
         specifier: ^8.7.1
-        version: 8.7.1(supports-color@8.1.1)
+        version: 8.13.0(supports-color@8.1.1)
       event-store-adapter-js:
         specifier: workspace:*
         version: link:../library
@@ -43,7 +43,7 @@ importers:
         version: 3.1145.0
       '@google-cloud/spanner':
         specifier: ^8.7.1
-        version: 8.7.1(supports-color@8.1.1)
+        version: 8.13.0(supports-color@8.1.1)
       aws-sdk:
         specifier: ^2.1459.0
         version: 2.1693.0
@@ -498,10 +498,6 @@ packages:
     resolution: {integrity: sha512-MmaX6HeSvyPbWGwFq7mXdo0uQZLGBYCwziiLIGq5JVX+/bdI3SAq6bP98trV5eTWfLuvsMcIC1YJOF2vfteLFA==}
     engines: {node: '>=14.0.0'}
 
-  '@google-cloud/projectify@5.0.0':
-    resolution: {integrity: sha512-XXQLaIcLrOAMWvRrzz+mlUGtN6vlVNja3XQbMqRi/V7XJTAVwib3VcKd7oRwyZPkp7rBVlHGcaqdyGRrcnkhlA==}
-    engines: {node: '>=18'}
-
   '@google-cloud/promisify@4.1.0':
     resolution: {integrity: sha512-G/FQx5cE/+DqBbOpA5jKsegGwdPniU6PuIEMt+qxWgFxvxuFOzVmp6zYchtYuwAWV5/8Dgs0yAmjvNZv3uXLQg==}
     engines: {node: '>=18'}
@@ -510,8 +506,12 @@ packages:
     resolution: {integrity: sha512-N8qS6dlORGHwk7WjGXKOSsLjIjNINCPicsOX6gyyLiYk7mq3MtII96NZ9N2ahwA2vnkLmZODOIH9rlNniYWvCQ==}
     engines: {node: '>=18'}
 
-  '@google-cloud/spanner@8.7.1':
-    resolution: {integrity: sha512-X3eXi6l6qj+Tn8eRdeSvRzLvpLrkmINTD4bzZwuwv3S/y4RDck/UlG8CzE41i+cXxrsDYoNxU/KkgVz7Xz6/KQ==}
+  '@google-cloud/spanner-api@0.2.0':
+    resolution: {integrity: sha512-aWvKaAUtc2qWyfZ0bARWEe9YYDraZPAjbvcjerw4d5DiMMkDoybOyPHai1hVP5JL/7oPjtjAUvmHuMn/STdXtA==}
+    engines: {node: '>=18'}
+
+  '@google-cloud/spanner@8.13.0':
+    resolution: {integrity: sha512-qwfwJIvTozjMvLeSawtR9G/pic69+T5+YcI64nojZwZZ+8dZWB049R2tvYrXAugqfX0ceuDtDjz25mQmmYxugQ==}
     engines: {node: '>=18'}
 
   '@grpc/grpc-js@1.14.4':
@@ -825,9 +825,6 @@ packages:
   '@types/dockerode@4.0.1':
     resolution: {integrity: sha512-cmUpB+dPN955PxBEuXE3f6lKO1hHiIGYJA46IVF3BJpNsZGvtBDcRnlrHYHtOH/B6vtDOyl2kZ2ShAu3mgc27Q==}
 
-  '@types/duplexify@3.6.5':
-    resolution: {integrity: sha512-fB56ACzlW91UdZ5F3VXplVMDngO8QaX5Y2mjvADtN01TT2TMy4WjF0Lg+tFDvt4uMBeTe4SgaD+qCrA7dL5/tA==}
-
   '@types/esrecurse@4.3.1':
     resolution: {integrity: sha512-xJBAbDifo5hpffDBuHl0Y8ywswbiAp/Wi7Y/GtAgSlZyIABppyurxVueOPE8LUQOxdlgi6Zqce7uoEpqNTeiUw==}
 
@@ -857,9 +854,6 @@ packages:
 
   '@types/node@24.19.0':
     resolution: {integrity: sha512-zY+5tKxXdhGh1PYI0ac+7juvEu4OI6vWtVVoj5i2m42jxAY1U+zHGt6QCyOFwykdP62sM3MJ9stoYYUw5aCWew==}
-
-  '@types/pumpify@1.4.5':
-    resolution: {integrity: sha512-BGVAQyK5yJdfIII230fVYGY47V63hUNAhryuuS3b4lEN2LNwxUXFKsEf8QLDCjmZuimlj23BHppJgcrGvNtqKg==}
 
   '@types/ssh2-streams@0.1.13':
     resolution: {integrity: sha512-faHyY3brO9oLEA0QlcO8N2wT7R0+1sHWZvQ+y3rMLwdY1ZyS1z0W3t65j9PqT4HmQ6ALzNe7RZlNuCNE0wBSWA==}
@@ -1148,9 +1142,6 @@ packages:
   async-lock@1.4.1:
     resolution: {integrity: sha512-Az2ZTpuytrtqENulXwO3GGv1Bztugx6TT37NIo7imr/Qo0gsYiGtSdBa2B6fsXhTpVZDNfu1Qn3pk531e3q+nQ==}
 
-  async@2.6.4:
-    resolution: {integrity: sha512-mzo5dfJYwAn29PeiJ0zvwTo04zj8HDJj0Mn8TD7sno7q12prdbnasKJHhkm2c1LgrhlJ0teaea8860oxi51mGA==}
-
   async@3.2.6:
     resolution: {integrity: sha512-htCUDlxyyCLMgaM3xXg0C0LW2xqfuQ6p05pCEIsXuyQ+a1koYKTuBMzRNwmybfLgvJDMd0r1LTn4+E0Ti6C2AA==}
 
@@ -1351,9 +1342,6 @@ packages:
     resolution: {integrity: sha512-kWWXztvZ5SBQV+eRgKFeh8q5sLuZY2+8WUIzlxWVTg+oGwY14qylx1KbKzHd8P6ZYkAg0xyIDU9JMHhyJMZ1jw==}
     engines: {node: '>=10'}
 
-  checkpoint-stream@0.1.2:
-    resolution: {integrity: sha512-eYXIcydL3mPjjEVLxHdi1ISgTwmxGJZ8vyJ3lYVvFTDRyTOZMTbKZdRJqiA7Gi1rPcwOyyzcrZmGLL8ff7e69w==}
-
   chownr@1.1.4:
     resolution: {integrity: sha512-jJ0bqzaylmJtVnNgzTeSOs8DPavpbYgEr/b0YL8/2GO3xJEhInFmhKMUnEJQjZumK7KXGFhUy89PrsJWlakBVg==}
 
@@ -1492,9 +1480,6 @@ packages:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
     engines: {node: '>= 0.4'}
 
-  duplexify@3.7.1:
-    resolution: {integrity: sha512-07z8uv2wMyS51kKhD1KsdXJg5WQ6t93RneqRxUHnskXVtlYYkLqM0gqStQZ3pj073g687jPCHrqNfCzawLYh5g==}
-
   duplexify@4.1.3:
     resolution: {integrity: sha512-M3BmBhwJRZsSx38lZyhE53Csddgzl5R7xGJNk7CVddZD6CcmwMCH8J+7AprIrQKH7TonKxaCjcv27Qmf+sQ+oA==}
 
@@ -1603,9 +1588,6 @@ packages:
 
   eventemitter3@4.0.7:
     resolution: {integrity: sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw==}
-
-  events-intercept@2.0.0:
-    resolution: {integrity: sha512-blk1va0zol9QOrdZt0rFXo5KMkNPVSp92Eju/Qz8THwKWKRKeE0T8Br/1aW6+Edkyq9xHYgYxn2QtOnUKPUp+Q==}
 
   events-universal@1.0.1:
     resolution: {integrity: sha512-LUd5euvbMLpwOF8m6ivPCbhQeSiYVNb8Vs0fQ8QjXo0JTkEHpz8pxdQf0gStltaPpw0Cca8b39KxvK9cfKRiAw==}
@@ -1914,9 +1896,6 @@ packages:
   is-regex@1.2.1:
     resolution: {integrity: sha512-MjYsKHO5O7mCsmRGxWcLWheFqN9DJ/2TmngvjKXihe6efViPqc274+Fx/4fYj/r03+ESvBdTXK0V6tA3rgez1g==}
     engines: {node: '>= 0.4'}
-
-  is-stream-ended@0.1.4:
-    resolution: {integrity: sha512-xj0XPvmr7bQFTvirqnFr50o0hQIh6ZItDqloxt5aJrR4NQsYeSsyFQERYGCAzfindAcnKjINnwEEgLx4IqVzQw==}
 
   is-stream@2.0.1:
     resolution: {integrity: sha512-hFoiJiTl63nn+kstHGBtewWSKnQLpyb155KHheA1l39uvtO9nWIop1p3udqPcUd/xbF1VLMO4n7OI6p7RbngDg==}
@@ -2423,14 +2402,8 @@ packages:
     resolution: {integrity: sha512-4K0myLaWL5EteuSAro91EGFgcfVgxb64Jx+7oDAY6GOkXD4M69yuSEljNcInGVCA5sOPxmZ/EqDLj2x0Q0+Ygg==}
     engines: {node: '>=12.0.0'}
 
-  pump@2.0.1:
-    resolution: {integrity: sha512-ruPMNRkN3MHP1cWJc9OWr+T/xDP0jhXYCLfJcBuX54hhfIBnaQmAUMfDcG4DM5UMWByBbJY69QSphm3jtDKIkA==}
-
   pump@3.0.4:
     resolution: {integrity: sha512-VS7sjc6KR7e1ukRFhQSY5LM2uBWAUPiOPa/A3mkKmiMwSmRFUITt0xuj+/lesgnCv+dPIEYlkzrcyXgquIHMcA==}
-
-  pumpify@1.5.1:
-    resolution: {integrity: sha512-oClZI37HvuUJJxSKKrC17bZ9Cu0ZYhEAGPsPUy9KlMUmv9dKX2o77RUmq7f3XjIxbwyGwYzbzQ1L2Ks8sIradQ==}
 
   punycode@1.3.2:
     resolution: {integrity: sha512-RofWgt/7fL5wP1Y7fxE7/EmTLzQVnB0ycyibJ0OOHIlJqTNzglYFxVwETOcIoJqJmpDXJ9xImDv+Fq34F/d4Dw==}
@@ -2560,12 +2533,6 @@ packages:
     resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
     engines: {node: '>=0.10.0'}
 
-  split-array-stream@1.0.3:
-    resolution: {integrity: sha512-yGY35QmZFzZkWZ0eHE06RPBi63umym8m+pdtuC/dlO1ADhdKSfCj0uNn87BYCXBBDFxyTq4oTw0BgLYT0K5z/A==}
-
-  split-array-stream@2.0.0:
-    resolution: {integrity: sha512-hmMswlVY91WvGMxs0k8MRgq8zb2mSen4FmDNc5AFiTWtrBpdZN6nwD6kROVe4vNL+ywrvbCKsWVCnEd4riELIg==}
-
   split-ca@1.0.1:
     resolution: {integrity: sha512-Q5thBSxp5t8WPTTJQS59LrGqOZqOsrhDGDVm8azCqIBjSBd7nd9o2PM+mDulQQkh8h//4U6hFZnc/mul8t5pWQ==}
 
@@ -2681,9 +2648,6 @@ packages:
 
   text-hex@1.0.0:
     resolution: {integrity: sha512-uuVGNWzgJ4yhRaNSiubPY7OjISw4sw4E5Uv0wbjp+OzcbmVU/rsT8ujgcXJhn9ypzsgr5vlzpPqP+MBBKcGvbg==}
-
-  through2@2.0.5:
-    resolution: {integrity: sha512-/mrRod8xqpA+IHSLyGCQ2s8SPHiCDEeQJSep1jqLYeEUClOFG2Qsh+4FU6G9VeqpZnGW/Su8LQGc4YKni5rYSQ==}
 
   through2@4.0.2:
     resolution: {integrity: sha512-iOqSav00cVxEEICeD7TjLB1sueEL+81Wpzp2bY17uZjZN0pWZPuo4suZ/61VujxmqSGFfgOcNuTZ85QJwNZQpw==}
@@ -2823,10 +2787,6 @@ packages:
   util@0.12.5:
     resolution: {integrity: sha512-kZf/K6hEIrWHI6XqOFUiiMa+79wE/D8Q+NCNAWclkyg3b4d2k7s0QGepNjiABc+aR3N1PAyHL7p6UcLY6LmrnA==}
 
-  uuid@11.1.1:
-    resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
-    hasBin: true
-
   uuid@8.0.0:
     resolution: {integrity: sha512-jOXGuXZAWdsTH7eZLtyXMqUb9EcWMGZNbL9YcGBJl4MH4nrxHmZJhEHvyLFrkxo+28uLb/NYRcStH48fnD0Vzw==}
     deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
@@ -2903,10 +2863,6 @@ packages:
   xmlbuilder@11.0.1:
     resolution: {integrity: sha512-fDlsI/kFEx7gLvbecc0/ohLG50fugQp8ryHzMTuW9vSa1GJ0XYWKnhsUx7oie3G98+r56aTQIUB4kht42R3JvA==}
     engines: {node: '>=4.0'}
-
-  xtend@4.0.2:
-    resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}
-    engines: {node: '>=0.4'}
 
   y18n@5.0.8:
     resolution: {integrity: sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA==}
@@ -3479,13 +3435,17 @@ snapshots:
 
   '@google-cloud/projectify@4.0.0': {}
 
-  '@google-cloud/projectify@5.0.0': {}
-
   '@google-cloud/promisify@4.1.0': {}
 
   '@google-cloud/promisify@5.0.0': {}
 
-  '@google-cloud/spanner@8.7.1(supports-color@8.1.1)':
+  '@google-cloud/spanner-api@0.2.0(supports-color@8.1.1)':
+    dependencies:
+      google-gax: 5.0.6(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - supports-color
+
+  '@google-cloud/spanner@8.13.0(supports-color@8.1.1)':
     dependencies:
       '@babel/core': 7.27.7(supports-color@8.1.1)
       '@babel/helpers': 7.27.6
@@ -3494,8 +3454,8 @@ snapshots:
       '@google-cloud/monitoring': 5.3.2(supports-color@8.1.1)
       '@google-cloud/opentelemetry-resource-util': 2.4.0(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.1))(supports-color@8.1.1)
       '@google-cloud/precise-date': 5.0.0
-      '@google-cloud/projectify': 5.0.0
       '@google-cloud/promisify': 5.0.0
+      '@google-cloud/spanner-api': 0.2.0(supports-color@8.1.1)
       '@grpc/grpc-js': 1.14.4
       '@grpc/proto-loader': 0.8.1
       '@opentelemetry/api': 1.9.1
@@ -3507,24 +3467,19 @@ snapshots:
       '@types/big.js': 6.2.2
       '@types/stack-trace': 0.0.33
       big.js: 7.0.1
-      checkpoint-stream: 0.1.2
       duplexify: 4.1.3
-      events-intercept: 2.0.0
       extend: 3.0.2
       google-auth-library: 10.6.2(supports-color@8.1.1)
       google-gax: 5.0.6(supports-color@8.1.1)
       grpc-gcp: 1.0.1
       lodash.snakecase: 4.1.1
-      merge-stream: 2.0.0
       p-queue: 6.6.2
       protobufjs: 7.6.1
       retry-request: 8.0.2(supports-color@8.1.1)
-      split-array-stream: 2.0.0
       stack-trace: 0.0.10
       stream-events: 1.0.5
       teeny-request: 10.1.2(supports-color@8.1.1)
       through2: 4.0.2
-      uuid: 11.1.1
     transitivePeerDependencies:
       - encoding
       - supports-color
@@ -3954,10 +3909,6 @@ snapshots:
       '@types/node': 24.19.0
       '@types/ssh2': 1.15.5
 
-  '@types/duplexify@3.6.5':
-    dependencies:
-      '@types/node': 24.19.0
-
   '@types/esrecurse@4.3.1': {}
 
   '@types/estree@1.0.9': {}
@@ -3990,11 +3941,6 @@ snapshots:
   '@types/node@24.19.0':
     dependencies:
       undici-types: 7.24.6
-
-  '@types/pumpify@1.4.5':
-    dependencies:
-      '@types/duplexify': 3.6.5
-      '@types/node': 24.19.0
 
   '@types/ssh2-streams@0.1.13':
     dependencies:
@@ -4270,10 +4216,6 @@ snapshots:
 
   async-lock@1.4.1: {}
 
-  async@2.6.4:
-    dependencies:
-      lodash: 4.18.1
-
   async@3.2.6: {}
 
   available-typed-arrays@1.0.7:
@@ -4491,14 +4433,6 @@ snapshots:
 
   char-regex@1.0.2: {}
 
-  checkpoint-stream@0.1.2:
-    dependencies:
-      '@types/pumpify': 1.4.5
-      events-intercept: 2.0.0
-      pumpify: 1.5.1
-      split-array-stream: 1.0.3
-      through2: 2.0.5
-
   chownr@1.1.4: {}
 
   ci-info@4.4.0: {}
@@ -4630,13 +4564,6 @@ snapshots:
       es-errors: 1.3.0
       gopd: 1.2.0
 
-  duplexify@3.7.1:
-    dependencies:
-      end-of-stream: 1.4.5
-      inherits: 2.0.4
-      readable-stream: 2.3.8
-      stream-shift: 1.0.3
-
   duplexify@4.1.3:
     dependencies:
       end-of-stream: 1.4.5
@@ -4751,8 +4678,6 @@ snapshots:
   event-target-shim@5.0.1: {}
 
   eventemitter3@4.0.7: {}
-
-  events-intercept@2.0.0: {}
 
   events-universal@1.0.1:
     dependencies:
@@ -5092,8 +5017,6 @@ snapshots:
       gopd: 1.2.0
       has-tostringtag: 1.0.2
       hasown: 2.0.3
-
-  is-stream-ended@0.1.4: {}
 
   is-stream@2.0.1: {}
 
@@ -5761,21 +5684,10 @@ snapshots:
       '@types/node': 24.19.0
       long: 5.3.2
 
-  pump@2.0.1:
-    dependencies:
-      end-of-stream: 1.4.5
-      once: 1.4.0
-
   pump@3.0.4:
     dependencies:
       end-of-stream: 1.4.5
       once: 1.4.0
-
-  pumpify@1.5.1:
-    dependencies:
-      duplexify: 3.7.1
-      inherits: 2.0.4
-      pump: 2.0.1
 
   punycode@1.3.2: {}
 
@@ -5892,15 +5804,6 @@ snapshots:
       source-map: 0.6.1
 
   source-map@0.6.1: {}
-
-  split-array-stream@1.0.3:
-    dependencies:
-      async: 2.6.4
-      is-stream-ended: 0.1.4
-
-  split-array-stream@2.0.0:
-    dependencies:
-      is-stream-ended: 0.1.4
 
   split-ca@1.0.1: {}
 
@@ -6084,11 +5987,6 @@ snapshots:
 
   text-hex@1.0.0: {}
 
-  through2@2.0.5:
-    dependencies:
-      readable-stream: 2.3.8
-      xtend: 4.0.2
-
   through2@4.0.2:
     dependencies:
       readable-stream: 3.6.2
@@ -6229,8 +6127,6 @@ snapshots:
       is-typed-array: 1.1.15
       which-typed-array: 1.1.20
 
-  uuid@11.1.1: {}
-
   uuid@8.0.0: {}
 
   uuid@9.0.1: {}
@@ -6319,8 +6215,6 @@ snapshots:
       xmlbuilder: 11.0.1
 
   xmlbuilder@11.0.1: {}
-
-  xtend@4.0.2: {}
 
   y18n@5.0.8: {}
 
