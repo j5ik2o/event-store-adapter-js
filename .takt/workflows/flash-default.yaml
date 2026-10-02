@@ -1,0 +1,92 @@
+name: flash-default
+description: builtin default の Flash 版。default と同じ development-core 構成で、テスト生成・実装を DGX Spark 上の Flash 級モデル（T0）から始め、失敗時に T1 → T2 へ昇格する開発ワークフロー。provider の実体は runtime.yaml の step 割り当てで解決する。
+max_steps: 51
+initial_step: develop
+
+# provider / model は workflow YAML では指定できない（TAKT 0.66 の契約。promotion も `{at: N}` のみ）。
+# tier の実体は runtime.yaml で与える。<t0-test-code> <t0-production-code> <t1> <t2> は利用環境の profile 名へ置き換える。
+#
+#   version: 1
+#   companion:
+#     enabled: true
+#   provider:
+#     defaults: { profile: <t2> }          # plan / replan / peer-review 以下全 step / final gate
+#     profiles:
+#       <t0-test-code>:       { provider: ..., model: ... }   # write_tests 用
+#       <t0-production-code>: { provider: ..., model: ... }   # implement 用
+#       <t1>:                 { provider: ..., model: ... }
+#       <t2>:                 { provider: ..., model: ... }
+#     targets:
+#       steps:
+#         development-core/write_tests:              { ladder: [<t0-test-code>, <t1>, <t2>] }
+#         flash-implement-dynamic/implement:         { profile: <t0-production-code> }
+#         flash-implement-dynamic/reimplement:       { profile: <t1> }
+#         flash-implement-dynamic/reimplement_final: { profile: <t2> }
+#         flash-remediation-dynamic/fix:             { ladder: [<t1>, <t2>] }
+#       internal_agents:
+#         selector: { profile: <t1> }          # dynamic_facets selector（構造化出力対応の provider に固定）
+#       companions:
+#         ai-antipattern-review-companion: { profile: <t1> }
+#         testing-review-companion:        { profile: <t1> }
+#         review-companion-moderator:      { profile: <t1> }
+#
+# 実装の tier 昇格は promotion ではなく flash-implement-dynamic の step 列（implement → reimplement →
+# reimplement_final）で表現している。子 workflow の stepIterations は workflow_call のたびに空から始まるため、
+# 子 step の `promotion: {at: N}` は非対話実行では発火せず、親の workflow_call step には promotion を付けられない
+# （スキーマが agent step 以外を拒否する）。replan 経由の再入は T0 からやり直し、各サイクルで T2 まで昇格する。
+#
+# write_tests の promotion は、builtin development-core をコピーせず、project 層の step fragment
+# `.takt/steps/development-core-write-tests.yaml`（builtin fragment の shadowing + promotion 追加）で宣言している。
+# 詳細は workflow-maker-doctor.md を参照。
+
+steps:
+  - name: develop
+    kind: workflow_call
+    call: development-core
+    args:
+      implementation_pool: coding-facets
+      implementation_workflow: flash-implement-dynamic
+      remediation_workflow: flash-remediation-dynamic
+      plan_instruction: plan-flash
+      plan_report_format: scenario-based-plan
+      replan_instruction: replan-flash
+      testing_policy:
+        - coding-lite
+        - testing-lite
+      testing_knowledge:
+        - implementation-semantics
+      testing_instruction: write-tests-flash
+      testing_report_format: scenario-based-test-report
+      development_policy:
+        - coding-lite
+        - testing-lite
+      development_knowledge:
+        - implementation-semantics
+      implementation_instruction: implement-flash
+      reimplementation_instruction: implement-flash
+      fix_plan_instruction: scenario-based-fix-plan-from-review-resolution
+      fix_replan_instruction: scenario-based-fix-replan
+      fix_plan_report_format: scenario-based-fix-plan
+      final_gate_instruction: scenario-based-supervise-review-resolution
+      implementation_companions:
+        fixed:
+          - ai-antipattern-review-companion
+          - testing-review-companion
+        pool: []
+        moderator: review-companion-moderator
+      reviewer_suite: development-review
+      review_policy_additions: []
+      review_policy:
+        - coding
+        - testing
+        - review
+        - architecture
+      review_knowledge:
+        - architecture
+        - unit-testing
+        - e2e-testing
+    rules:
+      - condition: COMPLETE
+        next: COMPLETE
+      - condition: ABORT
+        next: ABORT
