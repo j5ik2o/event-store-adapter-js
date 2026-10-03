@@ -17,7 +17,7 @@ This library is designed to turn DynamoDB into an Event Store for CQRS/Event Sou
 npm install event-store-adapter-js
 ```
 
-When using Spanner, add `@google-cloud/spanner` (`^8.7.1` or `^9.0.0`) to your application's dependencies. npm 7 and later and pnpm automatically install this required peer dependency by default; with other package managers, install it manually.
+Add `@google-cloud/spanner` (`^8.7.1` or `^9.0.0`) to your application's dependencies. This peer is required for all backends, including Memory and DynamoDB, because the public entry point imports Spanner at runtime. npm 7 and later and pnpm automatically install this required peer dependency by default; with other package managers, install it manually.
 
 # Usage
 
