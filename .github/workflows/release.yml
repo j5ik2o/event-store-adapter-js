@@ -34,6 +34,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      - name: Disable automatic provenance for manual releases
+        if: github.event_name == 'workflow_dispatch'
+        run: echo 'PNPM_CONFIG_PROVENANCE=false' >> "$GITHUB_ENV"
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
         with:
           run_install: false
