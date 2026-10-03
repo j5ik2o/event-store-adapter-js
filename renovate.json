@@ -17,6 +17,12 @@
       "description": "pnpm の24時間の公開後待機に合わせ、npm 依存の公開直後の更新による CI の依存取得失敗を防ぐ",
       "matchDatasources": ["npm"],
       "minimumReleaseAge": "1 day"
+    },
+    {
+      "description": "ts-jest と ts-node が TypeScript 6 互換 API の併用なしで TypeScript 7 を直接サポートするまで、typescript のメジャー更新を停止する。代替案として ts-jest 公式の TypeScript 6 互換 API との併用方式がある: https://kulshekhar.github.io/ts-jest/docs/next/guides/typescript-7",
+      "matchPackageNames": ["typescript"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
     }
   ],
   "prHourlyLimit": 0,
