@@ -20,6 +20,9 @@ fi
 # 動いてしまうので、外してから起動する (2026-09-24 に、上限に達したアカウントのまま
 # 動くことを確かめた)。
 unset CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
+# Bedrock・Vertex AI・Foundry に切り替えるスイッチが残っていても、認証が設定ディレクトリの
+# アカウントから外れるので、同じく外す。
+unset CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY
 CLAUDE_CONFIG_DIR=$account_dir
 export CLAUDE_CONFIG_DIR
 # TAKT が起動したエージェントであることの印。フックなどで対話のセッションと見分けるために付ける。
