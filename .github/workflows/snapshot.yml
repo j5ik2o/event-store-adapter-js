@@ -5,6 +5,7 @@ on:
       - CI
     types:
       - completed
+    branches: [main]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -14,14 +15,14 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request' && github.event.workflow_run.head_sha == github.sha }}
     name: "Publish Snapshot"
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
-          persist-credentials: true
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          persist-credentials: false
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
         with:
           run_install: false
@@ -32,17 +33,25 @@ jobs:
           cache: 'pnpm'
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
-      - run: |
-          git config --global user.email "j5ik2o@gmail.com"
-          git config --global user.name "Junichi Kato"
-          SNAPSHOT_VERSION=$(node "${GITHUB_WORKSPACE}"/.github/bump-snapshot-version.js | tr -d '\r\n')
-          test -n "$SNAPSHOT_VERSION"
-          printf '%s\n' "SNAPSHOT_VERSION=${SNAPSHOT_VERSION}" >> "$GITHUB_ENV"
-          git add packages/library/package.json pnpm-lock.yaml
-          git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
-          git push origin main
+      - name: Set Snapshot version
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const packageJsonPath = "packages/library/package.json";
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+          const baseVersion = packageJson.version.replace(/-snapshot\.\d+$/, "");
+          const version = `${baseVersion}-snapshot.${process.env.GITHUB_RUN_NUMBER}.${process.env.GITHUB_RUN_ATTEMPT}`;
+          fs.writeFileSync(packageJsonPath, `${JSON.stringify({ ...packageJson, version }, null, 2)}\n`);
+          console.log(version);
+          NODE
       - run: pnpm run build
-      - run: pnpm --filter event-store-adapter-js publish --access public --no-git-checks --tag snapshot
+      - run: |
+          set -euo pipefail
+          current_main_sha="$(git ls-remote --exit-code origin refs/heads/main | cut -f1)"
+          if [[ "$current_main_sha" != "$GITHUB_SHA" ]]; then
+            echo "::notice::Skipping Snapshot publish because main has advanced."
+            exit 0
+          fi
+          pnpm --filter event-store-adapter-js publish --access public --no-git-checks --tag snapshot
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          PNPM_CONFIG_PROVENANCE: "false"
