@@ -30,5 +30,9 @@ TAKT_CLAUDE_CLI_PATH=$script_dir/takt-claude.sh
 TAKT_CLAUDE_ACCOUNT_DIR=$(CDPATH= cd -- "$account_dir" && pwd)
 export TAKT_CLAUDE_CLI_PATH TAKT_CLAUDE_ACCOUNT_DIR
 
+# TAKT は TAKT_ANTHROPIC_API_KEY を claude の認証に使い、起動する claude に ANTHROPIC_API_KEY として渡す。
+# 呼び出し元に別のアカウントのキーが残っていると、指定したアカウントで動く保証がなくなるので外す。
+unset TAKT_ANTHROPIC_API_KEY
+
 echo "run-takt: claude のアカウント設定: $TAKT_CLAUDE_ACCOUNT_DIR" >&2
 exec "${TAKT_REAL_CLI:-takt}" "$@"
