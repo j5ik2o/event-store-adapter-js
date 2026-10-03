@@ -1,4 +1,4 @@
 [tools]
 java = "corretto-25.0.4+101.0.LTS"
-sbt = "1.13.0"
+sbt = "2.0.10"
 "npm:@fission-ai/openspec" = "1.14.0"
