@@ -45,6 +45,13 @@ jobs:
           console.log(version);
           NODE
       - run: pnpm run build
-      - run: pnpm --filter event-store-adapter-js publish --access public --no-git-checks --tag snapshot
+      - run: |
+          set -euo pipefail
+          current_main_sha="$(git ls-remote --exit-code origin refs/heads/main | cut -f1)"
+          if [[ "$current_main_sha" != "$GITHUB_SHA" ]]; then
+            echo "::notice::Skipping Snapshot publish because main has advanced."
+            exit 0
+          fi
+          pnpm --filter event-store-adapter-js publish --access public --no-git-checks --tag snapshot
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
