@@ -67,6 +67,7 @@ type FakeSpannerDatabaseOptions = {
   failJournalInsertWith?: unknown;
   failRetainedSnapshotInsert?: boolean;
   failRetainedSnapshotSelectWith?: unknown;
+  failRollbackWith?: unknown;
   failRunTransactionWith?: unknown;
   forceLatestSnapshotUpdateMiss?: boolean;
   missingSnapshotPayloadField?: boolean;
@@ -131,7 +132,10 @@ function createFakeSpannerDatabase(options: FakeSpannerDatabaseOptions = {}) {
       throw options.failRunTransactionWith;
     }
     return runFn(
-      createFakeSpannerTransaction(fakeDatabase) as unknown as Transaction,
+      createFakeSpannerTransaction(
+        fakeDatabase,
+        options,
+      ) as unknown as Transaction,
     );
   }
 
@@ -407,6 +411,7 @@ function createFakeSpannerDatabase(options: FakeSpannerDatabaseOptions = {}) {
 
 function createFakeSpannerTransaction(
   database: ReturnType<typeof createFakeSpannerDatabase>,
+  options: FakeSpannerDatabaseOptions,
 ) {
   async function run(request: FakeSqlRequest): Promise<[FakeRow[]]> {
     return database.run(request);
@@ -418,7 +423,11 @@ function createFakeSpannerTransaction(
 
   async function commit(): Promise<void> {}
 
-  async function rollback(): Promise<void> {}
+  async function rollback(): Promise<void> {
+    if (options.failRollbackWith !== undefined) {
+      throw options.failRollbackWith;
+    }
+  }
 
   return Object.freeze({
     run,
@@ -523,6 +532,64 @@ describe("SpannerEventStore", () => {
     name: "SpannerEventStore contract",
     timeout: 1000,
     createEventStore: () => createFakeEventStore(),
+  });
+
+  test("preserves optimistic lock errors when rollback fails", async () => {
+    const rollbackError = new Error("rollback failed");
+    const logger: Logger = {
+      debug: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+    const eventStore = createFakeEventStore(
+      undefined,
+      createFakeSpannerDatabase({ failRollbackWith: rollbackError }),
+      { logger },
+    );
+    const [aggregate, created] = UserAccount.create(
+      UserAccountId.create(ulid()),
+      "Alice",
+    );
+    await expectOk(eventStore.persistEventAndSnapshot(created, aggregate));
+
+    await expectOptimisticLockConflict(
+      eventStore.persistEventAndSnapshot(created, aggregate),
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Spanner transaction rollback failed",
+      rollbackError,
+    );
+  });
+
+  test("preserves storage errors and logs rollback failures without a logger", async () => {
+    const writeError = new Error("write failed");
+    const rollbackError = new Error("rollback failed");
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const eventStore = createFakeEventStore(
+        undefined,
+        createFakeSpannerDatabase({
+          failJournalInsertWith: writeError,
+          failRollbackWith: rollbackError,
+        }),
+      );
+      const [aggregate, created] = UserAccount.create(
+        UserAccountId.create(ulid()),
+        "Alice",
+      );
+
+      await expectStorageError(
+        eventStore.persistEventAndSnapshot(created, aggregate),
+        writeError,
+      );
+      expect(warn).toHaveBeenCalledWith(
+        "Spanner transaction rollback failed",
+        rollbackError,
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test("creates SpannerEventStore through EventStore", async () => {
@@ -1080,6 +1147,44 @@ describeSpannerIntegration("SpannerEventStore emulator", () => {
     timeout: TIMEOUT,
     createEventStore: () => createEventStore(),
   });
+
+  test(
+    "retries aborted writes after rolling back",
+    async () => {
+      const aborted = Object.assign(new Error("transaction aborted"), {
+        code: 10,
+      });
+      const runUpdate = jest
+        .spyOn(Transaction.prototype, "runUpdate")
+        .mockImplementationOnce(() => Promise.reject(aborted));
+      const rollback = jest.spyOn(Transaction.prototype, "rollback");
+      try {
+        const eventStore = createEventStore();
+        const [aggregate, created] = UserAccount.create(
+          UserAccountId.create(ulid()),
+          "Alice",
+        );
+
+        await expectOk(eventStore.persistEventAndSnapshot(created, aggregate));
+
+        expect(rollback).toHaveBeenCalledTimes(1);
+        expect(runUpdate).toHaveBeenCalledTimes(3);
+        const events = await eventStore.getEventsByIdSinceSequenceNumber(
+          aggregate.id,
+          1,
+        );
+        expect(events).toHaveLength(1);
+        const latestSnapshot = await eventStore.getLatestSnapshotById(
+          aggregate.id,
+        );
+        expect(latestSnapshot?.version).toBe(1);
+      } finally {
+        runUpdate.mockRestore();
+        rollback.mockRestore();
+      }
+    },
+    TIMEOUT,
+  );
 
   test(
     "rolls back optimistic lock conflicts before subsequent writes",

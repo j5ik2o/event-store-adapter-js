@@ -442,7 +442,14 @@ function createSpannerEventStore<
         await operation(transaction);
         await transaction.commit();
       } catch (error) {
-        await transaction.rollback();
+        try {
+          await transaction.rollback();
+        } catch (rollbackError) {
+          (logger ?? console).warn(
+            "Spanner transaction rollback failed",
+            rollbackError,
+          );
+        }
         throw error;
       }
     });
