@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.413.0",
-    "@google-cloud/spanner": "^8.7.1",
+    "@google-cloud/spanner": "^9.0.0",
     "event-store-adapter-js": "workspace:*",
     "testcontainers": "^12.0.0",
     "ulid": "^3.0.0"
