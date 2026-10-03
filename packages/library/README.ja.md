@@ -16,7 +16,16 @@
 npm install event-store-adapter-js
 ```
 
-利用者側の依存にも `@google-cloud/spanner`（`^8.7.1` または `^9.0.0`）を追加してください。公開エントリーポイントが実行時に Spanner を読み込むため、Memory や DynamoDB を含むすべてのバックエンドで、この peer 依存が必須です。npm 7 以降と pnpm は、デフォルトでこの必須の peer 依存を自動インストールします。それ以外のパッケージマネージャーでは、手動でインストールする必要があります。
+公開エントリーポイントが実行時に Spanner を読み込むため、Memory や DynamoDB を含むすべてのバックエンドで、`@google-cloud/spanner`（`^8.7.1` または `^9.0.0`）が必須です。
+
+## 4.0.0 への移行
+
+4.0.0 では、`@google-cloud/spanner` を通常の依存から必須の peer 依存に変更します。3.x から更新する際は、利用するパッケージマネージャーに応じて対応してください。
+
+- **npm 7 以降または pnpm:** デフォルトで必須の peer 依存を自動インストールします。
+- **Yarn（Classic・v2 以降）など、peer 依存を自動インストールしないパッケージマネージャー:** 利用者側の `dependencies` に `@google-cloud/spanner` を追加してください。v8 を使う場合は `yarn add @google-cloud/spanner@^8.7.1`、v9 を使う場合は `yarn add @google-cloud/spanner@^9.0.0` を実行します。未インストールの場合、`event-store-adapter-js` の読み込み時にエラーになります。
+
+Spanner の `Database` を `EventStore.createSpanner` に渡す場合、利用者側でインストールした Spanner の版がそのまま使われます。上記の対応範囲内で、v8 を使い続けることも、v9 に更新することもできます。
 
 # 使い方
 
