@@ -16,6 +16,8 @@
 npm install event-store-adapter-js
 ```
 
+Spanner を使う場合は、利用者側の依存にも `@google-cloud/spanner`（`^8.7.1` または `^9.0.0`）を追加してください。npm 7 以降と pnpm は、デフォルトでこの必須の peer 依存を自動インストールします。それ以外のパッケージマネージャーでは、手動でインストールする必要があります。
+
 # 使い方
 
 EventStoreを使えば、Event Sourcing対応リポジトリを簡単に実装できます。
