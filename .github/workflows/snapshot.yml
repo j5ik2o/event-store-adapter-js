@@ -45,3 +45,4 @@ jobs:
       - run: pnpm --filter event-store-adapter-js publish --access public --no-git-checks --tag snapshot
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PNPM_CONFIG_PROVENANCE: "false"
