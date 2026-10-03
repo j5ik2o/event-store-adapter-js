@@ -1,4 +1,8 @@
-import type { Database, Spanner, Transaction } from "@google-cloud/spanner";
+import {
+  type Database,
+  type Spanner,
+  Transaction,
+} from "@google-cloud/spanner";
 import {
   GenericContainer,
   type StartedTestContainer,
@@ -1042,7 +1046,7 @@ describeSpannerIntegration("SpannerEventStore emulator", () => {
   beforeAll(async () => {
     container = new GenericContainer("gcr.io/cloud-spanner-emulator/emulator")
       .withExposedPorts(9010)
-      .withWaitStrategy(Wait.forListeningPorts());
+      .withWaitStrategy(Wait.forLogMessage("gRPC server listening"));
     startedContainer = await container.start();
     const context = await createSpannerDatabase({
       startedContainer,
@@ -1076,6 +1080,52 @@ describeSpannerIntegration("SpannerEventStore emulator", () => {
     timeout: TIMEOUT,
     createEventStore: () => createEventStore(),
   });
+
+  test(
+    "rolls back optimistic lock conflicts before subsequent writes",
+    async () => {
+      const rollback = jest.spyOn(Transaction.prototype, "rollback");
+      try {
+        const eventStore = createEventStore();
+        const id = UserAccountId.create(ulid());
+        const [userAccount1, created] = UserAccount.create(id, "Alice");
+        const [userAccount2, renamed] = userAccount1.rename("Bob");
+
+        await expectOptimisticLockConflict(
+          eventStore.persistEvent(renamed, userAccount2.version),
+        );
+        expect(rollback).toHaveBeenCalledTimes(1);
+        await expectOk(
+          eventStore.persistEventAndSnapshot(created, userAccount1),
+        );
+
+        await expectOptimisticLockConflict(eventStore.persistEvent(renamed, 0));
+        expect(rollback).toHaveBeenCalledTimes(2);
+        await expectOk(eventStore.persistEvent(renamed, userAccount2.version));
+
+        await expectOptimisticLockConflict(
+          eventStore.persistEventAndSnapshot(created, userAccount1),
+        );
+        expect(rollback).toHaveBeenCalledTimes(3);
+        const [otherAccount, otherCreated] = UserAccount.create(
+          UserAccountId.create(ulid()),
+          "Carol",
+        );
+        await expectOk(
+          eventStore.persistEventAndSnapshot(otherCreated, otherAccount),
+        );
+        const latestSnapshot = await eventStore.getLatestSnapshotById(
+          otherAccount.id,
+        );
+        expect(latestSnapshot?.id.asString()).toBe(otherAccount.id.asString());
+        expect(latestSnapshot?.name).toBe("Carol");
+        expect(latestSnapshot?.version).toBe(1);
+      } finally {
+        rollback.mockRestore();
+      }
+    },
+    TIMEOUT,
+  );
 
   test(
     "hard-deletes retained snapshots older than keepSnapshotCount",
@@ -1120,7 +1170,7 @@ describeSpannerIntegration("SpannerEventStore emulator", () => {
               value: unknown;
             }>
           >
-        ).map((row) => row[0].value),
+        ).map((row) => Number(row[0].value)),
       ).toEqual([3]);
     },
     TIMEOUT,

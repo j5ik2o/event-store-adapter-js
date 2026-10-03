@@ -438,8 +438,13 @@ function createSpannerEventStore<
     operation: (transaction: Transaction) => Promise<void>,
   ): Promise<void> {
     await database.runTransactionAsync(async (transaction: Transaction) => {
-      await operation(transaction);
-      await transaction.commit();
+      try {
+        await operation(transaction);
+        await transaction.commit();
+      } catch (error) {
+        await transaction.rollback();
+        throw error;
+      }
     });
   }
 
