@@ -358,7 +358,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.26.x'
+          go-version: '1.27.x'
           cache: false
       - name: Check workflows
         run: |
