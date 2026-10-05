@@ -1,0 +1,268 @@
+{
+  "format": "values",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "occurred-at-min",
+      "rules": [
+        "T-13",
+        "T-3"
+      ],
+      "description": "時刻の境界とナノ秒表現を検査する。",
+      "operation": "validateOccurredAt",
+      "input": {
+        "iso8601": "1677-09-21T00:12:43.145224192Z",
+        "epoch_nanoseconds": "-9223372036854775808",
+        "event_seq_nr": 1
+      },
+      "expect": {
+        "value": "-9223372036854775808",
+        "precision_policy": "native-time-type"
+      },
+      "representation": {
+        "time_precision": "nanoseconds"
+      }
+    },
+    {
+      "id": "occurred-at-below-min",
+      "rules": [
+        "T-13",
+        "E-1",
+        "E-3"
+      ],
+      "description": "時刻の境界とナノ秒表現を検査する。",
+      "operation": "validateOccurredAt",
+      "input": {
+        "iso8601": "1677-09-21T00:12:43.145224191Z",
+        "epoch_nanoseconds": "-9223372036854775809",
+        "event_seq_nr": 7
+      },
+      "expect": {
+        "error": {
+          "category": "contract-violation",
+          "message": {
+            "must_contain": [
+              "T-13",
+              "7"
+            ],
+            "must_not_contain": []
+          },
+          "rule": "T-13"
+        }
+      },
+      "representation": {
+        "time_precision": "nanoseconds"
+      }
+    },
+    {
+      "id": "occurred-at-max",
+      "rules": [
+        "T-13",
+        "T-3"
+      ],
+      "description": "時刻の境界とナノ秒表現を検査する。",
+      "operation": "validateOccurredAt",
+      "input": {
+        "iso8601": "2262-04-11T23:47:16.854775807Z",
+        "epoch_nanoseconds": "9223372036854775807",
+        "event_seq_nr": 1
+      },
+      "expect": {
+        "value": "9223372036854775807",
+        "precision_policy": "native-time-type"
+      },
+      "representation": {
+        "time_precision": "nanoseconds"
+      }
+    },
+    {
+      "id": "occurred-at-above-max",
+      "rules": [
+        "T-13",
+        "E-1",
+        "E-3"
+      ],
+      "description": "時刻の境界とナノ秒表現を検査する。",
+      "operation": "validateOccurredAt",
+      "input": {
+        "iso8601": "2262-04-11T23:47:16.854775808Z",
+        "epoch_nanoseconds": "9223372036854775808",
+        "event_seq_nr": 7
+      },
+      "expect": {
+        "error": {
+          "category": "contract-violation",
+          "message": {
+            "must_contain": [
+              "T-13",
+              "7"
+            ],
+            "must_not_contain": []
+          },
+          "rule": "T-13"
+        }
+      },
+      "representation": {
+        "time_precision": "nanoseconds"
+      }
+    },
+    {
+      "id": "occurred-at-nanoseconds",
+      "rules": [
+        "T-13",
+        "T-3"
+      ],
+      "description": "時刻の境界とナノ秒表現を検査する。",
+      "operation": "validateOccurredAt",
+      "input": {
+        "iso8601": "1970-01-01T00:00:00.123456789Z",
+        "epoch_nanoseconds": "123456789",
+        "event_seq_nr": 1
+      },
+      "expect": {
+        "value": "123456789",
+        "precision_policy": "native-time-type"
+      }
+    },
+    {
+      "id": "occurred-at-before-epoch",
+      "rules": [
+        "T-13",
+        "T-3"
+      ],
+      "description": "時刻の境界とナノ秒表現を検査する。",
+      "operation": "validateOccurredAt",
+      "input": {
+        "iso8601": "1969-12-31T23:59:59.999999999Z",
+        "epoch_nanoseconds": "-1",
+        "event_seq_nr": 1
+      },
+      "expect": {
+        "value": "-1",
+        "precision_policy": "native-time-type"
+      }
+    },
+    {
+      "id": "occurred-at-epoch",
+      "rules": [
+        "T-13",
+        "T-3"
+      ],
+      "description": "時刻の境界とナノ秒表現を検査する。",
+      "operation": "validateOccurredAt",
+      "input": {
+        "iso8601": "1970-01-01T00:00:00.000000000Z",
+        "epoch_nanoseconds": "0",
+        "event_seq_nr": 1
+      },
+      "expect": {
+        "value": "0",
+        "precision_policy": "native-time-type"
+      }
+    },
+    {
+      "id": "occurred-at-millisecond-min-inside",
+      "rules": [
+        "T-13",
+        "T-3"
+      ],
+      "description": "ミリ秒型が正確に表せる、範囲の内側または外側の最も近いミリ秒である。",
+      "operation": "validateOccurredAt",
+      "input": {
+        "iso8601": "1677-09-21T00:12:43.146000000Z",
+        "epoch_nanoseconds": "-9223372036854000000",
+        "event_seq_nr": 1
+      },
+      "expect": {
+        "value": "-9223372036854000000",
+        "precision_policy": "native-time-type"
+      },
+      "representation": {
+        "time_precision": "milliseconds"
+      }
+    },
+    {
+      "id": "occurred-at-millisecond-min-outside",
+      "rules": [
+        "T-13",
+        "E-1",
+        "E-3"
+      ],
+      "description": "ミリ秒型が正確に表せる、範囲の内側または外側の最も近いミリ秒である。",
+      "operation": "validateOccurredAt",
+      "input": {
+        "iso8601": "1677-09-21T00:12:43.145000000Z",
+        "epoch_nanoseconds": "-9223372036855000000",
+        "event_seq_nr": 7
+      },
+      "expect": {
+        "error": {
+          "category": "contract-violation",
+          "message": {
+            "must_contain": [
+              "T-13",
+              "7"
+            ],
+            "must_not_contain": []
+          },
+          "rule": "T-13"
+        }
+      },
+      "representation": {
+        "time_precision": "milliseconds"
+      }
+    },
+    {
+      "id": "occurred-at-millisecond-max-inside",
+      "rules": [
+        "T-13",
+        "T-3"
+      ],
+      "description": "ミリ秒型が正確に表せる、範囲の内側または外側の最も近いミリ秒である。",
+      "operation": "validateOccurredAt",
+      "input": {
+        "iso8601": "2262-04-11T23:47:16.854000000Z",
+        "epoch_nanoseconds": "9223372036854000000",
+        "event_seq_nr": 1
+      },
+      "expect": {
+        "value": "9223372036854000000",
+        "precision_policy": "native-time-type"
+      },
+      "representation": {
+        "time_precision": "milliseconds"
+      }
+    },
+    {
+      "id": "occurred-at-millisecond-max-outside",
+      "rules": [
+        "T-13",
+        "E-1",
+        "E-3"
+      ],
+      "description": "ミリ秒型が正確に表せる、範囲の内側または外側の最も近いミリ秒である。",
+      "operation": "validateOccurredAt",
+      "input": {
+        "iso8601": "2262-04-11T23:47:16.855000000Z",
+        "epoch_nanoseconds": "9223372036855000000",
+        "event_seq_nr": 7
+      },
+      "expect": {
+        "error": {
+          "category": "contract-violation",
+          "message": {
+            "must_contain": [
+              "T-13",
+              "7"
+            ],
+            "must_not_contain": []
+          },
+          "rule": "T-13"
+        }
+      },
+      "representation": {
+        "time_precision": "milliseconds"
+      }
+    }
+  ]
+}

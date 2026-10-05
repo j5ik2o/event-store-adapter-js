@@ -1,0 +1,2303 @@
+{
+  "format": "scenarios",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "dynamodb-condition-equal",
+      "rules": [
+        "D-5",
+        "W-8",
+        "E-1",
+        "E-2"
+      ],
+      "description": "条件不成立時の旧ヘッドで分類し、失敗後の追加読み取りには依存しない。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "attempt": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "rejected": true
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "attempt"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "2"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          },
+          "observe": {
+            "requests": [
+              {
+                "api": "TransactWriteItems",
+                "phase": "commit",
+                "constraints": {
+                  "head_return_values_on_condition_check_failure": "ALL_OLD"
+                }
+              }
+            ],
+            "no_requests_in_phases": [
+              "classify-condition-failure-read"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 3,
+          "phase": "commit",
+          "kind": "sdk-error",
+          "details": {
+            "code": "TransactionCanceledException",
+            "cancellation_reasons": [
+              {
+                "target": "journal",
+                "code": "None"
+              },
+              {
+                "target": "head",
+                "code": "ConditionalCheckFailed",
+                "old_head_seq_nr": 2
+              }
+            ],
+            "message": "SDK_RAW_SENTINEL https://storage.invalid/private CREDENTIAL_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-condition-older",
+      "rules": [
+        "D-5",
+        "W-8",
+        "E-1",
+        "E-2"
+      ],
+      "description": "条件不成立時の旧ヘッドで分類し、失敗後の追加読み取りには依存しない。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 3
+            },
+            "manifest": ""
+          },
+          "attempt": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "rejected": true
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e3"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "attempt"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "2"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          },
+          "observe": {
+            "requests": [
+              {
+                "api": "TransactWriteItems",
+                "phase": "commit",
+                "constraints": {
+                  "head_return_values_on_condition_check_failure": "ALL_OLD"
+                }
+              }
+            ],
+            "no_requests_in_phases": [
+              "classify-condition-failure-read"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 3,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2",
+              "e3"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 4,
+          "phase": "commit",
+          "kind": "sdk-error",
+          "details": {
+            "code": "TransactionCanceledException",
+            "cancellation_reasons": [
+              {
+                "target": "journal",
+                "code": "None"
+              },
+              {
+                "target": "head",
+                "code": "ConditionalCheckFailed",
+                "old_head_seq_nr": 3
+              }
+            ],
+            "message": "SDK_RAW_SENTINEL https://storage.invalid/private CREDENTIAL_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-condition-gap",
+      "rules": [
+        "D-5",
+        "W-8",
+        "E-1",
+        "E-3"
+      ],
+      "description": "条件不成立時の旧ヘッドで分類し、失敗後の追加読み取りには依存しない。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "attempt": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 42,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "rejected": true
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "attempt"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "W-8",
+                  "42"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "W-8"
+            }
+          },
+          "observe": {
+            "requests": [
+              {
+                "api": "TransactWriteItems",
+                "phase": "commit",
+                "constraints": {
+                  "head_return_values_on_condition_check_failure": "ALL_OLD"
+                }
+              }
+            ],
+            "no_requests_in_phases": [
+              "classify-condition-failure-read"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 3,
+          "phase": "commit",
+          "kind": "sdk-error",
+          "details": {
+            "code": "TransactionCanceledException",
+            "cancellation_reasons": [
+              {
+                "target": "journal",
+                "code": "None"
+              },
+              {
+                "target": "head",
+                "code": "ConditionalCheckFailed",
+                "old_head_seq_nr": 2
+              }
+            ],
+            "message": "SDK_RAW_SENTINEL https://storage.invalid/private CREDENTIAL_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-condition-no-head",
+      "rules": [
+        "D-5",
+        "W-8",
+        "E-1",
+        "E-3"
+      ],
+      "description": "条件不成立時の旧ヘッドで分類し、失敗後の追加読み取りには依存しない。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "attempt": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 7,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "rejected": true
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "attempt"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "W-8",
+                  "7"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "W-8"
+            }
+          },
+          "observe": {
+            "requests": [
+              {
+                "api": "TransactWriteItems",
+                "phase": "commit",
+                "constraints": {
+                  "head_return_values_on_condition_check_failure": "ALL_OLD"
+                }
+              }
+            ],
+            "no_requests_in_phases": [
+              "classify-condition-failure-read"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 1,
+          "phase": "commit",
+          "kind": "sdk-error",
+          "details": {
+            "code": "TransactionCanceledException",
+            "cancellation_reasons": [
+              {
+                "target": "journal",
+                "code": "None"
+              },
+              {
+                "target": "head",
+                "code": "ConditionalCheckFailed",
+                "old_head_seq_nr": null
+              }
+            ],
+            "message": "SDK_RAW_SENTINEL https://storage.invalid/private CREDENTIAL_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-transaction-conflict",
+      "rules": [
+        "D-6",
+        "E-1",
+        "E-2",
+        "H-1"
+      ],
+      "description": "TransactionConflictを決定的に返させ、保存先エラーではなく楽観ロックに分類する。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "1"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 1,
+          "phase": "commit",
+          "kind": "sdk-error",
+          "details": {
+            "code": "TransactionCanceledException",
+            "cancellation_reasons": [
+              {
+                "target": "journal",
+                "code": "None"
+              },
+              {
+                "target": "head",
+                "code": "TransactionConflict"
+              }
+            ],
+            "message": "SDK_RAW_SENTINEL CREDENTIAL_SENTINEL https://storage.invalid/private"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-item-size-event",
+      "rules": [
+        "D-7",
+        "E-1",
+        "E-3",
+        "H-1"
+      ],
+      "description": "直列化した項目が400KBを確実に超えるため、送信前に契約違反として拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": "",
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation"
+            }
+          },
+          "observe": {
+            "no_requests_in_phases": [
+              "commit",
+              "retention-query",
+              "retention-delete",
+              "retention-mark"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ],
+      "generators": [
+        {
+          "target": "/fixtures/events/e1/payload",
+          "character": "x",
+          "byte_length": 420000
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-item-size-snapshot",
+      "rules": [
+        "D-7",
+        "E-1",
+        "E-3",
+        "H-1"
+      ],
+      "description": "直列化した項目が400KBを確実に超えるため、送信前に契約違反として拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": "",
+            "seq_nr": 1,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation"
+            }
+          },
+          "observe": {
+            "no_requests_in_phases": [
+              "commit",
+              "retention-query",
+              "retention-delete",
+              "retention-mark"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ],
+      "generators": [
+        {
+          "target": "/fixtures/snapshots/s1/aggregate",
+          "character": "x",
+          "byte_length": 420000
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-item-size-manifest",
+      "rules": [
+        "D-7",
+        "E-1",
+        "E-3",
+        "H-1"
+      ],
+      "description": "直列化した項目が400KBを確実に超えるため、送信前に契約違反として拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation"
+            }
+          },
+          "observe": {
+            "no_requests_in_phases": [
+              "commit",
+              "retention-query",
+              "retention-delete",
+              "retention-mark"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ],
+      "generators": [
+        {
+          "target": "/fixtures/events/e1/manifest",
+          "character": "x",
+          "byte_length": 420000
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-item-size-head-overhead",
+      "rules": [
+        "D-7",
+        "E-1",
+        "E-3",
+        "H-1"
+      ],
+      "description": "aidは1023バイト、payloadのASCII文字列は408000文字である。journalは400KiB内でも、type_nameも持つheadは上限を超えるため、送信前に拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+              "value": "x"
+            },
+            "seq_nr": 1,
+            "occurred_at": "1970-01-01T00:00:00.000000000Z",
+            "payload": "",
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation"
+            }
+          },
+          "observe": {
+            "no_requests_in_phases": [
+              "commit",
+              "retention-query",
+              "retention-delete",
+              "retention-mark"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+              "value": "x"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+              "value": "x"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ],
+      "generators": [
+        {
+          "target": "/fixtures/events/e1/payload",
+          "character": "x",
+          "byte_length": 408000
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-journal-condition",
+      "rules": [
+        "E-1",
+        "E-2",
+        "W-7"
+      ],
+      "description": "journal項目の取り消し理由ConditionalCheckFailedを、楽観ロックに分類し、書き込み全体を確定しない。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s3": {
+            "seq_nr": 3,
+            "aggregate": {
+              "total": 3
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e3"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "3"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 3,
+          "phase": "commit",
+          "kind": "sdk-error",
+          "details": {
+            "code": "TransactionCanceledException",
+            "cancellation_reasons": [
+              {
+                "target": "journal",
+                "code": "ConditionalCheckFailed"
+              },
+              {
+                "target": "head",
+                "code": "None"
+              }
+            ],
+            "message": "SDK_RAW_SENTINEL CREDENTIAL_SENTINEL https://storage.invalid/private"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-journal-conflict",
+      "rules": [
+        "E-1",
+        "E-2",
+        "D-6"
+      ],
+      "description": "journal項目の取り消し理由TransactionConflictを、楽観ロックに分類し、書き込み全体を確定しない。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s3": {
+            "seq_nr": 3,
+            "aggregate": {
+              "total": 3
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e3"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "3"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 3,
+          "phase": "commit",
+          "kind": "sdk-error",
+          "details": {
+            "code": "TransactionCanceledException",
+            "cancellation_reasons": [
+              {
+                "target": "journal",
+                "code": "TransactionConflict"
+              },
+              {
+                "target": "head",
+                "code": "None"
+              }
+            ],
+            "message": "SDK_RAW_SENTINEL CREDENTIAL_SENTINEL https://storage.invalid/private"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-journal-throttled",
+      "rules": [
+        "E-1",
+        "W-4"
+      ],
+      "description": "journal項目の取り消し理由ProvisionedThroughputExceededを、保存先エラーに分類し、書き込み全体を確定しない。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s3": {
+            "seq_nr": 3,
+            "aggregate": {
+              "total": 3
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e3"
+          },
+          "expect": {
+            "error": {
+              "category": "storage",
+              "message": {
+                "must_contain": [],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 3,
+          "phase": "commit",
+          "kind": "sdk-error",
+          "details": {
+            "code": "TransactionCanceledException",
+            "cancellation_reasons": [
+              {
+                "target": "journal",
+                "code": "ProvisionedThroughputExceeded"
+              },
+              {
+                "target": "head",
+                "code": "None"
+              }
+            ],
+            "message": "SDK_RAW_SENTINEL CREDENTIAL_SENTINEL https://storage.invalid/private"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-current-snapshot-conflict",
+      "rules": [
+        "E-1",
+        "E-2",
+        "D-6"
+      ],
+      "description": "current-snapshot項目の取り消し理由TransactionConflictを、楽観ロックに分類し、書き込み全体を確定しない。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s3": {
+            "seq_nr": 3,
+            "aggregate": {
+              "total": 3
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e3",
+            "snapshot": "s3"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "3"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 3,
+          "phase": "commit",
+          "kind": "sdk-error",
+          "details": {
+            "code": "TransactionCanceledException",
+            "cancellation_reasons": [
+              {
+                "target": "journal",
+                "code": "None"
+              },
+              {
+                "target": "head",
+                "code": "None"
+              },
+              {
+                "target": "current-snapshot",
+                "code": "TransactionConflict"
+              }
+            ],
+            "message": "SDK_RAW_SENTINEL CREDENTIAL_SENTINEL https://storage.invalid/private"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-current-snapshot-throttled",
+      "rules": [
+        "E-1",
+        "W-4"
+      ],
+      "description": "current-snapshot項目の取り消し理由ProvisionedThroughputExceededを、保存先エラーに分類し、書き込み全体を確定しない。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s3": {
+            "seq_nr": 3,
+            "aggregate": {
+              "total": 3
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e3",
+            "snapshot": "s3"
+          },
+          "expect": {
+            "error": {
+              "category": "storage",
+              "message": {
+                "must_contain": [],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 3,
+          "phase": "commit",
+          "kind": "sdk-error",
+          "details": {
+            "code": "TransactionCanceledException",
+            "cancellation_reasons": [
+              {
+                "target": "journal",
+                "code": "None"
+              },
+              {
+                "target": "head",
+                "code": "None"
+              },
+              {
+                "target": "current-snapshot",
+                "code": "ProvisionedThroughputExceeded"
+              }
+            ],
+            "message": "SDK_RAW_SENTINEL CREDENTIAL_SENTINEL https://storage.invalid/private"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-history-snapshot-conflict",
+      "rules": [
+        "E-1",
+        "E-2",
+        "D-6"
+      ],
+      "description": "history-snapshot項目の取り消し理由TransactionConflictを、楽観ロックに分類し、書き込み全体を確定しない。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s3": {
+            "seq_nr": 3,
+            "aggregate": {
+              "total": 3
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e3",
+            "snapshot": "s3"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "3"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 3,
+          "phase": "commit",
+          "kind": "sdk-error",
+          "details": {
+            "code": "TransactionCanceledException",
+            "cancellation_reasons": [
+              {
+                "target": "journal",
+                "code": "None"
+              },
+              {
+                "target": "head",
+                "code": "None"
+              },
+              {
+                "target": "current-snapshot",
+                "code": "None"
+              },
+              {
+                "target": "history-snapshot",
+                "code": "TransactionConflict"
+              }
+            ],
+            "message": "SDK_RAW_SENTINEL CREDENTIAL_SENTINEL https://storage.invalid/private"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-history-snapshot-throttled",
+      "rules": [
+        "E-1",
+        "W-4"
+      ],
+      "description": "history-snapshot項目の取り消し理由ProvisionedThroughputExceededを、保存先エラーに分類し、書き込み全体を確定しない。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s3": {
+            "seq_nr": 3,
+            "aggregate": {
+              "total": 3
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e3",
+            "snapshot": "s3"
+          },
+          "expect": {
+            "error": {
+              "category": "storage",
+              "message": {
+                "must_contain": [],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 3,
+          "phase": "commit",
+          "kind": "sdk-error",
+          "details": {
+            "code": "TransactionCanceledException",
+            "cancellation_reasons": [
+              {
+                "target": "journal",
+                "code": "None"
+              },
+              {
+                "target": "head",
+                "code": "None"
+              },
+              {
+                "target": "current-snapshot",
+                "code": "None"
+              },
+              {
+                "target": "history-snapshot",
+                "code": "ProvisionedThroughputExceeded"
+              }
+            ],
+            "message": "SDK_RAW_SENTINEL CREDENTIAL_SENTINEL https://storage.invalid/private"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    }
+  ]
+}

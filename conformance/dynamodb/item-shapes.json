@@ -1,0 +1,407 @@
+{
+  "format": "scenarios",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "dynamodb-written-item-shapes",
+      "rules": [
+        "D-1",
+        "D-2",
+        "D-3",
+        "DY-16",
+        "DY-17",
+        "T-7",
+        "H-3",
+        "H-4",
+        "S-3"
+      ],
+      "description": "既定JSONで実際に書いた全種類の項目について、属性名・型・数値・ペイロード分離を照合する。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "ttl",
+        "ttl_grace_seconds": 60
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "items": [
+              {
+                "table": "journal",
+                "attributes": {
+                  "aid": "S",
+                  "seq_nr": "N",
+                  "occurred_at": "N",
+                  "manifest": "S",
+                  "payload": "B"
+                },
+                "values": {
+                  "aid": "Order-9",
+                  "seq_nr": "1",
+                  "occurred_at": "123000000",
+                  "manifest": ""
+                },
+                "binary_json": {
+                  "payload": {
+                    "number": 1
+                  }
+                }
+              },
+              {
+                "table": "head",
+                "attributes": {
+                  "aid": "S",
+                  "type_name": "S",
+                  "seq_nr": "N",
+                  "events": "L"
+                },
+                "values": {
+                  "aid": "Order-9",
+                  "type_name": "Order",
+                  "seq_nr": "1",
+                  "events": [
+                    {
+                      "seq_nr": "1",
+                      "occurred_at": "123000000",
+                      "manifest": ""
+                    }
+                  ]
+                },
+                "binary_json": {
+                  "events[0].payload": {
+                    "number": 1
+                  }
+                },
+                "nested_attributes": {
+                  "events[0]": {
+                    "seq_nr": "N",
+                    "occurred_at": "N",
+                    "manifest": "S",
+                    "payload": "B"
+                  }
+                }
+              },
+              {
+                "table": "snapshot",
+                "attributes": {
+                  "aid": "S",
+                  "skey": "N",
+                  "seq_nr": "N",
+                  "manifest": "S",
+                  "payload": "B",
+                  "last_updated_at": "N"
+                },
+                "values": {
+                  "aid": "Order-9",
+                  "skey": "0",
+                  "seq_nr": "1",
+                  "manifest": "",
+                  "last_updated_at": "123"
+                },
+                "binary_json": {
+                  "payload": {
+                    "total": 1
+                  }
+                }
+              },
+              {
+                "table": "snapshot",
+                "attributes": {
+                  "aid": "S",
+                  "skey": "N",
+                  "seq_nr": "N",
+                  "manifest": "S",
+                  "payload": "B",
+                  "last_updated_at": "N",
+                  "active_history_seq_nr": "N"
+                },
+                "values": {
+                  "aid": "Order-9",
+                  "skey": "1",
+                  "seq_nr": "1",
+                  "manifest": "",
+                  "last_updated_at": "123",
+                  "active_history_seq_nr": "1"
+                },
+                "binary_json": {
+                  "payload": {
+                    "total": 1
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e2",
+            "snapshot": "s2"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "items": [
+              {
+                "table": "journal",
+                "attributes": {
+                  "aid": "S",
+                  "seq_nr": "N",
+                  "occurred_at": "N",
+                  "manifest": "S",
+                  "payload": "B"
+                },
+                "values": {
+                  "aid": "Order-9",
+                  "seq_nr": "2",
+                  "occurred_at": "123000000",
+                  "manifest": ""
+                },
+                "binary_json": {
+                  "payload": {
+                    "number": 2
+                  }
+                }
+              },
+              {
+                "table": "head",
+                "attributes": {
+                  "aid": "S",
+                  "type_name": "S",
+                  "seq_nr": "N",
+                  "events": "L"
+                },
+                "values": {
+                  "aid": "Order-9",
+                  "type_name": "Order",
+                  "seq_nr": "2",
+                  "events": [
+                    {
+                      "seq_nr": "2",
+                      "occurred_at": "123000000",
+                      "manifest": ""
+                    }
+                  ]
+                },
+                "binary_json": {
+                  "events[0].payload": {
+                    "number": 2
+                  }
+                },
+                "nested_attributes": {
+                  "events[0]": {
+                    "seq_nr": "N",
+                    "occurred_at": "N",
+                    "manifest": "S",
+                    "payload": "B"
+                  }
+                }
+              },
+              {
+                "table": "snapshot",
+                "attributes": {
+                  "aid": "S",
+                  "skey": "N",
+                  "seq_nr": "N",
+                  "manifest": "S",
+                  "payload": "B",
+                  "last_updated_at": "N"
+                },
+                "values": {
+                  "aid": "Order-9",
+                  "skey": "0",
+                  "seq_nr": "2",
+                  "manifest": "",
+                  "last_updated_at": "123"
+                },
+                "binary_json": {
+                  "payload": {
+                    "total": 2
+                  }
+                }
+              },
+              {
+                "table": "snapshot",
+                "attributes": {
+                  "aid": "S",
+                  "skey": "N",
+                  "seq_nr": "N",
+                  "manifest": "S",
+                  "payload": "B",
+                  "last_updated_at": "N",
+                  "active_history_seq_nr": "N"
+                },
+                "values": {
+                  "aid": "Order-9",
+                  "skey": "2",
+                  "seq_nr": "2",
+                  "manifest": "",
+                  "last_updated_at": "123",
+                  "active_history_seq_nr": "2"
+                },
+                "binary_json": {
+                  "payload": {
+                    "total": 2
+                  }
+                }
+              },
+              {
+                "table": "snapshot",
+                "attributes": {
+                  "aid": "S",
+                  "skey": "N",
+                  "seq_nr": "N",
+                  "manifest": "S",
+                  "payload": "B",
+                  "last_updated_at": "N",
+                  "ttl": "N"
+                },
+                "values": {
+                  "aid": "Order-9",
+                  "skey": "1",
+                  "seq_nr": "1",
+                  "manifest": "",
+                  "last_updated_at": "123",
+                  "ttl": "4102444860"
+                },
+                "binary_json": {
+                  "payload": {
+                    "total": 1
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "requires": [
+        "ttl"
+      ],
+      "seed": {
+        "items": [
+          {
+            "table": "journal",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "seq_nr": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "seq_nr": "0"
+            }
+          },
+          {
+            "table": "snapshot",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "skey": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "skey": "0"
+            }
+          },
+          {
+            "table": "head",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a"
+            }
+          }
+        ]
+      },
+      "clock": {
+        "epoch_seconds": 4102444800
+      },
+      "faults": [
+        {
+          "operation": 2,
+          "phase": "retention-query",
+          "kind": "sdk-response",
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response",
+          "details": {
+            "history_pages": [
+              [
+                2,
+                1
+              ]
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

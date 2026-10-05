@@ -1,0 +1,94 @@
+{
+  "format": "manifest",
+  "version": "1.0.0",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "sha256": "94afb46257ad1feef5b9ef4db40e3be199e4fa7e0847a43fc59f4c5524c384af"
+    },
+    {
+      "path": "COVERAGE.md",
+      "sha256": "b3e0928150450d2b52eca21ab2148da569dd704c931f7ecb6a0ca6fb8b2371ae"
+    },
+    {
+      "path": "README.md",
+      "sha256": "a006fc3f2446c11b0a7c45de15fc8754c24e44cbe4466299ee1c43a957730d04"
+    },
+    {
+      "path": "coverage.json",
+      "sha256": "2badd86a186aa63ecd80d59d569c0e4f73fac9a36d500a76c2adedfd70ace243"
+    },
+    {
+      "path": "dynamodb/configuration.json",
+      "sha256": "b3b8e28eebaa2cc0184476f9918ed2e58fe5dc34ad91df7254dba4c5dd614d7b"
+    },
+    {
+      "path": "dynamodb/item-shapes.json",
+      "sha256": "4998c644ecc7d48aaf363ba4889a312c0977f1f07f3e50665038c64e9ea265b3"
+    },
+    {
+      "path": "dynamodb/layout.json",
+      "sha256": "b3901844fb392d097ad59cc909df17f25d599fc3c52b0135e6b4f27adb85b337"
+    },
+    {
+      "path": "dynamodb/read.json",
+      "sha256": "9bdad41a6411e79896a92352a0f8a6361af96bcd7bf62bea43227215439dacc7"
+    },
+    {
+      "path": "dynamodb/retention.json",
+      "sha256": "55f5c0b94b3bfa527d6ee371a0ee6d9cfe446356c83da52c5282c2c795cafb2c"
+    },
+    {
+      "path": "dynamodb/write-errors.json",
+      "sha256": "f5254c516443cbb3b69ba368121c8f29c1ac45cac90ab18679414bf879266655"
+    },
+    {
+      "path": "scenarios/core/retention-errors.json",
+      "sha256": "d40592b500bac3c0cab8389508c2baf5e5b1a440c84c69660a15d9dd5d7af06b"
+    },
+    {
+      "path": "scenarios/core/write-read.json",
+      "sha256": "45ede00cda9b9228b1f3de24e941b250c4605e156db9d8697f43ac0b76463aa3"
+    },
+    {
+      "path": "schema/common.schema.json",
+      "sha256": "eac8d1655af026745ad6047981dd7e9cb6024350cf0e3e83962714fffbbb2208"
+    },
+    {
+      "path": "schema/coverage.schema.json",
+      "sha256": "225f19bb301f500c768c4a70d6c710bf0ece6b1f972082019663f95dd9b27c8a"
+    },
+    {
+      "path": "schema/layout.schema.json",
+      "sha256": "0e512e68647586d99bdcd90568dc0993b3b528cb3e5bf19595df717029d451de"
+    },
+    {
+      "path": "schema/manifest.schema.json",
+      "sha256": "925bee2665ed03b8aa9f1b144fd8779a25e6541ef07d53f516880d879b9eef4b"
+    },
+    {
+      "path": "schema/scenarios.schema.json",
+      "sha256": "ab717dcb7c98a839e9f45671c927eb35dd8f8461f563bcb38e8673ba39d59827"
+    },
+    {
+      "path": "schema/values.schema.json",
+      "sha256": "0897ad7e46617935945556c4d531b03d885177c0a759214170ac998a53e65e12"
+    },
+    {
+      "path": "values/aid.json",
+      "sha256": "df8a4979570072881be26291ffe75e9ac70ec0258f31e612fbbbf139e3f68603"
+    },
+    {
+      "path": "values/hash.json",
+      "sha256": "cdb2a89da3c8dc1219fbed0e8abe5e33c6d78d59e7d8c92506c9c5a0076f4e64"
+    },
+    {
+      "path": "values/occurred-at.json",
+      "sha256": "396e798b56020fbc20085c55a354f9651fcda952f3f2f8a4b6b4309de28e92df"
+    },
+    {
+      "path": "values/seq-nr.json",
+      "sha256": "1c38d2baa381e1074f37d6686fef18a3abcaa568d654934a66841842be8c3682"
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/coverage.schema.json",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "coverage"
+    },
+    "version": {
+      "const": "1.0.0"
+    },
+    "required_rules": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(K|T|H|W|R|E|S|SP|DY|D)-[1-9][0-9]*$"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "exclusions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule": {
+            "type": "string",
+            "pattern": "^(K|T|H|W|R|E|S|SP|DY|D)-[1-9][0-9]*$"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "deleted",
+              "caller-obligation",
+              "profile-documentation"
+            ]
+          }
+        },
+        "required": [
+          "rule",
+          "reason",
+          "status"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "required_rules",
+    "exclusions",
+    "notes"
+  ],
+  "additionalProperties": false
+}

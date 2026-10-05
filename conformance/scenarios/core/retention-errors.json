@@ -1,0 +1,1785 @@
+{
+  "format": "scenarios",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "core-retention-zero",
+      "rules": [
+        "S-1",
+        "E-1"
+      ],
+      "description": "保持件数0では生成が設定エラーとなる。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": 0,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "core-retention-delete-1",
+      "rules": [
+        "S-1",
+        "S-2"
+      ],
+      "description": "現在のスナップショットとは別に、新しい保持件数分の履歴だけを残す。履歴読み取りの応答計画を差し込み、GSIの反映待ちによる差を除く。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 3
+            },
+            "manifest": ""
+          },
+          "e4": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 4,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 4
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                1
+              ],
+              "marked": [],
+              "absent": []
+            }
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e2",
+            "snapshot": "s2"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                2
+              ],
+              "marked": [],
+              "absent": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e3",
+            "snapshot": "s3"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                3
+              ],
+              "marked": [],
+              "absent": [
+                1,
+                2
+              ]
+            }
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e4",
+            "snapshot": "s4"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                4
+              ],
+              "marked": [],
+              "absent": [
+                1,
+                2,
+                3
+              ]
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 4,
+            "snapshot": "s4"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2",
+              "e3",
+              "e4"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 1,
+          "phase": "retention-query",
+          "kind": "sdk-response",
+          "details": {
+            "history_pages": [
+              [
+                1
+              ]
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        },
+        {
+          "operation": 2,
+          "phase": "retention-query",
+          "kind": "sdk-response",
+          "details": {
+            "history_pages": [
+              [
+                2,
+                1
+              ]
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        },
+        {
+          "operation": 3,
+          "phase": "retention-query",
+          "kind": "sdk-response",
+          "details": {
+            "history_pages": [
+              [
+                3,
+                2
+              ]
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        },
+        {
+          "operation": 4,
+          "phase": "retention-query",
+          "kind": "sdk-response",
+          "details": {
+            "history_pages": [
+              [
+                4,
+                3
+              ]
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        }
+      ]
+    },
+    {
+      "id": "core-retention-delete-2",
+      "rules": [
+        "S-1",
+        "S-2"
+      ],
+      "description": "現在のスナップショットとは別に、新しい保持件数分の履歴だけを残す。履歴読み取りの応答計画を差し込み、GSIの反映待ちによる差を除く。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": 2,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 3
+            },
+            "manifest": ""
+          },
+          "e4": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 4,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 4
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                1
+              ],
+              "marked": [],
+              "absent": []
+            }
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e2",
+            "snapshot": "s2"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                1,
+                2
+              ],
+              "marked": [],
+              "absent": []
+            }
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e3",
+            "snapshot": "s3"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                2,
+                3
+              ],
+              "marked": [],
+              "absent": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e4",
+            "snapshot": "s4"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                3,
+                4
+              ],
+              "marked": [],
+              "absent": [
+                1,
+                2
+              ]
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 4,
+            "snapshot": "s4"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2",
+              "e3",
+              "e4"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 1,
+          "phase": "retention-query",
+          "kind": "sdk-response",
+          "details": {
+            "history_pages": [
+              [
+                1
+              ]
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        },
+        {
+          "operation": 2,
+          "phase": "retention-query",
+          "kind": "sdk-response",
+          "details": {
+            "history_pages": [
+              [
+                2,
+                1
+              ]
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        },
+        {
+          "operation": 3,
+          "phase": "retention-query",
+          "kind": "sdk-response",
+          "details": {
+            "history_pages": [
+              [
+                3,
+                2,
+                1
+              ]
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        },
+        {
+          "operation": 4,
+          "phase": "retention-query",
+          "kind": "sdk-response",
+          "details": {
+            "history_pages": [
+              [
+                4,
+                3,
+                2
+              ]
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        }
+      ]
+    },
+    {
+      "id": "core-retention-default-current-only",
+      "rules": [
+        "S-1"
+      ],
+      "description": "保持件数なしでは現在だけを書き、履歴は作らない。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [],
+              "marked": [],
+              "absent": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e2",
+            "snapshot": "s2"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [],
+              "marked": [],
+              "absent": [
+                1,
+                2
+              ]
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": "s2"
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-serialize-event",
+      "rules": [
+        "E-1",
+        "H-1"
+      ],
+      "description": "直列化または復元の失敗を直列化エラーとして区別する。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "error": {
+              "category": "serialization",
+              "message": {
+                "must_contain": [],
+                "must_not_contain": []
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 1,
+          "phase": "serialize-event",
+          "kind": "serialization-error",
+          "details": {
+            "message": "SERIALIZATION_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "core-serialize-snapshot",
+      "rules": [
+        "E-1",
+        "H-1"
+      ],
+      "description": "直列化または復元の失敗を直列化エラーとして区別する。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "error": {
+              "category": "serialization",
+              "message": {
+                "must_contain": [],
+                "must_not_contain": []
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 1,
+          "phase": "serialize-snapshot",
+          "kind": "serialization-error",
+          "details": {
+            "message": "SERIALIZATION_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "core-deserialize-event",
+      "rules": [
+        "E-1"
+      ],
+      "description": "直列化または復元の失敗を直列化エラーとして区別する。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "error": {
+              "category": "serialization",
+              "message": {
+                "must_contain": [],
+                "must_not_contain": []
+              }
+            }
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 2,
+          "phase": "deserialize-event",
+          "kind": "serialization-error",
+          "details": {
+            "message": "SERIALIZATION_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "core-deserialize-snapshot",
+      "rules": [
+        "E-1"
+      ],
+      "description": "直列化または復元の失敗を直列化エラーとして区別する。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "error": {
+              "category": "serialization",
+              "message": {
+                "must_contain": [],
+                "must_not_contain": []
+              }
+            }
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 2,
+          "phase": "deserialize-snapshot",
+          "kind": "serialization-error",
+          "details": {
+            "message": "SERIALIZATION_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "core-storage-commit-failure",
+      "rules": [
+        "E-1",
+        "H-1",
+        "R-1"
+      ],
+      "description": "確定前の保存先失敗は保存先エラーで、イベントもスナップショットも読めない。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "error": {
+              "category": "storage",
+              "message": {
+                "must_contain": [],
+                "must_not_contain": []
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 1,
+          "phase": "commit",
+          "kind": "storage-error",
+          "details": {
+            "message": "STORAGE_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "core-storage-read-events",
+      "rules": [
+        "E-1"
+      ],
+      "description": "読み取りの保存先失敗を保存先エラーとして区別する。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "error": {
+              "category": "storage",
+              "message": {
+                "must_contain": [],
+                "must_not_contain": []
+              }
+            }
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 2,
+          "phase": "read-events",
+          "kind": "storage-error",
+          "details": {
+            "message": "STORAGE_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "core-storage-read-snapshot",
+      "rules": [
+        "E-1"
+      ],
+      "description": "読み取りの保存先失敗を保存先エラーとして区別する。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "error": {
+              "category": "storage",
+              "message": {
+                "must_contain": [],
+                "must_not_contain": []
+              }
+            }
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 2,
+          "phase": "read-snapshot",
+          "kind": "storage-error",
+          "details": {
+            "message": "STORAGE_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "core-retention-failure-after-commit",
+      "rules": [
+        "S-4",
+        "S-2",
+        "E-1",
+        "R-2",
+        "R-5"
+      ],
+      "description": "保持フックを最終失敗させても追記は成功し、別経路で失敗を知らせ、次の保持フックが残りを片付ける。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 3
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e2",
+            "snapshot": "s2"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                1,
+                2
+              ],
+              "marked": [],
+              "absent": []
+            },
+            "notifications": [
+              "retention-failure"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": "s2"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e3",
+            "snapshot": "s3"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                3
+              ],
+              "marked": [],
+              "absent": [
+                1,
+                2
+              ]
+            }
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 2,
+          "phase": "retention-delete",
+          "kind": "storage-error",
+          "details": {
+            "message": "RETENTION_FAILURE",
+            "scope": "final-retention-failure"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        },
+        {
+          "operation": 2,
+          "phase": "retention-query",
+          "kind": "sdk-response",
+          "details": {
+            "history_pages": [
+              [
+                2,
+                1
+              ]
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        },
+        {
+          "operation": 5,
+          "phase": "retention-query",
+          "kind": "sdk-response",
+          "details": {
+            "history_pages": [
+              [
+                3,
+                2,
+                1
+              ]
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        }
+      ]
+    },
+    {
+      "id": "core-retention-query-failure",
+      "rules": [
+        "S-4",
+        "S-2",
+        "E-1",
+        "R-2",
+        "R-5"
+      ],
+      "description": "保持対象の読み取りが最終失敗しても、追記結果は成功であり、次の保持フックで残りを片付ける。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 3
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e2",
+            "snapshot": "s2"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                1,
+                2
+              ],
+              "marked": [],
+              "absent": []
+            },
+            "notifications": [
+              "retention-failure"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": "s2"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e3",
+            "snapshot": "s3"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                3
+              ],
+              "marked": [],
+              "absent": [
+                1,
+                2
+              ]
+            }
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 2,
+          "phase": "retention-query",
+          "kind": "storage-error",
+          "details": {
+            "message": "RETENTION_FAILURE"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        },
+        {
+          "operation": 5,
+          "phase": "retention-query",
+          "kind": "sdk-response",
+          "details": {
+            "history_pages": [
+              [
+                3,
+                2,
+                1
+              ]
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,3873 @@
+{
+  "format": "scenarios",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "core-replay-without-snapshot",
+      "rules": [
+        "W-3",
+        "W-4",
+        "W-8",
+        "R-1",
+        "R-2",
+        "R-3",
+        "R-4",
+        "R-5",
+        "R-6",
+        "T-3",
+        "T-4",
+        "T-8"
+      ],
+      "description": "存在しない集約、スナップショットなしの追記、包含境界と全封筒の読み取り。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "text": "日本語",
+              "nested": [
+                null,
+                true,
+                false,
+                3.5,
+                {
+                  "seq_nr": "payload-value"
+                }
+              ]
+            },
+            "manifest": "schema/自由文字列"
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": [
+              "opaque",
+              {
+                "x": 1
+              }
+            ]
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 0
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e2"
+            ]
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-snapshot-behind-head",
+      "rules": [
+        "W-3",
+        "W-4",
+        "W-8",
+        "R-2",
+        "R-4",
+        "R-6",
+        "H-2",
+        "T-4",
+        "T-10"
+      ],
+      "description": "ヘッドが進んでもスナップショットは古いままでよい。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 3
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "items": [
+                1
+              ],
+              "metadata": {
+                "manifest": "domain-owned"
+              }
+            },
+            "seq_nr": 1,
+            "manifest": "snapshot-v1"
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e3"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 3,
+            "snapshot": "s1"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e2",
+              "e3"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-default-manifests",
+      "rules": [
+        "W-3",
+        "W-9",
+        "R-2",
+        "T-2",
+        "T-10",
+        "T-4",
+        "T-8"
+      ],
+      "description": "省略したイベントとスナップショットの manifest は空文字列として返る。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": [
+              "arbitrary",
+              null
+            ]
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": [
+              "state",
+              true
+            ],
+            "seq_nr": 1
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 1,
+            "snapshot": "s1"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-aggregate-isolation",
+      "rules": [
+        "W-3",
+        "W-8",
+        "R-1",
+        "R-4",
+        "SP-2",
+        "T-11"
+      ],
+      "description": "値の前方一致は別の集約であり、保存や読み取りが混ざらない。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "a1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "a2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "b1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "1-other"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "other": true
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "a1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "b1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "a2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "a1",
+              "a2"
+            ]
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "1-other"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "b1"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "1-other"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 1,
+            "snapshot": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-existing-create-event",
+      "rules": [
+        "W-3",
+        "W-7",
+        "E-1",
+        "E-2",
+        "H-1"
+      ],
+      "description": "確定済みの番号で追記すると楽観ロックになり、封筒とスナップショットは変わらない。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "attempt": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "must_not_commit": true
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s0": {
+            "aggregate": {
+              "total": 0
+            },
+            "seq_nr": 0,
+            "manifest": ""
+          },
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "attempt"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "1"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": "s1"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-duplicate-update-event",
+      "rules": [
+        "W-4",
+        "W-7",
+        "W-8",
+        "E-1",
+        "E-2",
+        "H-1"
+      ],
+      "description": "確定済みの番号で追記すると楽観ロックになり、封筒とスナップショットは変わらない。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "attempt": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "must_not_commit": true
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s0": {
+            "aggregate": {
+              "total": 0
+            },
+            "seq_nr": 0,
+            "manifest": ""
+          },
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "attempt"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "2"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": "s1"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-stale-update-event",
+      "rules": [
+        "W-4",
+        "W-8",
+        "E-1",
+        "E-2",
+        "H-1"
+      ],
+      "description": "確定済みの番号で追記すると楽観ロックになり、封筒とスナップショットは変わらない。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 3
+            },
+            "manifest": ""
+          },
+          "attempt": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "must_not_commit": true
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s0": {
+            "aggregate": {
+              "total": 0
+            },
+            "seq_nr": 0,
+            "manifest": ""
+          },
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e3"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "attempt"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "2"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 3,
+            "snapshot": "s1"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2",
+              "e3"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-gap-event",
+      "rules": [
+        "W-4",
+        "W-8",
+        "E-1",
+        "E-3",
+        "H-1"
+      ],
+      "description": "ヘッドより2以上先の番号は契約違反であり、追記されない。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 7,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 3
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s0": {
+            "aggregate": {
+              "total": 0
+            },
+            "seq_nr": 0,
+            "manifest": ""
+          },
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 7,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e3"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "W-8",
+                  "7"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "W-8"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 1,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-no-head-update-event",
+      "rules": [
+        "W-4",
+        "W-8",
+        "E-1",
+        "E-3",
+        "R-1",
+        "H-1"
+      ],
+      "description": "ヘッドがない集約への7番の追記は飛び番として拒む。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 7,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s0": {
+            "aggregate": {
+              "total": 0
+            },
+            "seq_nr": 0,
+            "manifest": ""
+          },
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 7,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "W-8",
+                  "7"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "W-8"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-zero-event",
+      "rules": [
+        "W-6",
+        "E-1",
+        "E-3",
+        "R-1"
+      ],
+      "description": "0番のイベントは作成を行わず拒む。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e0": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 0,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 0
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s0": {
+            "aggregate": {
+              "total": 0
+            },
+            "seq_nr": 0,
+            "manifest": ""
+          },
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e0"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "W-6",
+                  "0"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "W-6"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-existing-create-snapshot",
+      "rules": [
+        "W-3",
+        "W-7",
+        "E-1",
+        "E-2",
+        "H-1"
+      ],
+      "description": "確定済みの番号で追記すると楽観ロックになり、封筒とスナップショットは変わらない。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "attempt": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "must_not_commit": true
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s0": {
+            "aggregate": {
+              "total": 0
+            },
+            "seq_nr": 0,
+            "manifest": ""
+          },
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "attempt",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "1"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": "s1"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-duplicate-update-snapshot",
+      "rules": [
+        "W-4",
+        "W-7",
+        "W-8",
+        "E-1",
+        "E-2",
+        "H-1"
+      ],
+      "description": "確定済みの番号で追記すると楽観ロックになり、封筒とスナップショットは変わらない。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "attempt": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "must_not_commit": true
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s0": {
+            "aggregate": {
+              "total": 0
+            },
+            "seq_nr": 0,
+            "manifest": ""
+          },
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "attempt",
+            "snapshot": "s2"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "2"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": "s1"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-stale-update-snapshot",
+      "rules": [
+        "W-4",
+        "W-8",
+        "E-1",
+        "E-2",
+        "H-1"
+      ],
+      "description": "確定済みの番号で追記すると楽観ロックになり、封筒とスナップショットは変わらない。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 3
+            },
+            "manifest": ""
+          },
+          "attempt": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "must_not_commit": true
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s0": {
+            "aggregate": {
+              "total": 0
+            },
+            "seq_nr": 0,
+            "manifest": ""
+          },
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e3"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "attempt",
+            "snapshot": "s2"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "2"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 3,
+            "snapshot": "s1"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2",
+              "e3"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-gap-snapshot",
+      "rules": [
+        "W-4",
+        "W-8",
+        "E-1",
+        "E-3",
+        "H-1"
+      ],
+      "description": "ヘッドより2以上先の番号は契約違反であり、追記されない。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 7,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 3
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s0": {
+            "aggregate": {
+              "total": 0
+            },
+            "seq_nr": 0,
+            "manifest": ""
+          },
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 7,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e3",
+            "snapshot": "s3"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "W-8",
+                  "7"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "W-8"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 1,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-no-head-update-snapshot",
+      "rules": [
+        "W-4",
+        "W-8",
+        "E-1",
+        "E-3",
+        "R-1",
+        "H-1"
+      ],
+      "description": "ヘッドがない集約への7番の追記は飛び番として拒む。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 7,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s0": {
+            "aggregate": {
+              "total": 0
+            },
+            "seq_nr": 0,
+            "manifest": ""
+          },
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 7,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e2",
+            "snapshot": "s2"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "W-8",
+                  "7"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "W-8"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-zero-snapshot",
+      "rules": [
+        "W-6",
+        "E-1",
+        "E-3",
+        "R-1"
+      ],
+      "description": "0番のイベントは作成を行わず拒む。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e0": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 0,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 0
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s0": {
+            "aggregate": {
+              "total": 0
+            },
+            "seq_nr": 0,
+            "manifest": ""
+          },
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          },
+          "s4": {
+            "aggregate": {
+              "total": 4
+            },
+            "seq_nr": 4,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e0",
+            "snapshot": "s0"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "W-6",
+                  "0"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "W-6"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-snapshot-mismatch-0",
+      "rules": [
+        "W-9",
+        "E-1",
+        "E-3",
+        "H-1",
+        "R-1"
+      ],
+      "description": "イベントとスナップショットの番号が異なる書き込みは全体が未確定になる。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "mismatch": {
+            "aggregate": {
+              "total": 0
+            },
+            "seq_nr": 0,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "mismatch"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "W-9",
+                  "1",
+                  "0"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "W-9"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-snapshot-mismatch-2",
+      "rules": [
+        "W-9",
+        "E-1",
+        "E-3",
+        "H-1",
+        "R-1"
+      ],
+      "description": "イベントとスナップショットの番号が異なる書き込みは全体が未確定になる。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "mismatch": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "mismatch"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "W-9",
+                  "1",
+                  "2"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "W-9"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-time-below-min",
+      "rules": [
+        "T-13",
+        "E-1",
+        "E-3",
+        "R-1"
+      ],
+      "description": "正常な6番までを確定した後、範囲外時刻の7番だけを拒み、ヘッドと既存イベントを保つ。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 7,
+            "occurred_at": "1677-09-21T00:12:43.145224191Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "prior-1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-4": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 4,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-5": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 5,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-6": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 6,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-3"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-4"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-5"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-6"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "T-13",
+                  "7"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "T-13"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 6,
+            "snapshot": null
+          }
+        }
+      ],
+      "representation": {
+        "time_precision": "nanoseconds"
+      }
+    },
+    {
+      "id": "core-time-above-max",
+      "rules": [
+        "T-13",
+        "E-1",
+        "E-3",
+        "R-1"
+      ],
+      "description": "正常な6番までを確定した後、範囲外時刻の7番だけを拒み、ヘッドと既存イベントを保つ。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 7,
+            "occurred_at": "2262-04-11T23:47:16.854775808Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "prior-1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-4": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 4,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-5": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 5,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-6": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 6,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-3"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-4"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-5"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-6"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "T-13",
+                  "7"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "T-13"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 6,
+            "snapshot": null
+          }
+        }
+      ],
+      "representation": {
+        "time_precision": "nanoseconds"
+      }
+    },
+    {
+      "id": "core-time-millisecond-below-min",
+      "rules": [
+        "T-13",
+        "E-1",
+        "E-3",
+        "R-1"
+      ],
+      "description": "正常な6番までを確定した後、範囲外時刻の7番だけを拒み、ヘッドと既存イベントを保つ。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 7,
+            "occurred_at": "1677-09-21T00:12:43.145000000Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "prior-1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-4": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 4,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-5": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 5,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-6": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 6,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-3"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-4"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-5"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-6"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "T-13",
+                  "7"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "T-13"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 6,
+            "snapshot": null
+          }
+        }
+      ],
+      "representation": {
+        "time_precision": "milliseconds"
+      }
+    },
+    {
+      "id": "core-time-millisecond-above-max",
+      "rules": [
+        "T-13",
+        "E-1",
+        "E-3",
+        "R-1"
+      ],
+      "description": "正常な6番までを確定した後、範囲外時刻の7番だけを拒み、ヘッドと既存イベントを保つ。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 7,
+            "occurred_at": "2262-04-11T23:47:16.855000000Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "prior-1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-4": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 4,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-5": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 5,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          },
+          "prior-6": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 6,
+            "occurred_at": "1970-01-01T00:00:00.123000000Z",
+            "payload": {},
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-3"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-4"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-5"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "prior-6"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "T-13",
+                  "7"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "T-13"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 6,
+            "snapshot": null
+          }
+        }
+      ],
+      "representation": {
+        "time_precision": "milliseconds"
+      }
+    },
+    {
+      "id": "core-seq-negative",
+      "rules": [
+        "T-9",
+        "E-1",
+        "E-3",
+        "R-1"
+      ],
+      "description": "seq_nrの値域違反は確定前に拒む。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": -1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": -1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "T-9",
+                  "-1"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "T-9"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        }
+      ],
+      "representation": {
+        "signed_seq_nr": true
+      }
+    },
+    {
+      "id": "core-seq-above-max",
+      "rules": [
+        "T-9",
+        "E-1",
+        "E-3",
+        "R-1"
+      ],
+      "description": "seq_nrの値域違反は確定前に拒む。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 9007199254740992,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 9007199254740992
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "T-9",
+                  "9007199254740992"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "T-9"
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-time-roundtrip-min",
+      "rules": [
+        "T-13",
+        "T-3",
+        "R-6"
+      ],
+      "description": "標準時刻型の精度に合う境界時刻を保存し、同じ時刻を読み取る。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "representation": {
+        "time_precision": "nanoseconds"
+      },
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "time"
+            },
+            "seq_nr": 1,
+            "occurred_at": "1677-09-21T00:12:43.145224192Z",
+            "payload": {
+              "boundary": "min"
+            }
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "time"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-time-roundtrip-max",
+      "rules": [
+        "T-13",
+        "T-3",
+        "R-6"
+      ],
+      "description": "標準時刻型の精度に合う境界時刻を保存し、同じ時刻を読み取る。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "representation": {
+        "time_precision": "nanoseconds"
+      },
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "time"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2262-04-11T23:47:16.854775807Z",
+            "payload": {
+              "boundary": "max"
+            }
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "time"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-time-roundtrip-millisecond-min",
+      "rules": [
+        "T-13",
+        "T-3",
+        "R-6"
+      ],
+      "description": "標準時刻型の精度に合う境界時刻を保存し、同じ時刻を読み取る。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "representation": {
+        "time_precision": "milliseconds"
+      },
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "time"
+            },
+            "seq_nr": 1,
+            "occurred_at": "1677-09-21T00:12:43.146000000Z",
+            "payload": {
+              "boundary": "millisecond-min"
+            }
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "time"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-time-roundtrip-millisecond-max",
+      "rules": [
+        "T-13",
+        "T-3",
+        "R-6"
+      ],
+      "description": "標準時刻型の精度に合う境界時刻を保存し、同じ時刻を読み取る。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "representation": {
+        "time_precision": "milliseconds"
+      },
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "time"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2262-04-11T23:47:16.854000000Z",
+            "payload": {
+              "boundary": "millisecond-max"
+            }
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "time"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "core-json-root-values",
+      "rules": [
+        "T-4",
+        "T-8",
+        "R-6"
+      ],
+      "description": "null・真偽値・文字列・数値・配列・オブジェクトをpayloadのルートとして往復する。",
+      "backends": [
+        "memory",
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "json"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.000000000Z",
+            "payload": null
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "json"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.000000000Z",
+            "payload": true
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "json"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.000000000Z",
+            "payload": "日本語"
+          },
+          "e4": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "json"
+            },
+            "seq_nr": 4,
+            "occurred_at": "2026-10-05T00:00:00.000000000Z",
+            "payload": 1.5
+          },
+          "e5": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "json"
+            },
+            "seq_nr": 5,
+            "occurred_at": "2026-10-05T00:00:00.000000000Z",
+            "payload": []
+          },
+          "e6": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "json"
+            },
+            "seq_nr": 6,
+            "occurred_at": "2026-10-05T00:00:00.000000000Z",
+            "payload": {}
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e3"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e4"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e5"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e6"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "json"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
