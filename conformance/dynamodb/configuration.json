@@ -1,0 +1,1331 @@
+{
+  "format": "scenarios",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "dynamodb-config-new",
+      "rules": [
+        "DY-8",
+        "D-1",
+        "E-1"
+      ],
+      "description": "3テーブルの設定がすべて未作成なら、共通のstore_idと版1を条件付きトランザクションで作成する。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "seed": {
+        "items": []
+      },
+      "initialization": {
+        "expect": {
+          "result": "success"
+        },
+        "observe": {
+          "requests": [
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            },
+            {
+              "api": "TransactWriteItems",
+              "phase": "configuration-create",
+              "constraints": {
+                "put_tables": [
+                  "journal",
+                  "snapshot",
+                  "head"
+                ],
+                "condition": {
+                  "attribute_not_exists": "aid"
+                },
+                "same_store_id": true,
+                "layout_version": 1
+              }
+            }
+          ],
+          "items": [
+            {
+              "table": "journal",
+              "attributes": {
+                "aid": "S",
+                "store_id": "S",
+                "layout_version": "N",
+                "seq_nr": "N"
+              },
+              "values": {
+                "aid": "__config__",
+                "layout_version": "1",
+                "seq_nr": "0"
+              },
+              "bindings": {
+                "store_id": "generated-store-id"
+              }
+            },
+            {
+              "table": "snapshot",
+              "attributes": {
+                "aid": "S",
+                "store_id": "S",
+                "layout_version": "N",
+                "skey": "N"
+              },
+              "values": {
+                "aid": "__config__",
+                "layout_version": "1",
+                "skey": "0"
+              },
+              "bindings": {
+                "store_id": "generated-store-id"
+              }
+            },
+            {
+              "table": "head",
+              "attributes": {
+                "aid": "S",
+                "store_id": "S",
+                "layout_version": "N"
+              },
+              "values": {
+                "aid": "__config__",
+                "layout_version": "1"
+              },
+              "bindings": {
+                "store_id": "generated-store-id"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "dynamodb-config-matching",
+      "rules": [
+        "DY-8",
+        "D-1",
+        "E-1"
+      ],
+      "description": "3テーブルのstore_idと版1が一致していれば生成に成功する。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "seed": {
+        "items": [
+          {
+            "table": "journal",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "seq_nr": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "seq_nr": "0"
+            }
+          },
+          {
+            "table": "snapshot",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "skey": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "skey": "0"
+            }
+          },
+          {
+            "table": "head",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a"
+            }
+          }
+        ]
+      },
+      "initialization": {
+        "expect": {
+          "result": "success"
+        },
+        "observe": {
+          "requests": [
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "dynamodb-config-store-mismatch",
+      "rules": [
+        "DY-8",
+        "D-1",
+        "E-1"
+      ],
+      "description": "3テーブルのstore_idが一致しないため設定エラーとして拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "seed": {
+        "items": [
+          {
+            "table": "journal",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "seq_nr": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "seq_nr": "0"
+            }
+          },
+          {
+            "table": "snapshot",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "skey": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-b",
+              "skey": "0"
+            }
+          },
+          {
+            "table": "head",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a"
+            }
+          }
+        ]
+      },
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        },
+        "observe": {
+          "requests": [
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            }
+          ],
+          "no_requests_in_phases": [
+            "configuration-create",
+            "commit"
+          ]
+        }
+      }
+    },
+    {
+      "id": "dynamodb-config-partial",
+      "rules": [
+        "DY-8",
+        "D-1",
+        "E-1"
+      ],
+      "description": "journalだけに設定が存在する部分配置を、設定エラーとして拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "seed": {
+        "items": [
+          {
+            "table": "journal",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "seq_nr": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "seq_nr": "0"
+            }
+          }
+        ]
+      },
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        },
+        "observe": {
+          "requests": [
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            }
+          ],
+          "no_requests_in_phases": [
+            "configuration-create",
+            "commit"
+          ]
+        }
+      }
+    },
+    {
+      "id": "dynamodb-config-layout-unsupported",
+      "rules": [
+        "DY-8",
+        "D-1",
+        "E-1"
+      ],
+      "description": "全テーブルの配置版が一致していても、未対応の版は設定エラーとして拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "seed": {
+        "items": [
+          {
+            "table": "journal",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "seq_nr": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "2",
+              "store_id": "store-a",
+              "seq_nr": "0"
+            }
+          },
+          {
+            "table": "snapshot",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "skey": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "2",
+              "store_id": "store-a",
+              "skey": "0"
+            }
+          },
+          {
+            "table": "head",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "2",
+              "store_id": "store-a"
+            }
+          }
+        ]
+      },
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        },
+        "observe": {
+          "requests": [
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            }
+          ],
+          "no_requests_in_phases": [
+            "configuration-create",
+            "commit"
+          ]
+        }
+      }
+    },
+    {
+      "id": "dynamodb-config-layout-mismatch",
+      "rules": [
+        "DY-8",
+        "D-1",
+        "E-1"
+      ],
+      "description": "テーブル間の配置版が一致しないため設定エラーとして拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "seed": {
+        "items": [
+          {
+            "table": "journal",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "seq_nr": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "seq_nr": "0"
+            }
+          },
+          {
+            "table": "snapshot",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "skey": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "2",
+              "store_id": "store-a",
+              "skey": "0"
+            }
+          },
+          {
+            "table": "head",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a"
+            }
+          }
+        ]
+      },
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        },
+        "observe": {
+          "requests": [
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            }
+          ],
+          "no_requests_in_phases": [
+            "configuration-create",
+            "commit"
+          ]
+        }
+      }
+    },
+    {
+      "id": "dynamodb-config-unprocessed-keys",
+      "rules": [
+        "DY-8",
+        "E-1"
+      ],
+      "description": "設定の部分応答では未処理キーだけを強整合で再要求し、揃った設定で生成に成功する。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "seed": {
+        "items": [
+          {
+            "table": "journal",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "seq_nr": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "seq_nr": "0"
+            }
+          },
+          {
+            "table": "snapshot",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "skey": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "skey": "0"
+            }
+          },
+          {
+            "table": "head",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a"
+            }
+          }
+        ]
+      },
+      "initialization": {
+        "expect": {
+          "result": "success"
+        },
+        "observe": {
+          "requests": [
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            },
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "only_unprocessed_keys": true,
+                "consistent_read_all_tables": true,
+                "exponential_backoff": true
+              }
+            }
+          ],
+          "request_count": {
+            "configuration-read": 2
+          },
+          "no_requests_in_phases": [
+            "configuration-create"
+          ]
+        }
+      },
+      "faults": [
+        {
+          "operation": 0,
+          "phase": "configuration-read",
+          "kind": "sdk-response",
+          "details": {
+            "responses": {
+              "journal": "seed-config"
+            },
+            "unprocessed_keys": [
+              "snapshot:__config__:0",
+              "head:__config__"
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-config-retry-exhausted",
+      "rules": [
+        "DY-8",
+        "E-1"
+      ],
+      "description": "設定の未処理キーが再要求の上限まで残る場合は、設定作成を行わず保存先エラーを返す。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete",
+        "retry_limit": 1
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "storage",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        },
+        "observe": {
+          "no_requests_in_phases": [
+            "configuration-create"
+          ]
+        }
+      },
+      "faults": [
+        {
+          "operation": 0,
+          "phase": "configuration-read",
+          "kind": "sdk-response",
+          "details": {
+            "responses": {},
+            "unprocessed_keys": [
+              "journal:__config__:0",
+              "snapshot:__config__:0",
+              "head:__config__"
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 2
+          },
+          "injection": "replace-response"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-config-create-race",
+      "rules": [
+        "DY-8",
+        "D-1"
+      ],
+      "description": "設定の条件付き作成で競合したら、先行作成された3項目を読み直して生成に成功する。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "result": "success"
+        },
+        "observe": {
+          "requests": [
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            },
+            {
+              "api": "TransactWriteItems",
+              "phase": "configuration-create",
+              "constraints": {
+                "condition": {
+                  "attribute_not_exists": "aid"
+                }
+              }
+            },
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            }
+          ],
+          "items": [
+            {
+              "table": "journal",
+              "attributes": {
+                "aid": "S",
+                "store_id": "S",
+                "layout_version": "N",
+                "seq_nr": "N"
+              },
+              "values": {
+                "aid": "__config__",
+                "layout_version": "1",
+                "store_id": "winner-store",
+                "seq_nr": "0"
+              }
+            },
+            {
+              "table": "snapshot",
+              "attributes": {
+                "aid": "S",
+                "store_id": "S",
+                "layout_version": "N",
+                "skey": "N"
+              },
+              "values": {
+                "aid": "__config__",
+                "layout_version": "1",
+                "store_id": "winner-store",
+                "skey": "0"
+              }
+            },
+            {
+              "table": "head",
+              "attributes": {
+                "aid": "S",
+                "store_id": "S",
+                "layout_version": "N"
+              },
+              "values": {
+                "aid": "__config__",
+                "layout_version": "1",
+                "store_id": "winner-store"
+              }
+            }
+          ]
+        }
+      },
+      "faults": [
+        {
+          "operation": 0,
+          "phase": "configuration-create",
+          "kind": "sdk-error",
+          "details": {
+            "code": "TransactionCanceledException",
+            "cancellation_reasons": [
+              {
+                "target": "configuration:journal",
+                "code": "ConditionalCheckFailed"
+              },
+              {
+                "target": "configuration:snapshot",
+                "code": "None"
+              },
+              {
+                "target": "configuration:head",
+                "code": "None"
+              }
+            ],
+            "install_items": [
+              {
+                "table": "journal",
+                "attributes": {
+                  "aid": "S",
+                  "store_id": "S",
+                  "layout_version": "N",
+                  "seq_nr": "N"
+                },
+                "values": {
+                  "aid": "__config__",
+                  "layout_version": "1",
+                  "store_id": "winner-store",
+                  "seq_nr": "0"
+                }
+              },
+              {
+                "table": "snapshot",
+                "attributes": {
+                  "aid": "S",
+                  "store_id": "S",
+                  "layout_version": "N",
+                  "skey": "N"
+                },
+                "values": {
+                  "aid": "__config__",
+                  "layout_version": "1",
+                  "store_id": "winner-store",
+                  "skey": "0"
+                }
+              },
+              {
+                "table": "head",
+                "attributes": {
+                  "aid": "S",
+                  "store_id": "S",
+                  "layout_version": "N"
+                },
+                "values": {
+                  "aid": "__config__",
+                  "layout_version": "1",
+                  "store_id": "winner-store"
+                }
+              }
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-config-partial-snapshot",
+      "rules": [
+        "DY-8",
+        "D-1",
+        "E-1"
+      ],
+      "description": "snapshotだけに設定が存在する部分配置を、設定エラーとして拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "seed": {
+        "items": [
+          {
+            "table": "snapshot",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "skey": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "skey": "0"
+            }
+          }
+        ]
+      },
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        },
+        "observe": {
+          "requests": [
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            }
+          ],
+          "no_requests_in_phases": [
+            "configuration-create",
+            "commit"
+          ]
+        }
+      }
+    },
+    {
+      "id": "dynamodb-config-partial-head",
+      "rules": [
+        "DY-8",
+        "D-1",
+        "E-1"
+      ],
+      "description": "headだけに設定が存在する部分配置を、設定エラーとして拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "seed": {
+        "items": [
+          {
+            "table": "head",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a"
+            }
+          }
+        ]
+      },
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        },
+        "observe": {
+          "requests": [
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            }
+          ],
+          "no_requests_in_phases": [
+            "configuration-create",
+            "commit"
+          ]
+        }
+      }
+    },
+    {
+      "id": "dynamodb-config-partial-journal-snapshot",
+      "rules": [
+        "DY-8",
+        "D-1",
+        "E-1"
+      ],
+      "description": "journal・snapshotだけに設定が存在する部分配置を、設定エラーとして拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "seed": {
+        "items": [
+          {
+            "table": "journal",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "seq_nr": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "seq_nr": "0"
+            }
+          },
+          {
+            "table": "snapshot",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "skey": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "skey": "0"
+            }
+          }
+        ]
+      },
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        },
+        "observe": {
+          "requests": [
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            }
+          ],
+          "no_requests_in_phases": [
+            "configuration-create",
+            "commit"
+          ]
+        }
+      }
+    },
+    {
+      "id": "dynamodb-config-partial-journal-head",
+      "rules": [
+        "DY-8",
+        "D-1",
+        "E-1"
+      ],
+      "description": "journal・headだけに設定が存在する部分配置を、設定エラーとして拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "seed": {
+        "items": [
+          {
+            "table": "journal",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "seq_nr": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "seq_nr": "0"
+            }
+          },
+          {
+            "table": "head",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a"
+            }
+          }
+        ]
+      },
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        },
+        "observe": {
+          "requests": [
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            }
+          ],
+          "no_requests_in_phases": [
+            "configuration-create",
+            "commit"
+          ]
+        }
+      }
+    },
+    {
+      "id": "dynamodb-config-partial-snapshot-head",
+      "rules": [
+        "DY-8",
+        "D-1",
+        "E-1"
+      ],
+      "description": "snapshot・headだけに設定が存在する部分配置を、設定エラーとして拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "seed": {
+        "items": [
+          {
+            "table": "snapshot",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N",
+              "skey": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a",
+              "skey": "0"
+            }
+          },
+          {
+            "table": "head",
+            "attributes": {
+              "aid": "S",
+              "store_id": "S",
+              "layout_version": "N"
+            },
+            "values": {
+              "aid": "__config__",
+              "layout_version": "1",
+              "store_id": "store-a"
+            }
+          }
+        ]
+      },
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        },
+        "observe": {
+          "requests": [
+            {
+              "api": "BatchGetItem",
+              "phase": "configuration-read",
+              "constraints": {
+                "keys": [
+                  "journal:__config__:0",
+                  "snapshot:__config__:0",
+                  "head:__config__"
+                ],
+                "consistent_read_all_tables": true
+              }
+            }
+          ],
+          "no_requests_in_phases": [
+            "configuration-create",
+            "commit"
+          ]
+        }
+      }
+    }
+  ]
+}

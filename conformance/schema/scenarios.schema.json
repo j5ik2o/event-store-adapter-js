@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/scenarios.schema.json",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "scenarios"
+    },
+    "version": {
+      "const": "1.0.0"
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/case"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "cases"
+  ],
+  "additionalProperties": false
+}

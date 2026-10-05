@@ -1,0 +1,269 @@
+{
+  "format": "layout",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "dynamodb-layout-v1",
+      "rules": [
+        "DY-2",
+        "DY-3",
+        "DY-12",
+        "DY-16",
+        "DY-17",
+        "D-1",
+        "D-2",
+        "D-3",
+        "D-4",
+        "T-7",
+        "H-3",
+        "H-4"
+      ],
+      "description": "3テーブル、疎なGSI、Streams、全種類の項目の属性名・型・値を照合する。",
+      "tables": [
+        {
+          "name": "journal",
+          "partition_key": {
+            "name": "aid",
+            "type": "S"
+          },
+          "sort_key": {
+            "name": "seq_nr",
+            "type": "N"
+          },
+          "gsi": [],
+          "streams": {
+            "enabled": false,
+            "view_type": null
+          },
+          "ttl": {
+            "enabled_when": "never",
+            "attribute": null
+          }
+        },
+        {
+          "name": "snapshot",
+          "partition_key": {
+            "name": "aid",
+            "type": "S"
+          },
+          "sort_key": {
+            "name": "skey",
+            "type": "N"
+          },
+          "gsi": [
+            {
+              "name_binding": "configured-history-index",
+              "partition_key": {
+                "name": "aid",
+                "type": "S"
+              },
+              "sort_key": {
+                "name": "active_history_seq_nr",
+                "type": "N"
+              },
+              "projection": "KEYS_ONLY"
+            }
+          ],
+          "streams": {
+            "enabled": false,
+            "view_type": null
+          },
+          "ttl": {
+            "enabled_when": "retention-mode-ttl",
+            "attribute": "ttl"
+          }
+        },
+        {
+          "name": "head",
+          "partition_key": {
+            "name": "aid",
+            "type": "S"
+          },
+          "sort_key": null,
+          "gsi": [],
+          "streams": {
+            "enabled": true,
+            "view_type": "NEW_IMAGE"
+          },
+          "ttl": {
+            "enabled_when": "never",
+            "attribute": null
+          }
+        }
+      ],
+      "items": [
+        {
+          "table": "journal",
+          "attributes": {
+            "aid": "S",
+            "seq_nr": "N",
+            "occurred_at": "N",
+            "manifest": "S",
+            "payload": "B"
+          },
+          "values": {
+            "aid": "Order-1",
+            "seq_nr": "3",
+            "occurred_at": "123000000",
+            "manifest": ""
+          },
+          "binary_json": {
+            "payload": {
+              "number": 3
+            }
+          }
+        },
+        {
+          "table": "snapshot",
+          "attributes": {
+            "aid": "S",
+            "skey": "N",
+            "seq_nr": "N",
+            "manifest": "S",
+            "payload": "B",
+            "last_updated_at": "N"
+          },
+          "values": {
+            "aid": "Order-1",
+            "skey": "0",
+            "seq_nr": "3",
+            "manifest": "",
+            "last_updated_at": "123"
+          },
+          "binary_json": {
+            "payload": {
+              "total": 3
+            }
+          }
+        },
+        {
+          "table": "snapshot",
+          "attributes": {
+            "aid": "S",
+            "skey": "N",
+            "seq_nr": "N",
+            "manifest": "S",
+            "payload": "B",
+            "last_updated_at": "N",
+            "active_history_seq_nr": "N"
+          },
+          "values": {
+            "aid": "Order-1",
+            "skey": "3",
+            "seq_nr": "3",
+            "manifest": "",
+            "last_updated_at": "123",
+            "active_history_seq_nr": "3"
+          },
+          "binary_json": {
+            "payload": {
+              "total": 3
+            }
+          }
+        },
+        {
+          "table": "snapshot",
+          "attributes": {
+            "aid": "S",
+            "skey": "N",
+            "seq_nr": "N",
+            "manifest": "S",
+            "payload": "B",
+            "last_updated_at": "N",
+            "ttl": "N"
+          },
+          "values": {
+            "aid": "Order-1",
+            "skey": "2",
+            "seq_nr": "2",
+            "manifest": "",
+            "last_updated_at": "123",
+            "ttl": "4102444860"
+          },
+          "binary_json": {
+            "payload": {
+              "total": 2
+            }
+          }
+        },
+        {
+          "table": "head",
+          "attributes": {
+            "aid": "S",
+            "type_name": "S",
+            "seq_nr": "N",
+            "events": "L"
+          },
+          "values": {
+            "aid": "Order-1",
+            "type_name": "Order",
+            "seq_nr": "3",
+            "events": [
+              {
+                "seq_nr": "3",
+                "occurred_at": "123000000",
+                "manifest": ""
+              }
+            ]
+          },
+          "binary_json": {
+            "events[0].payload": {
+              "number": 3
+            }
+          },
+          "nested_attributes": {
+            "events[0]": {
+              "seq_nr": "N",
+              "occurred_at": "N",
+              "manifest": "S",
+              "payload": "B"
+            }
+          }
+        },
+        {
+          "table": "journal",
+          "attributes": {
+            "aid": "S",
+            "store_id": "S",
+            "layout_version": "N",
+            "seq_nr": "N"
+          },
+          "values": {
+            "aid": "__config__",
+            "layout_version": "1",
+            "store_id": "store-a",
+            "seq_nr": "0"
+          }
+        },
+        {
+          "table": "snapshot",
+          "attributes": {
+            "aid": "S",
+            "store_id": "S",
+            "layout_version": "N",
+            "skey": "N"
+          },
+          "values": {
+            "aid": "__config__",
+            "layout_version": "1",
+            "store_id": "store-a",
+            "skey": "0"
+          }
+        },
+        {
+          "table": "head",
+          "attributes": {
+            "aid": "S",
+            "store_id": "S",
+            "layout_version": "N"
+          },
+          "values": {
+            "aid": "__config__",
+            "layout_version": "1",
+            "store_id": "store-a"
+          }
+        }
+      ]
+    }
+  ]
+}

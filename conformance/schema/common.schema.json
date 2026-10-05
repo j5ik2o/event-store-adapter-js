@@ -1,0 +1,1280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json",
+  "$defs": {
+    "json": {
+      "anyOf": [
+        {
+          "type": [
+            "null",
+            "boolean",
+            "number",
+            "string"
+          ]
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+          }
+        }
+      ]
+    },
+    "aggregate-id": {
+      "type": "object",
+      "properties": {
+        "type_name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type_name",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "enum": [
+            "optimistic-lock",
+            "contract-violation",
+            "serialization",
+            "configuration",
+            "storage"
+          ]
+        },
+        "rule": {
+          "type": "string",
+          "pattern": "^(K|T|H|W|R|E|S|SP|DY|D)-[1-9][0-9]*$"
+        },
+        "message": {
+          "type": "object",
+          "properties": {
+            "must_contain": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            },
+            "must_not_contain": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "must_contain",
+            "must_not_contain"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "category"
+      ],
+      "additionalProperties": false
+    },
+    "event": {
+      "type": "object",
+      "properties": {
+        "aggregate_id": {
+          "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/aggregate-id"
+        },
+        "seq_nr": {
+          "type": "integer"
+        },
+        "occurred_at": {
+          "type": "string"
+        },
+        "manifest": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+        }
+      },
+      "required": [
+        "aggregate_id",
+        "seq_nr",
+        "occurred_at",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "snapshot": {
+      "type": "object",
+      "properties": {
+        "aggregate": {
+          "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+        },
+        "seq_nr": {
+          "type": "integer"
+        },
+        "manifest": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "aggregate",
+        "seq_nr"
+      ],
+      "additionalProperties": false
+    },
+    "case": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(K|T|H|W|R|E|S|SP|DY|D)-[1-9][0-9]*$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "description": {
+          "type": "string"
+        },
+        "backends": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "memory",
+              "dynamodb"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "ttl"
+            ]
+          }
+        },
+        "store": {
+          "type": "object",
+          "properties": {
+            "retention_count": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "retention_mode": {
+              "enum": [
+                "delete",
+                "ttl"
+              ]
+            },
+            "ttl_grace_seconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "layout_version": {
+              "const": 1
+            },
+            "retry_limit": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "retention_count",
+            "retention_mode"
+          ],
+          "additionalProperties": false
+        },
+        "initialization": {
+          "type": "object",
+          "properties": {
+            "expect": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "enum": [
+                        "success"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/error"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "observe": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/observe"
+            }
+          },
+          "required": [
+            "expect"
+          ],
+          "additionalProperties": false
+        },
+        "fixtures": {
+          "type": "object",
+          "properties": {
+            "events": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "aggregate_id": {
+                    "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/aggregate-id"
+                  },
+                  "seq_nr": {
+                    "type": "integer"
+                  },
+                  "occurred_at": {
+                    "type": "string"
+                  },
+                  "manifest": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+                  }
+                },
+                "required": [
+                  "aggregate_id",
+                  "seq_nr",
+                  "occurred_at",
+                  "payload"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "snapshots": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "aggregate": {
+                    "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+                  },
+                  "seq_nr": {
+                    "type": "integer"
+                  },
+                  "manifest": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "aggregate",
+                  "seq_nr"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "events",
+            "snapshots"
+          ],
+          "additionalProperties": false
+        },
+        "seed": {
+          "type": "object",
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/item"
+              }
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "additionalProperties": false
+        },
+        "clock": {
+          "type": "object",
+          "properties": {
+            "epoch_seconds": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "epoch_seconds"
+          ],
+          "additionalProperties": false
+        },
+        "faults": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "phase": {
+                "enum": [
+                  "serialize-event",
+                  "serialize-snapshot",
+                  "deserialize-event",
+                  "deserialize-snapshot",
+                  "commit",
+                  "read-events",
+                  "read-snapshot",
+                  "retention-query",
+                  "retention-delete",
+                  "retention-mark",
+                  "configuration-read",
+                  "configuration-create"
+                ]
+              },
+              "kind": {
+                "enum": [
+                  "storage-error",
+                  "serialization-error",
+                  "sdk-error",
+                  "sdk-response",
+                  "read-interleave"
+                ]
+              },
+              "details": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "const": "final-retention-failure"
+                  },
+                  "cancellation_reasons": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "target": {
+                          "enum": [
+                            "journal",
+                            "head",
+                            "current-snapshot",
+                            "history-snapshot",
+                            "configuration:journal",
+                            "configuration:snapshot",
+                            "configuration:head"
+                          ]
+                        },
+                        "code": {
+                          "enum": [
+                            "None",
+                            "ConditionalCheckFailed",
+                            "TransactionConflict",
+                            "ProvisionedThroughputExceeded",
+                            "ThrottlingError",
+                            "ValidationError",
+                            "ItemCollectionSizeLimitExceeded"
+                          ]
+                        },
+                        "old_head_seq_nr": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "target",
+                        "code"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1,
+                    "maxItems": 4
+                  },
+                  "install_items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/item"
+                    }
+                  },
+                  "responses": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "enum": [
+                        "seed-config",
+                        "stored-head"
+                      ]
+                    }
+                  },
+                  "unprocessed_keys": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "history_pages": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "omit_just_written_history": {
+                    "type": "boolean"
+                  },
+                  "unprocessed_first_n": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "after": {
+                    "const": "capture-head-before-batch"
+                  },
+                  "then": {
+                    "const": "replace-batch-response-head"
+                  },
+                  "interleaved_operation": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "op": {
+                            "const": "persistEvent"
+                          },
+                          "arguments": {
+                            "type": "object",
+                            "properties": {
+                              "event": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "event"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "op",
+                          "arguments"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "op": {
+                            "const": "persistEventAndSnapshot"
+                          },
+                          "arguments": {
+                            "type": "object",
+                            "properties": {
+                              "event": {
+                                "type": "string"
+                              },
+                              "snapshot": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "event",
+                              "snapshot"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "op",
+                          "arguments"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "repeat": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "const": "count"
+                      },
+                      "count": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "mode",
+                      "count"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "const": "until-operation-finishes"
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "injection": {
+                "enum": [
+                  "replace-request",
+                  "replace-response"
+                ]
+              }
+            },
+            "required": [
+              "operation",
+              "phase",
+              "kind",
+              "details",
+              "repeat",
+              "injection"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/step"
+          }
+        },
+        "representation": {
+          "type": "object",
+          "properties": {
+            "time_precision": {
+              "enum": [
+                "nanoseconds",
+                "milliseconds"
+              ]
+            },
+            "signed_seq_nr": {
+              "const": true
+            }
+          },
+          "additionalProperties": false,
+          "minProperties": 1
+        },
+        "generators": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string",
+                "pattern": "^/"
+              },
+              "character": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1
+              },
+              "byte_length": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "target",
+              "character",
+              "byte_length"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "id",
+        "rules",
+        "description",
+        "backends",
+        "store",
+        "fixtures",
+        "steps"
+      ],
+      "additionalProperties": false
+    },
+    "item": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "enum": [
+            "journal",
+            "snapshot",
+            "head"
+          ]
+        },
+        "attributes": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "enum": [
+              "S",
+              "N",
+              "B",
+              "L",
+              "M"
+            ]
+          }
+        },
+        "values": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+          }
+        },
+        "binary_json": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+          }
+        },
+        "nested_attributes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "enum": [
+                "S",
+                "N",
+                "B",
+                "L",
+                "M"
+              ]
+            }
+          }
+        },
+        "bindings": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "table",
+        "attributes",
+        "values"
+      ],
+      "additionalProperties": false
+    },
+    "observe": {
+      "type": "object",
+      "properties": {
+        "history": {
+          "type": "object",
+          "properties": {
+            "active": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "uniqueItems": true
+            },
+            "marked": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "seq_nr": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "ttl": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "seq_nr",
+                  "ttl"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "absent": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "active",
+            "marked",
+            "absent"
+          ],
+          "additionalProperties": false
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/item"
+          }
+        },
+        "requests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "api": {
+                "enum": [
+                  "BatchGetItem",
+                  "TransactWriteItems",
+                  "Query",
+                  "BatchWriteItem",
+                  "UpdateItem"
+                ]
+              },
+              "phase": {
+                "type": "string"
+              },
+              "constraints": {
+                "type": "object",
+                "properties": {
+                  "scan_index_forward": {
+                    "type": "boolean"
+                  },
+                  "follow_last_evaluated_key": {
+                    "type": "boolean"
+                  },
+                  "include_just_written_history": {
+                    "type": "boolean"
+                  },
+                  "retry_unprocessed_items": {
+                    "type": "boolean"
+                  },
+                  "consistent_read_all_tables": {
+                    "type": "boolean"
+                  },
+                  "same_store_id": {
+                    "type": "boolean"
+                  },
+                  "only_unprocessed_keys": {
+                    "type": "boolean"
+                  },
+                  "exponential_backoff": {
+                    "type": "boolean"
+                  },
+                  "consistent_read": {
+                    "type": "boolean"
+                  },
+                  "head_and_current_snapshot": {
+                    "type": "boolean"
+                  },
+                  "index": {
+                    "type": "string"
+                  },
+                  "projection": {
+                    "type": "string"
+                  },
+                  "head_return_values_on_condition_check_failure": {
+                    "type": "string"
+                  },
+                  "table": {
+                    "type": "string"
+                  },
+                  "keys": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "put_tables": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "initial_batch_sizes": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  },
+                  "target_seq_nrs": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  },
+                  "expires": {
+                    "type": "integer"
+                  },
+                  "layout_version": {
+                    "const": 1
+                  },
+                  "expression_attribute_names": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "update": {
+                    "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/update"
+                  },
+                  "condition": {
+                    "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/condition"
+                  },
+                  "key_condition": {
+                    "type": "object",
+                    "properties": {
+                      "all": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "attribute": {
+                              "type": "string"
+                            },
+                            "operator": {
+                              "enum": [
+                                "eq",
+                                "gte"
+                              ]
+                            },
+                            "argument": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "attribute",
+                            "operator",
+                            "argument"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "all"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "api",
+              "phase",
+              "constraints"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "notifications": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "retention-failure"
+            ]
+          }
+        },
+        "no_requests_in_phases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "request_count": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "minimum_request_count": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "result": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "enum": [
+                "success"
+              ]
+            }
+          },
+          "required": [
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "enum": [
+                "none"
+              ]
+            }
+          },
+          "required": [
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "enum": [
+                "snapshot"
+              ]
+            },
+            "head_seq_nr": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "snapshot": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "result",
+            "head_seq_nr",
+            "snapshot"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "enum": [
+                "events"
+              ]
+            },
+            "events": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              }
+            }
+          },
+          "required": [
+            "result",
+            "events"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "error": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/error"
+            }
+          },
+          "required": [
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "step": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "persistEvent"
+              ]
+            },
+            "arguments": {
+              "type": "object",
+              "properties": {
+                "event": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                }
+              },
+              "required": [
+                "event"
+              ],
+              "additionalProperties": false
+            },
+            "expect": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/result"
+            },
+            "observe": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/observe"
+            },
+            "clock_epoch_seconds": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "op",
+            "arguments",
+            "expect"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "persistEventAndSnapshot"
+              ]
+            },
+            "arguments": {
+              "type": "object",
+              "properties": {
+                "event": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "snapshot": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                }
+              },
+              "required": [
+                "event",
+                "snapshot"
+              ],
+              "additionalProperties": false
+            },
+            "expect": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/result"
+            },
+            "observe": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/observe"
+            },
+            "clock_epoch_seconds": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "op",
+            "arguments",
+            "expect"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "getLatestSnapshotById"
+              ]
+            },
+            "arguments": {
+              "type": "object",
+              "properties": {
+                "aggregate_id": {
+                  "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/aggregate-id"
+                }
+              },
+              "required": [
+                "aggregate_id"
+              ],
+              "additionalProperties": false
+            },
+            "expect": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/result"
+            },
+            "observe": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/observe"
+            },
+            "clock_epoch_seconds": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "op",
+            "arguments",
+            "expect"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "getEventsByIdSinceSeqNr"
+              ]
+            },
+            "arguments": {
+              "type": "object",
+              "properties": {
+                "aggregate_id": {
+                  "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/aggregate-id"
+                },
+                "seq_nr": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "aggregate_id",
+                "seq_nr"
+              ],
+              "additionalProperties": false
+            },
+            "expect": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/result"
+            },
+            "observe": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/observe"
+            },
+            "clock_epoch_seconds": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "op",
+            "arguments",
+            "expect"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "condition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "attribute_exists": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "attribute_exists"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "attribute_not_exists": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "attribute_not_exists"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "update": {
+      "type": "object",
+      "properties": {
+        "set": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "value_binding": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "value_binding"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "remove": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "set",
+        "remove"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

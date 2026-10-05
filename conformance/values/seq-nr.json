@@ -1,0 +1,136 @@
+{
+  "format": "values",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "seq-zero-value",
+      "rules": [
+        "T-9"
+      ],
+      "description": "整数の値域とイベントの開始値を区別する。",
+      "operation": "validateSeqNr",
+      "input": {
+        "seq_nr": 0,
+        "context": "value"
+      },
+      "expect": {
+        "value": 0
+      }
+    },
+    {
+      "id": "seq-max-value",
+      "rules": [
+        "T-9"
+      ],
+      "description": "整数の値域とイベントの開始値を区別する。",
+      "operation": "validateSeqNr",
+      "input": {
+        "seq_nr": 9007199254740991,
+        "context": "value"
+      },
+      "expect": {
+        "value": 9007199254740991
+      }
+    },
+    {
+      "id": "seq-one-event",
+      "rules": [
+        "T-9"
+      ],
+      "description": "整数の値域とイベントの開始値を区別する。",
+      "operation": "validateSeqNr",
+      "input": {
+        "seq_nr": 1,
+        "context": "event"
+      },
+      "expect": {
+        "value": 1
+      }
+    },
+    {
+      "id": "seq-zero-event",
+      "rules": [
+        "T-9",
+        "W-6",
+        "E-1",
+        "E-3"
+      ],
+      "description": "整数の値域とイベントの開始値を区別する。",
+      "operation": "validateSeqNr",
+      "input": {
+        "seq_nr": 0,
+        "context": "event"
+      },
+      "expect": {
+        "error": {
+          "category": "contract-violation",
+          "message": {
+            "must_contain": [
+              "W-6",
+              "0"
+            ],
+            "must_not_contain": []
+          },
+          "rule": "W-6"
+        }
+      }
+    },
+    {
+      "id": "seq-negative-value",
+      "rules": [
+        "T-9",
+        "E-1",
+        "E-3"
+      ],
+      "description": "範囲外のseq_nrは契約違反であり、規則と値をメッセージに含む。",
+      "operation": "validateSeqNr",
+      "input": {
+        "seq_nr": -1,
+        "context": "value"
+      },
+      "expect": {
+        "error": {
+          "category": "contract-violation",
+          "message": {
+            "must_contain": [
+              "T-9",
+              "-1"
+            ],
+            "must_not_contain": []
+          },
+          "rule": "T-9"
+        }
+      },
+      "representation": {
+        "signed_seq_nr": true
+      }
+    },
+    {
+      "id": "seq-above-max-value",
+      "rules": [
+        "T-9",
+        "E-1",
+        "E-3"
+      ],
+      "description": "範囲外のseq_nrは契約違反であり、規則と値をメッセージに含む。",
+      "operation": "validateSeqNr",
+      "input": {
+        "seq_nr": 9007199254740992,
+        "context": "value"
+      },
+      "expect": {
+        "error": {
+          "category": "contract-violation",
+          "message": {
+            "must_contain": [
+              "T-9",
+              "9007199254740992"
+            ],
+            "must_not_contain": []
+          },
+          "rule": "T-9"
+        }
+      }
+    }
+  ]
+}

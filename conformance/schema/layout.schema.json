@@ -1,0 +1,300 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/layout.schema.json",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "layout"
+    },
+    "version": {
+      "const": "1.0.0"
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(K|T|H|W|R|E|S|SP|DY|D)-[1-9][0-9]*$"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "description": {
+            "type": "string"
+          },
+          "tables": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "enum": [
+                    "journal",
+                    "snapshot",
+                    "head"
+                  ]
+                },
+                "partition_key": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "enum": [
+                        "S",
+                        "N"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                "sort_key": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "enum": [
+                            "S",
+                            "N"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "type"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "gsi": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name_binding": {
+                        "type": "string"
+                      },
+                      "partition_key": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "enum": [
+                              "S",
+                              "N"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "sort_key": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "enum": [
+                              "S",
+                              "N"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "projection": {
+                        "const": "KEYS_ONLY"
+                      }
+                    },
+                    "required": [
+                      "name_binding",
+                      "partition_key",
+                      "sort_key",
+                      "projection"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "streams": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "view_type": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "NEW_IMAGE",
+                        null
+                      ]
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "view_type"
+                  ],
+                  "additionalProperties": false
+                },
+                "ttl": {
+                  "type": "object",
+                  "properties": {
+                    "enabled_when": {
+                      "enum": [
+                        "retention-mode-ttl",
+                        "never"
+                      ]
+                    },
+                    "attribute": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "ttl",
+                        null
+                      ]
+                    }
+                  },
+                  "required": [
+                    "enabled_when",
+                    "attribute"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "name",
+                "partition_key",
+                "sort_key",
+                "gsi",
+                "streams",
+                "ttl"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "table": {
+                  "enum": [
+                    "journal",
+                    "snapshot",
+                    "head"
+                  ]
+                },
+                "attributes": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "additionalProperties": {
+                    "enum": [
+                      "S",
+                      "N",
+                      "B",
+                      "L",
+                      "M"
+                    ]
+                  }
+                },
+                "values": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+                  }
+                },
+                "binary_json": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+                  }
+                },
+                "nested_attributes": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "additionalProperties": {
+                      "enum": [
+                        "S",
+                        "N",
+                        "B",
+                        "L",
+                        "M"
+                      ]
+                    }
+                  }
+                },
+                "bindings": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "table",
+                "attributes",
+                "values"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "id",
+          "rules",
+          "description",
+          "tables",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "cases"
+  ],
+  "additionalProperties": false
+}

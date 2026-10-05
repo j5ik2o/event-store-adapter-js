@@ -1,0 +1,2 @@
+# The manifest pins the raw bytes of every file, so Git must never convert line endings here.
+* -text

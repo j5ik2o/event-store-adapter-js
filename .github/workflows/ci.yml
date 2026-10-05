@@ -353,6 +353,10 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.14"
+      - name: Verify conformance data
+        run: |
+          python3 tools/conformance/manifest.py verify
+          echo "61c26614dbbfba88eebce72cc1d2b0220218839e74dcfb64c19268f7ee2302ce  conformance/manifest.json" | sha256sum -c -
       - name: Test semver detection
         run: python3 -m unittest discover -s .github/tests -v
       - name: Setup Go

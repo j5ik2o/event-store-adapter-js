@@ -1,0 +1,62 @@
+{
+  "format": "values",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "hash-fnv1a64-1",
+      "rules": [
+        "K-1"
+      ],
+      "description": "hash.mdのFNV-1a 64参照表と同じUTF-8入力と符号なし64bit出力。",
+      "operation": "fnv1a64",
+      "input": {
+        "utf8": "a"
+      },
+      "expect": {
+        "value": "0xaf63dc4c8601ec8c"
+      }
+    },
+    {
+      "id": "hash-fnv1a64-2",
+      "rules": [
+        "K-1"
+      ],
+      "description": "hash.mdのFNV-1a 64参照表と同じUTF-8入力と符号なし64bit出力。",
+      "operation": "fnv1a64",
+      "input": {
+        "utf8": "01H42K4ABWQ5V2XQEP3A48VE0Z"
+      },
+      "expect": {
+        "value": "0xadb103af5fe2a91a"
+      }
+    },
+    {
+      "id": "hash-fnv1a64-3",
+      "rules": [
+        "K-1"
+      ],
+      "description": "hash.mdのFNV-1a 64参照表と同じUTF-8入力と符号なし64bit出力。",
+      "operation": "fnv1a64",
+      "input": {
+        "utf8": "01H42KBHCW1BZG504J4ZXKA2F2"
+      },
+      "expect": {
+        "value": "0x0aa990285e0388ca"
+      }
+    },
+    {
+      "id": "hash-fnv1a64-4",
+      "rules": [
+        "K-1"
+      ],
+      "description": "hash.mdのFNV-1a 64参照表と同じUTF-8入力と符号なし64bit出力。",
+      "operation": "fnv1a64",
+      "input": {
+        "utf8": "ユーザー"
+      },
+      "expect": {
+        "value": "0x309f20171820053e"
+      }
+    }
+  ]
+}

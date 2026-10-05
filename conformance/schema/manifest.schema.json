@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/manifest.schema.json",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "manifest"
+    },
+    "version": {
+      "const": "1.0.0"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "additionalProperties": false
+      },
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "files"
+  ],
+  "additionalProperties": false
+}

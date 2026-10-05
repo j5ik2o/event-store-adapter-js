@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/values.schema.json",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "values"
+    },
+    "version": {
+      "const": "1.0.0"
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(K|T|H|W|R|E|S|SP|DY|D)-[1-9][0-9]*$"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "description": {
+            "type": "string"
+          },
+          "operation": {
+            "enum": [
+              "buildAid",
+              "validateOccurredAt",
+              "validateSeqNr",
+              "fnv1a64"
+            ]
+          },
+          "input": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "aggregate_id": {
+                    "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/aggregate-id"
+                  },
+                  "user_string": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "aggregate_id"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "iso8601": {
+                    "type": "string"
+                  },
+                  "epoch_nanoseconds": {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+$"
+                  },
+                  "event_seq_nr": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "iso8601",
+                  "epoch_nanoseconds",
+                  "event_seq_nr"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "seq_nr": {
+                    "type": "integer"
+                  },
+                  "context": {
+                    "enum": [
+                      "value",
+                      "event"
+                    ]
+                  }
+                },
+                "required": [
+                  "seq_nr",
+                  "context"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "utf8": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "utf8"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "expect": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+                  }
+                },
+                "required": [
+                  "value"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "error": {
+                    "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/error"
+                  }
+                },
+                "required": [
+                  "error"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+                  },
+                  "precision_policy": {
+                    "enum": [
+                      "native-time-type"
+                    ]
+                  }
+                },
+                "required": [
+                  "value",
+                  "precision_policy"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "representation": {
+            "type": "object",
+            "properties": {
+              "time_precision": {
+                "enum": [
+                  "nanoseconds",
+                  "milliseconds"
+                ]
+              },
+              "signed_seq_nr": {
+                "const": true
+              }
+            },
+            "additionalProperties": false,
+            "minProperties": 1
+          }
+        },
+        "required": [
+          "id",
+          "rules",
+          "description",
+          "operation",
+          "input",
+          "expect"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "cases"
+  ],
+  "additionalProperties": false
+}

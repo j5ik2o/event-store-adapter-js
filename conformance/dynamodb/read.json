@@ -1,0 +1,539 @@
+{
+  "format": "scenarios",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "id": "dynamodb-events-over-one-megabyte",
+      "rules": [
+        "D-7",
+        "DY-11",
+        "R-4",
+        "R-5",
+        "R-6"
+      ],
+      "description": "4件の320000バイトの文字列ペイロードを読み、各項目は400KB未満で、合計は1MBを超える。ページをまたいでも全封筒を返す。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "text": "",
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "text": "",
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "text": "",
+              "number": 3
+            },
+            "manifest": ""
+          },
+          "e4": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 4,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "text": "",
+              "number": 4
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e3"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e4"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2",
+              "e3",
+              "e4"
+            ]
+          },
+          "observe": {
+            "requests": [
+              {
+                "api": "Query",
+                "phase": "read-events",
+                "constraints": {
+                  "table": "journal",
+                  "key_condition": {
+                    "all": [
+                      {
+                        "attribute": "aid",
+                        "operator": "eq",
+                        "argument": "aggregate_id"
+                      },
+                      {
+                        "attribute": "seq_nr",
+                        "operator": "gte",
+                        "argument": "seq_nr"
+                      }
+                    ]
+                  },
+                  "consistent_read": true,
+                  "scan_index_forward": true,
+                  "follow_last_evaluated_key": true
+                }
+              }
+            ],
+            "minimum_request_count": {
+              "read-events": 2
+            }
+          }
+        }
+      ],
+      "generators": [
+        {
+          "target": "/fixtures/events/e1/payload/text",
+          "character": "x",
+          "byte_length": 320000
+        },
+        {
+          "target": "/fixtures/events/e2/payload/text",
+          "character": "x",
+          "byte_length": 320000
+        },
+        {
+          "target": "/fixtures/events/e3/payload/text",
+          "character": "x",
+          "byte_length": 320000
+        },
+        {
+          "target": "/fixtures/events/e4/payload/text",
+          "character": "x",
+          "byte_length": 320000
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-latest-unprocessed",
+      "rules": [
+        "DY-9",
+        "DY-10",
+        "R-2",
+        "R-3"
+      ],
+      "description": "BatchGetItemの未処理項目を読み切り、スナップショットがないと早合点しない。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 1,
+            "snapshot": "s1"
+          },
+          "observe": {
+            "requests": [
+              {
+                "api": "BatchGetItem",
+                "phase": "read-snapshot",
+                "constraints": {
+                  "consistent_read_all_tables": true,
+                  "head_and_current_snapshot": true
+                }
+              },
+              {
+                "api": "BatchGetItem",
+                "phase": "read-snapshot",
+                "constraints": {
+                  "only_unprocessed_keys": true,
+                  "consistent_read_all_tables": true
+                }
+              }
+            ],
+            "request_count": {
+              "read-snapshot": 2
+            }
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 2,
+          "phase": "read-snapshot",
+          "kind": "sdk-response",
+          "details": {
+            "responses": {
+              "head": "stored-head"
+            },
+            "unprocessed_keys": [
+              "snapshot:Order-9:0"
+            ]
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-snapshot-ahead-of-head",
+      "rules": [
+        "R-8",
+        "DY-9",
+        "DY-10",
+        "W-8"
+      ],
+      "description": "1回のBatchGetItemの応答を、確定前に捕捉した旧ヘッドと差し込み追記後の新スナップショットで組み立てる。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 3
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 1,
+            "snapshot": "s2"
+          },
+          "observe": {
+            "requests": [
+              {
+                "api": "BatchGetItem",
+                "phase": "read-snapshot",
+                "constraints": {
+                  "head_and_current_snapshot": true,
+                  "consistent_read_all_tables": true
+                }
+              }
+            ],
+            "request_count": {
+              "read-snapshot": 1
+            }
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e3"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 3,
+            "snapshot": "s2"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e3"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 2,
+          "phase": "read-snapshot",
+          "kind": "read-interleave",
+          "details": {
+            "after": "capture-head-before-batch",
+            "interleaved_operation": {
+              "op": "persistEventAndSnapshot",
+              "arguments": {
+                "event": "e2",
+                "snapshot": "s2"
+              }
+            },
+            "then": "replace-batch-response-head"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-no-head-with-snapshot",
+      "rules": [
+        "R-1",
+        "DY-9",
+        "DY-10"
+      ],
+      "description": "スナップショット項目だけがあっても、ヘッドがなければ集約は存在しない。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "seed": {
+        "items": [
+          {
+            "table": "snapshot",
+            "attributes": {
+              "aid": "S",
+              "skey": "N",
+              "seq_nr": "N",
+              "manifest": "S",
+              "payload": "B",
+              "last_updated_at": "N"
+            },
+            "values": {
+              "aid": "Order-9",
+              "skey": "0",
+              "seq_nr": "3",
+              "manifest": "",
+              "last_updated_at": "123"
+            },
+            "binary_json": {
+              "payload": {
+                "total": 3
+              }
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        }
+      ]
+    }
+  ]
+}
