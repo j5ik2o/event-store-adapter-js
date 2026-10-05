@@ -323,6 +323,31 @@ describe("DynamoDBEventStore", () => {
   );
 });
 
+describe("DynamoDBEventStore query pagination", () => {
+  test.each([undefined, {}])(
+    "stops after one query when LastEvaluatedKey is %p",
+    async (lastEvaluatedKey) => {
+      const send = jest
+        .fn()
+        .mockResolvedValueOnce({
+          Items: [],
+          LastEvaluatedKey: lastEvaluatedKey,
+        })
+        .mockResolvedValue({ Items: [] });
+      const eventStore = createUnitEventStore(send);
+
+      await expect(
+        eventStore.getEventsByIdSinceSequenceNumber(
+          UserAccountId.create("1"),
+          1,
+        ),
+      ).resolves.toEqual([]);
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenCalledWith(expect.any(QueryCommand));
+    },
+  );
+});
+
 describe("DynamoDBEventStore failure mapping", () => {
   const snapshotPayload = new TextEncoder().encode(
     JSON.stringify({

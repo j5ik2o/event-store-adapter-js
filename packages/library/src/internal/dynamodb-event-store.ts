@@ -103,7 +103,10 @@ function createDynamoDBEventStore<
       });
       result = [...result, ...events];
       exclusiveStartKey = queryResult.LastEvaluatedKey;
-    } while (exclusiveStartKey !== undefined);
+    } while (
+      exclusiveStartKey !== undefined &&
+      Object.keys(exclusiveStartKey).length > 0
+    );
     logger?.debug(
       `getEventsByIdSinceSequenceNumber(${JSON.stringify(
         id,
