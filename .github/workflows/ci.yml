@@ -338,6 +338,33 @@ jobs:
               return response.data.statuses.find((status) => status.context === checkName);
             }
 
+  release-checks:
+    name: Check version bump automation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: Test semver detection
+        run: python3 -m unittest discover -s .github/tests -v
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - name: Check workflows
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          actionlint
+
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
@@ -349,6 +376,7 @@ jobs:
       - examples
       - package-tests
       - codecov-status
+      - release-checks
     if: always()
     steps:
       - name: All checks passed
@@ -391,4 +419,5 @@ jobs:
           require_result "examples" "${{ needs.examples.result }}" "${expected_code_job_result}"
           require_result "package-tests" "${{ needs['package-tests'].result }}" "${expected_code_job_result}"
           require_result "codecov-status" "${{ needs['codecov-status'].result }}" "${expected_code_job_result}"
+          require_result "release-checks" "${{ needs['release-checks'].result }}" "success"
           echo "All CI checks passed successfully"
