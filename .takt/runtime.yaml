@@ -40,6 +40,15 @@ provider:
       flash-implement-dynamic/reimplement:       { profile: t1 }
       flash-implement-dynamic/reimplement_final: { profile: t2 }
       flash-remediation-dynamic/fix:             { ladder: [t1, t2] }
+      # light-change が呼ぶ組み込みの mini-core。計画とレビューは GPT-6.1-Sol、実装と修正は Sonnet 5.5
+      mini-core/plan:                            { profile: t3-plan }
+      mini-core/implement:                       { profile: t0-production-code }
+      mini-core/ai-antipattern-review-2nd:       { profile: t3-judge }
+      mini-core/supervise:                       { profile: t3-judge }
+      mini-core/ai-antipattern-fix-parallel:     { profile: t1 }
+      mini-core/supervise_fix_parallel:          { profile: t1 }
+      mini-core/ai-antipattern-fix:              { profile: t1 }
+      mini-core/supervise_fix:                   { profile: t1 }
     internal_agents:
       selector: { profile: t1 }
     companions:
