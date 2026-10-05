@@ -1,6 +1,17 @@
 name: Bump-Version
 on:
   workflow_dispatch:
+    inputs:
+      level:
+        description: Version bump level
+        type: choice
+        required: true
+        default: auto
+        options:
+          - auto
+          - patch
+          - minor
+          - major
 jobs:
   bump-version:
     runs-on: ubuntu-latest
@@ -27,31 +38,37 @@ jobs:
         run: |
           LATEST_TAG=$(git describe --abbrev=0 --tags)
           echo "LATEST_TAG=$LATEST_TAG"
-          echo "prev_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "prev_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
       - name: Calculate changes from the latest tag to HEAD
         id: changes
         run: |
-          COUNT=$(git log ${{ steps.defines.outputs.prev_tag }}..HEAD --pretty=format:"%s" \
-            --no-merges -P --grep='^(BREAKING CHANGE|build|ci|feat|fix|docs|style|refactor|perf|test|revert|chore)(\(.*\))?:' | awk 'END{print NR}')
+          COUNT=$(git rev-list --count ${{ steps.defines.outputs.prev_tag }}..HEAD \
+            --no-merges -P --grep='^(BREAKING CHANGE|build|ci|feat|fix|docs|style|refactor|perf|test|revert|chore)(\(.*\))?!?:|^BREAKING[ -]CHANGE:')
           echo "COUNT=$COUNT"
-          echo "count=$COUNT" >> $GITHUB_OUTPUT
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
       - name: Calculate semver level
         id: semver_level
+        env:
+          REQUESTED_LEVEL: ${{ inputs.level }}
         run: |
-          SEMVER_LEVEL=$(git log ${{ steps.defines.outputs.prev_tag }}..HEAD --pretty=format:"%h%x09%H%x09%s" \
-            --no-merges -P --grep='^(BREAKING CHANGE|build|ci|feat|fix|docs|style|refactor|perf|test|revert|chore)(\(.*\))?:' \
+          if [[ "$REQUESTED_LEVEL" != "auto" ]]; then
+            echo "semver_level=$REQUESTED_LEVEL" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          SEMVER_LEVEL=$(git log ${{ steps.defines.outputs.prev_tag }}..HEAD --pretty=format:"%s%x1f%b%x1e" \
+            --no-merges -P --grep='^(BREAKING CHANGE|build|ci|feat|fix|docs|style|refactor|perf|test|revert|chore)(\(.*\))?!?:|^BREAKING[ -]CHANGE:' \
             | python3 "${GITHUB_WORKSPACE}"/.github/semver-level.py)
           echo "SEMVER_LEVEL=$SEMVER_LEVEL"
-          echo "semver_level=$SEMVER_LEVEL" >> $GITHUB_OUTPUT
-        if: steps.changes.outputs.count > 0
+          echo "semver_level=$SEMVER_LEVEL" >> "$GITHUB_OUTPUT"
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto'
       - name: Get the next version
         id: versions
         run: |
           NEXT_VERSION=$(echo ${{ steps.defines.outputs.prev_tag }} | python3 "${GITHUB_WORKSPACE}"/.github/next-semver.py ${{ steps.semver_level.outputs.semver_level }})
           echo "NEXT_VERSION=$NEXT_VERSION"
-          echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
-          echo "next_tag=v$NEXT_VERSION" >> $GITHUB_OUTPUT
-        if: steps.changes.outputs.count > 0
+          echo "next_version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "next_tag=v$NEXT_VERSION" >> "$GITHUB_OUTPUT"
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto'
       - name: git commit & push
         id: git_commit_push
         run: |
@@ -62,8 +79,8 @@ jobs:
           git commit -m "version up to ${{ steps.versions.outputs.next_tag }}"
           git push origin main
           COMMIT_SHA=$(git rev-parse HEAD)
-          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
-        if: steps.changes.outputs.count > 0
+          echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto'
       - name: tagging and push tag
         id: tag_version
         run: |
@@ -79,7 +96,7 @@ jobs:
             -P --grep='^(BREAKING CHANGE|build|ci|feat|fix|docs|style|refactor|perf|test|revert|chore)(.*)?:.*$' \
             --no-merges --full-history | \
             python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-body.py >> changelog.txt
-        if: steps.changes.outputs.count > 0
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto'
       - name: Create a GitHub release
         uses: actions/create-release@v1
         env:
@@ -88,7 +105,7 @@ jobs:
           tag_name: ${{ steps.versions.outputs.next_tag }}
           release_name: Release ${{ steps.versions.outputs.next_tag }}
           body_path: changelog.txt
-        if: steps.changes.outputs.count > 0
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto'
       - name: Switch to Snapshot version
         run: |
           rm changelog.txt
@@ -98,4 +115,4 @@ jobs:
           git add packages/library/package.json pnpm-lock.yaml
           git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
           git push origin main
-        if: steps.changes.outputs.count > 0
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto'

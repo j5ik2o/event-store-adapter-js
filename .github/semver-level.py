@@ -1,31 +1,27 @@
 #! /usr/bin/env python3
 # -*- coding: utf-8 -*-
-import sys
-import csv
 import re
+import sys
 
-commit_messages = {'BREAKING CHANGE': 0, 'build': 0, 'ci': 0, 'feat': 0, 'fix': 0, 'docs': 0, 'style': 0, 'refactor': 0, 'perf': 0, 'test': 0, 'revert': 0, 'chore': 0}
 
-rules = {'major': ['perf', 'BREAKING CHANGE'], 'minor': ['feat', 'revert'], 'patch': ['build', 'ci', 'fix', 'docs', 'style', 'refactor', 'chore', 'test']}
+def semver_level(commit_log):
+    levels = []
+    for record in commit_log.split('\x1e'):
+        if not record.strip():
+            continue
+        subject, body = record.lstrip('\n').split('\x1f', 1)
+        header = re.match(r'^([a-z]+)(?:\([^\r\n]*\))?(!)?:', subject)
+        if (header and header.group(2)) or re.search(
+            r'^BREAKING[ -]CHANGE:', body, re.MULTILINE
+        ) or subject.startswith('BREAKING CHANGE:'):
+            levels.append('major')
+        elif header:
+            levels.append('minor' if header.group(1) in ('feat', 'revert') else 'patch')
+    return next((level for level in ('major', 'minor', 'patch') if level in levels), None)
 
-cin = csv.reader(sys.stdin, delimiter="\t")
 
-def match_append(key, row):
-    r = re.match(f"^{key}(.*)?\: (.*)", row[2])
-    if r:
-        commit_messages[key]+=1
-
-for row in cin:
-    for key in commit_messages.keys():
-        match_append(key, row)
-
-if sum(commit_messages.values()) > 0:
-    for k,v in rules.items():
-        sum = 0
-        for t in v:
-            sum += commit_messages[t]
-        if sum > 0:
-            print(k)
-            break
-else:
-    sys.exit(-1)
+if __name__ == '__main__':
+    level = semver_level(sys.stdin.read())
+    if level is None:
+        sys.exit(1)
+    print(level)
