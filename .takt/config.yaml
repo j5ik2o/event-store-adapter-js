@@ -5,7 +5,9 @@ language: ja
 auto_pr: false
 concurrency: 1
 # 利用上限に当たったステップは、失敗させずに次の provider / model で実行し直す
+# takt は、今と異なり、まだ試していない先頭の候補を選ぶ。Sonnet 5.5 と GPT-6.1-Sol のあいだで切り替わる
+# Opus 5.5 は司令塔だけが使うので、候補に入れない(repository-policy.md の 6 章)
 rate_limit_fallback:
   switch_chain:
-    - { provider: claude, model: claude-opus-5-5 }
+    - { provider: claude, model: claude-sonnet-5-5 }
     - { provider: codex,  model: gpt-6.1-sol }
