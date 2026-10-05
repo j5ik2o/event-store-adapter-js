@@ -28,3 +28,5 @@ tools/
 !facets/instructions/**
 !facets/output-contracts/
 !facets/output-contracts/**
+!bin/
+!bin/**
