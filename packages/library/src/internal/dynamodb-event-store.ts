@@ -83,19 +83,30 @@ function createDynamoDBEventStore<
         ":seq_nr": { N: sequenceNumber.toString() },
       },
     };
-    const queryResult = await dynamodbClient.send(new QueryCommand(request));
-    const result =
-      queryResult.Items === undefined
-        ? []
-        : queryResult.Items.map((item) => {
-            const payload = item.payload?.B;
-            if (payload === undefined) {
-              throw new Error("Payload is undefined");
-            }
-            return eventSerializer.deserialize(payload, (json) =>
-              convertJson("eventConverter", eventConverter, json),
-            );
-          });
+    let result: E[] = [];
+    let exclusiveStartKey: Record<string, AttributeValue> | undefined;
+    do {
+      const queryResult = await dynamodbClient.send(
+        new QueryCommand({
+          ...request,
+          ExclusiveStartKey: exclusiveStartKey,
+        }),
+      );
+      const events = (queryResult.Items ?? []).map((item) => {
+        const payload = item.payload?.B;
+        if (payload === undefined) {
+          throw new Error("Payload is undefined");
+        }
+        return eventSerializer.deserialize(payload, (json) =>
+          convertJson("eventConverter", eventConverter, json),
+        );
+      });
+      result = [...result, ...events];
+      exclusiveStartKey = queryResult.LastEvaluatedKey;
+    } while (
+      exclusiveStartKey !== undefined &&
+      Object.keys(exclusiveStartKey).length > 0
+    );
     logger?.debug(
       `getEventsByIdSinceSequenceNumber(${JSON.stringify(
         id,

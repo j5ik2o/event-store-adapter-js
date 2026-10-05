@@ -120,6 +120,47 @@ describe("DynamoDBEventStore", () => {
     createEventStore: () => createEventStore(dynamodbClient),
   });
 
+  test(
+    "returns all events in sequence order when query results exceed 1 MB",
+    async () => {
+      const eventStore = createEventStore(dynamodbClient);
+      const id = UserAccountId.create(ulid());
+      const name = "x".repeat(100 * 1024);
+      const [initialAggregate, created] = UserAccount.create(id, name);
+      await expectOk(
+        eventStore.persistEventAndSnapshot(created, initialAggregate),
+      );
+
+      let aggregate = initialAggregate;
+      for (let sequenceNumber = 2; sequenceNumber <= 16; sequenceNumber++) {
+        const [renamedAggregate, renamed] = aggregate.rename(name);
+        await expectOk(
+          eventStore.persistEvent(renamed, renamedAggregate.version),
+        );
+        aggregate = renamedAggregate.withVersion(aggregate.version + 1);
+      }
+
+      const events = await eventStore.getEventsByIdSinceSequenceNumber(id, 1);
+      expect(events).toHaveLength(16);
+      expect(events.map((event) => event.sequenceNumber)).toEqual([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      ]);
+      for (const event of events) {
+        expect(event.aggregateId.asString()).toBe(id.asString());
+        expect(event.name).toBe(name);
+      }
+
+      const laterEvents = await eventStore.getEventsByIdSinceSequenceNumber(
+        id,
+        3,
+      );
+      expect(laterEvents.map((event) => event.sequenceNumber)).toEqual([
+        3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      ]);
+    },
+    TIMEOUT,
+  );
+
   test.each([
     [
       Number.NaN,
@@ -279,6 +320,31 @@ describe("DynamoDBEventStore", () => {
       expect(latestSnapshotResult.Items?.[0].active_ttl_seq_nr).toBeUndefined();
     },
     TIMEOUT,
+  );
+});
+
+describe("DynamoDBEventStore query pagination", () => {
+  test.each([undefined, {}])(
+    "stops after one query when LastEvaluatedKey is %p",
+    async (lastEvaluatedKey) => {
+      const send = jest
+        .fn()
+        .mockResolvedValueOnce({
+          Items: [],
+          LastEvaluatedKey: lastEvaluatedKey,
+        })
+        .mockResolvedValue({ Items: [] });
+      const eventStore = createUnitEventStore(send);
+
+      await expect(
+        eventStore.getEventsByIdSinceSequenceNumber(
+          UserAccountId.create("1"),
+          1,
+        ),
+      ).resolves.toEqual([]);
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenCalledWith(expect.any(QueryCommand));
+    },
   );
 });
 
