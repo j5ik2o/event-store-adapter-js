@@ -15,7 +15,8 @@ fi
 
 # 選択した ChatGPT アカウントを確実に使う。API key が残っていると CODEX_HOME
 # の OAuth 認証より優先されるため、明示的な account 選択時は取り除く。
-unset OPENAI_API_KEY CODEX_API_KEY
+# 接続先・トークン・外部認証の上書きも、CODEX_HOME のアカウントより優先されるため外す。
+unset OPENAI_API_KEY CODEX_API_KEY OPENAI_BASE_URL CODEX_ACCESS_TOKEN OPENAI_IDENTITY_TOKEN_FILE OPENAI_FEDERATION_RULE_ID
 CODEX_HOME=$account_dir
 export CODEX_HOME
 TAKT_AGENT=1
