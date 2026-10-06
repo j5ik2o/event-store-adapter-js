@@ -128,7 +128,7 @@ export namespace EventEnvelope {
 - T-3: ストアは `occurredAt` をストア側の時刻で置き換えない。読み取りで同じ値（ミリ秒精度）を返す。
 - `Date` は変更できる。そのため、メモリは `occurredAt` をミリ秒の数値（`getTime()`）で持ち、読み取りで返すたびに新しい `Date` を作る（MEM-6）。入力の `Date` の参照は保持しない。
 - 現行の `Event` の `typeName`・`id`・`isCreated` は廃止する。ドメインのイベントは `payload` に入れる。
-- `create` を通らない封筒も受け取るので、書き込みの入口で同じ検査を再度行う（W-6・T-9・T-13）。
+- `create` を通らない封筒も受け取るので、書き込みの入口（`persistEvent`・`persistEventAndSnapshot`）で同じ検査を再度行う（必須要素の欠落の T-2・T-10、W-6・T-9・T-13）。欠けた `payload` や `aggregate` が直列化の失敗に、欠けた `aggregateId` が例外になる前に、契約違反として返す。PR 5 の試験で、`create` を通さずに欠けた封筒を直接渡す場合を確かめる。
 
 ### 2.5 スナップショット封筒（T-10）
 
@@ -645,7 +645,7 @@ DynamoDB は、`DynamoDBClient.middlewareStack` に、実行器が追加する�
 | PR 2: 適合の実行器の基盤 | データの読み込み、場面の実行、報告、`manifest` の照合、フックの置き場所（`src/next/internal/test/conformance/`）。`remove-test-artifacts.mjs` と `jest.config.ts` の除外を `next/internal/test` に広げる（5.0）。実行器は、自前の境界のインターフェイス（5.0）だけに依存し、中核の型に依存しない。実行器の単体試験 | 5.1・5.2・5.8、IP 5 の1 | 実装計画 4.2 の順（実行器 → 中核）を保つ。各ケースの実行は、メモリ（PR 8）・DynamoDB（PR 9〜11）で有効にする |
 | PR 3: 中核（値の型） | 集約 ID、イベント封筒、スナップショット封筒、整数・時刻の型 | T-1〜T-5、T-9〜T-13 | `index.ts` から公開しない |
 | PR 4: 中核（payload とエラー） | `PayloadSerializer`、`EventStoreError`（5分類）と構築関数 | T-6〜T-8、E-1〜E-3 | |
-| PR 5: 中核（操作） | `EventStore` の型と、書き込み・読み取りの入口の検査 | W-3〜W-9 の入口の検査、R-1〜R-6 | 保存先の照合は各保存先の PR |
+| PR 5: 中核（操作） | `EventStore` の型と、書き込み・読み取りの入口の検査 | T-2・T-10 と W-3〜W-9 の入口の検査、R-1〜R-6 | 保存先の照合は各保存先の PR |
 | PR 6: 中核（設定） | `SnapshotRetention`、`RetentionFailure`、入力の型と検査 | S-1・S-4（型） | |
 | PR 7: メモリの実装 | 新しいメモリ実装（`MemoryStorage`、排他制御、保持処理）と、その単体試験 | MEM-1〜MEM-13、R-8 | |
 | PR 8: メモリの実行器のフック | 実行器のメモリ用のフック（保持の決定的実行、内部履歴、障害の差し込み）。メモリの全ケースを有効にして通す。現行の `memory-event-store.test.ts` に代わる試験 | MEM の適合の事例、IP 5 の1（メモリ） | |
