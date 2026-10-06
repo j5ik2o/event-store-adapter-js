@@ -2,7 +2,7 @@
 # TAKT が claude を起動するときの入口 (TAKT_CLAUDE_CLI_PATH に絶対パスで指定する)。
 # TAKT_CLAUDE_ACCOUNT_DIR のアカウント設定 (CLAUDE_CONFIG_DIR) で claude を起動する。
 # 指定がない、またはディレクトリがないときは、既定のアカウントに黙って戻さず失敗する。
-# 通常は scripts/run-takt.sh から使う。
+# 通常は同じディレクトリの run-takt.sh から使う。
 set -eu
 
 account_dir=${TAKT_CLAUDE_ACCOUNT_DIR:-}
@@ -29,7 +29,7 @@ unset CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE
     CLAUDE_CODE_SUBAGENT_MODEL CLAUDE_CODE_SUBAGENT_MODEL_FORCE
 CLAUDE_CONFIG_DIR=$account_dir
 export CLAUDE_CONFIG_DIR
-# TAKT が起動したエージェントであることの印 (scripts/takt-codex.sh と同じ)
+# TAKT が起動したエージェントであることの印 (takt-codex.sh と同じ)
 TAKT_AGENT=1
 export TAKT_AGENT
 exec "${TAKT_CLAUDE_REAL_CLI:-claude}" "$@"

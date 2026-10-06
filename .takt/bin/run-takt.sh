@@ -1,11 +1,12 @@
 #!/bin/sh
 # TAKT を、claude と codex のアカウントを指定して起動する。
 #
-#   scripts/run-takt.sh --claude-account <設定ディレクトリ> --codex-account <設定ディレクトリ> [takt の引数...]
-#   例: scripts/run-takt.sh --claude-account ~/.claude-work --codex-account ~/.codex-work --pipeline --auto-pr -b fix/x -i 9 --workflow flash-default
+#   .takt/bin/run-takt.sh --claude-account <設定ディレクトリ> --codex-account <設定ディレクトリ> [takt の引数...]
+#   例: .takt/bin/run-takt.sh --claude-account ~/.claude-work --codex-account ~/.codex-work --pipeline --auto-pr -b fix/x -i 9 --workflow flash-default
+#   (インストーラがプロジェクトの .takt/bin/ に置く。takt-workflows のリポジトリの中では scripts/run-takt.sh)
 #
-# runtime.yaml は 1 回の実行で claude と codex の両方を使う。TAKT_CLAUDE_CLI_PATH に scripts/takt-claude.sh、
-# TAKT_CODEX_CLI_PATH に scripts/takt-codex.sh を絶対パスで渡し、TAKT が起動する claude と codex を、
+# runtime.yaml は 1 回の実行で claude と codex の両方を使う。TAKT_CLAUDE_CLI_PATH にこのスクリプトと同じ
+# ディレクトリの takt-claude.sh、TAKT_CODEX_CLI_PATH に takt-codex.sh を絶対パスで渡し、TAKT が起動する claude と codex を、
 # それぞれ指定したアカウント (CLAUDE_CONFIG_DIR、CODEX_HOME) で動かす。
 # アカウントの上限に当たったときに、別のアカウントへ切り替えて再開するために使う。アカウントの名前は
 # マシンごとの事情なので、リポジトリには書かず、起動のたびに指定する。TAKT の設定はカレントディレクトリの
@@ -13,7 +14,7 @@
 set -eu
 
 usage() {
-    echo "usage: scripts/run-takt.sh --claude-account <設定ディレクトリ> --codex-account <設定ディレクトリ> [takt の引数...]" >&2
+    echo "usage: $0 --claude-account <設定ディレクトリ> --codex-account <設定ディレクトリ> [takt の引数...]" >&2
     exit 2
 }
 
@@ -131,4 +132,11 @@ elif command -v mise >/dev/null 2>&1; then
     fi
     exec mise exec -- takt "$@"
 fi
+# mise が無いのにプロジェクトが mise の設定を持つときは、固定した版でない takt を動かさないよう止める。
+for mise_config in mise.toml .mise.toml mise.local.toml .mise.local.toml .config/mise.toml .config/mise/config.toml; do
+    if [ -f "$project_dir/$mise_config" ]; then
+        echo "run-takt: プロジェクトに mise の設定 ($mise_config) があるのに mise が見つからない。固定した版の takt を使うため、mise を入れてから実行してください: $project_dir" >&2
+        exit 1
+    fi
+done
 exec takt "$@"
