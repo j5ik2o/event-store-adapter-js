@@ -81,6 +81,7 @@ export namespace AggregateId {
 
 - `asString` は、型名が `-` を含まないこと（T-11）と、型名・値・区切りの UTF-8 バイト数の合計が 1024 以下であること（T-12）を検査し、違反は `Result` の失敗で返す。文字数ではなく `Buffer.byteLength(s, "utf8")` で数える。適合データの多バイトのケースは、これで検出できる。
 - 利用者が独自のオブジェクトを渡せるので、ストアの各操作も `AggregateId.asString` を通して再検査し、失敗はそのまま操作の失敗として返す。`AggregateId.of` を通っていない値でも T-11・T-12 が守られる（MEM-5 も同じ）。
+- 空の型名・空の値は許す。仕様（T-11・T-12）は禁じておらず、aid 文字列は `-` を含むので空にならない（指揮役の回答、2026-10-06）。適合データにこのケースはないので、PR 3 の単体試験で、型名が空（`-値`）・値が空（`型名-`）・両方が空（`-`）を確かめる。
 - 現行の `AggregateId` の `asString: () => string` は廃止する。型名と値だけを持つ。
 
 ### 2.3 整数と時刻の型（T-9・T-13・1.5）
@@ -336,7 +337,7 @@ export type DynamoDBEventStoreInput<PE, PS> = Readonly<{
 }>;
 ```
 
-- 設定エラーになる値: `retention.count` が 1 以上の整数でない（S-1）。`graceSeconds` が 0 以上の整数でない。メモリで `mode.type = "ttl"`（MEM-3・MEM-12）。メモリで変更フィードを要求する設定（MEM-3・MEM-13）は、`MemoryStorageInput` に `changeFeed?: unknown` を持たせ、値が指定されていれば（`undefined` 以外）`MemoryStorage.create` が `configuration-error`（`fieldName = "changeFeed"`）を返す。型で項目を持たないだけでは、JavaScript からの入力を実行時に拒否できないためである。保持の設定はメモリの保存先が持つので、同じ `MemoryStorage` を共有するインスタンスは同じ設定を使う（`createMemory` は保持の設定を受け取らない）。DynamoDB で3テーブル名が空・同名、`snapshotAidIndexName` が空。保存先に記録された `store_id`・`layout_version` との食い違い（P-40）。
+- 設定エラーになる値: `retention.count` が 1 以上の整数でない（S-1）。`graceSeconds` が 0 以上の安全な整数（`Number.isSafeInteger`）でない。上限は定めない（指揮役の回答、2026-10-06）が、`number` で正確に表せない値（2^53 以上）は、生成時の不正な設定値として設定エラーにする。メモリで `mode.type = "ttl"`（MEM-3・MEM-12）。メモリで変更フィードを要求する設定（MEM-3・MEM-13）は、`MemoryStorageInput` に `changeFeed?: unknown` を持たせ、値が指定されていれば（`undefined` 以外）`MemoryStorage.create` が `configuration-error`（`fieldName = "changeFeed"`）を返す。型で項目を持たないだけでは、JavaScript からの入力を実行時に拒否できないためである。保持の設定はメモリの保存先が持つので、同じ `MemoryStorage` を共有するインスタンスは同じ設定を使う（`createMemory` は保持の設定を受け取らない）。DynamoDB で3テーブル名が空・同名、`snapshotAidIndexName` が空。保存先に記録された `store_id`・`layout_version` との食い違い（P-40）。
 - 「期限切れ方式」の名前は、仕様上のもの（`retention_mode = ttl`）に対応する。型の名前は `mode.type` とした。
 - S-4・MEM-11: 保持処理の失敗は書き込みの結果を変えない。`onRetentionFailure` コールバックに `RetentionFailure` を渡し、`logger.error` にも出す。コールバックが投げた例外は書き込みの結果に影響させず、`logger` に出す。公開 API の形は仕様で固定されていないので、この形は設計案である。
 - 同じ最終失敗は1回だけ通知する（観察側で同じ失敗の複数ログを1つに正規化してよい、という適合データの方針に合わせる）。
@@ -417,7 +418,7 @@ export type DynamoDBEventStoreInput<PE, PS> = Readonly<{
 
 1. 生成のたびに、設定項目 `__config__` の3件（journal は `seq_nr=0`、snapshot は `skey=0`、head は SK なし）を、1回の `BatchGetItem`（`ConsistentRead=true`）で読む。
 2. `UnprocessedKeys` は、そのキーだけを指数バックオフで強整合のまま再要求する。`Responses` は蓄積する。未処理がなくなるまで「存在しない」と判定しない。再要求の上限（`retryLimit`、初回を数えない）に達したら**保存先エラー**を返す（設定エラーにしない）。設計判断: 上限は回数で持ち、既定は 5 回（現行の保持処理の再試行の上限に合わせる）、バックオフの初期値は 50ms、1回の待ちの上限は 1000ms（倍々に増やす）。待つ処理は内部フック `sleep`（5.3）で差し替えられる。適合データの `dynamodb-config-retry-exhausted` は `retry_limit: 1` に未処理の応答を2回返す。1回目の再要求の後も未処理が残るので、上限到達で保存先エラーを返し、`configuration-create` の要求は送らない。
-3. 3つともなければ、新しい `store_id`（ランダム値）を作り、1つの `TransactWriteItems` で `attribute_not_exists(aid)` 条件付きの `Put` を3件行う。属性は `store_id`(S) と `layout_version`(N, 1) だけ。snapshot の設定項目は `active_history_seq_nr` を持たない。条件不成立（別の実行器が先に作った）なら、応答を捨てて3件を強整合で読み直し、手順4へ。取り消し理由が `TransactionConflict`（別の実行器が書いている最中）のときも、同じく読み直す。読み直しても3つともなければ、作成を繰り返さずに保存先エラーを返す（DY-8、P-44）。
+3. 3つともなければ、新しい `store_id`（ランダム値）を作り、1つの `TransactWriteItems` で `attribute_not_exists(aid)` 条件付きの `Put` を3件行う。属性は `store_id`(S) と `layout_version`(N, 1) だけ。snapshot の設定項目は `active_history_seq_nr` を持たない。条件不成立（別の実行器が先に作った）なら、応答を捨てて3件を強整合で読み直し、手順4へ。取り消し理由が `TransactionConflict`（別の実行器が書いている最中）のときも、同じく読み直す。読み直しても3つともなければ、作成を繰り返さずに保存先エラーを返す（DY-8、P-44）。適合データにこの場面はないので、単体試験で、読み直しで設定項目が見つかる場合と、3つともなくて保存先エラーになる場合を確かめる。
 4. 3つともあり、`store_id` が3件で一致し、`layout_version` が自分の版（1）と同じなら続行する。
 5. それ以外（一部のみ、`store_id` 不一致、`layout_version` 違い）は設定エラー（P-40）。
 - 必要な IAM は、3テーブルへの `dynamodb:BatchGetItem` と `dynamodb:PutItem`。設定項目は条件付き `Put` だけで作る（更新・削除しない）。
@@ -438,7 +439,7 @@ export type DynamoDBEventStoreInput<PE, PS> = Readonly<{
 - **W-3**: 新規作成でヘッドの条件が不成立なら楽観ロック。
 - **W-7**: journal の条件が不成立なら楽観ロック。
 - **D-6**: `TransactionConflict` は楽観ロックに分類する。head 以外のスロットリングと、通信失敗・その他は保存先エラー。
-- `CancellationReasons` に複数の理由があるときは、全理由を見る。どの項目の理由でも `TransactionConflict` があれば D-6（楽観ロック）にする。次に head の `ConditionalCheckFailed` を D-5 で分類し（W-3・W-8）、journal の `ConditionalCheckFailed` は W-7（楽観ロック）にする。それ以外のスロットリングは保存先エラー。この順は仕様で決まった（`dynamodb.md` 6.2、P-43。2026-10-06）。飛び番と W-7 が同時に起きる場面は適合データにない。
+- `CancellationReasons` に複数の理由があるときは、全理由を見る。どの項目の理由でも `TransactionConflict` があれば D-6（楽観ロック）にする。次に head の `ConditionalCheckFailed` を D-5 で分類し（W-3・W-8）、journal の `ConditionalCheckFailed` は W-7（楽観ロック）にする。それ以外のスロットリングは保存先エラー。この順は仕様で決まった（`dynamodb.md` 6.2、P-43。2026-10-06）。適合データには理由が複数の項目に付く場面がないので、単体試験で確かめる（例: ヘッドの条件不成立が飛び番を示し、別の項目が `TransactionConflict` を返したときに楽観ロックになる）。
 - **D-7**: 書き込み前に、書き込むすべての項目を見積もる。journal の項目、head の項目（`aid` と `type_name` を含む。`payload` は journal と head の両方に載る）、現在のスナップショットの項目、履歴のスナップショットの項目である。1つでも 409600 バイトを超えれば、一切送らずに契約違反（`rule: "D-7"`）にする（適合データの `no_requests_in_phases` に `commit` と `retention-*` がある）。属性名・型タグを含めた DynamoDB の項目サイズの計算規則を使う。適合データの4件（`dynamodb-item-size-event`・`-snapshot`・`-manifest`・`-head-overhead`）が、それぞれ別の項目の超過を確かめる。
 - **T-3**: `occurred_at` は `BigInt(date.getTime()) * BigInt(1000000)` の10進文字列を `N` で書く。読むときは BigInt で受け取り、ミリ秒の `Date` に戻す。浮動小数点を介さない。現行の `tsconfig` は target es6 なので、BigInt リテラル（`1n`）は使わず、`BigInt()` 関数を使う。`packages/library/tsconfig.json` の `lib` は `ESNext` なので、`BigInt` の型のために `lib` を足す必要はない。
 - **H-1**: 1つのトランザクションでヘッド・ジャーナル・スナップショットが確定する。変更フィードの供給源は head の Streams だけ（journal の Streams は使わない）。
@@ -457,7 +458,7 @@ export type DynamoDBEventStoreInput<PE, PS> = Readonly<{
 1. 疎な GSI を `aid = :aid`、`ScanIndexForward = false` で `Query` し、読み切る（KEYS_ONLY）。
 2. 今書いた履歴を加え（GSI に見えていれば重ねない）、降順の先頭 n 件を残し、それより古いものを対象にする（S-2）。
 3. 削除方式: `BatchWriteItem` を25件ずつ（P-18）。`UnprocessedItems` は、残った項目だけを指数バックオフで再送する。上限と待ち時間は設定項目の読み取り（4.2）と同じ（`retryLimit`。既定 5 回。初回を数えない）にする。上限に達したら、残りを削除せずに保持の失敗として通知し、書き込みの結果は変えない。残った履歴は、次の保持処理で再び対象になる（設計判断。仕様は再送することだけを定め、上限を定めない。保持を書き込みの呼び出しの中で行うので、上限がないと呼び出しが終わらないおそれがある）。
-4. TTL 方式: 1件ずつ `UpdateItem`。`SET #ttl = :expires REMOVE active_history_seq_nr`、条件 `attribute_exists(active_history_seq_nr)`。`#ttl` は `ExpressionAttributeNames`（`ttl` が予約語のため）。`:expires` は印付け時点のエポック秒＋猶予秒。後の更新が条件失敗したら、印付け済みとして読み飛ばす。
+4. TTL 方式: 1件ずつ `UpdateItem`。`SET #ttl = :expires REMOVE active_history_seq_nr`、条件 `attribute_exists(active_history_seq_nr)`。`#ttl` は `ExpressionAttributeNames`（`ttl` が予約語のため）。`:expires` は印付け時点のエポック秒＋猶予秒。和は 2^53 を超えうるので、`BigInt` で計算し、10 進文字列で N 属性に書く（`number` の加算では精度が落ちる）。単体試験で、猶予秒が `Number.MAX_SAFE_INTEGER` の境界を確かめる。後の更新が条件失敗したら、印付け済みとして読み飛ばす。
 5. 件数を数えてから超過分を選ぶ方式は使わない（P-24）。印付き履歴は件数に数えず、期限は先送りしない（S-3）。
 - 失敗は書き込みの結果を変えない（S-4）。`onRetentionFailure` と `logger` で通知する。現行の `dynamodb-snapshot-retention-executor.ts` の、保持失敗を書き込み失敗にする挙動は置き換える。
 - 現行の `deleteTtlMillis`（ミリ秒）は、`graceSeconds`（秒、`ttl` 属性はエポック秒）に置き換える。
@@ -729,7 +730,7 @@ DynamoDB は、`DynamoDBClient.middlewareStack` に、実行器が追加する�
 
 ## 10. 未解決の疑問
 
-仕様の読み方が分からない点、仕様と食い違うように見える点。仕様を勝手に解釈して埋めない。指揮役の回答（2026-10-06）と、2026-10-06 の仕様の決定（P-42〜P-45）で解けた疑問は、本文へ移した。残るのは、実装のときに確かめる次の 3 つである。
+仕様の読み方が分からない点、仕様と食い違うように見える点。仕様を勝手に解釈して埋めない。指揮役の回答（2026-10-06）と、2026-10-06 の仕様の決定（P-42〜P-44。P-45 は rs の移行の手順なので関係しない）で解けた疑問は、本文へ移した。残るのは、実装のときに確かめる次の 3 つである。
 
 1. **ミドルウェアの差し込みの段階**: `build` 段階で `maxAttempts: 1` と `replace-request`・`replace-response` を実現できるかは、SDK の版で挙動が変わりうる。実装の最初の PR で、小さな試作で確かめる（5.4）。
 2. **DynamoDB Local 3.3.1 の挙動**: ハブの `tools/spikes/dynamodb-emulators/README.md` に、`ReturnValuesOnConditionCheckFailure = ALL_OLD`、Streams の NEW_IMAGE、強整合の `BatchGetItem`、疎な GSI、TTL の有効化の確認の記録がある。期限切れの削除と `UnprocessedKeys` の発生は調べていない記録である。
