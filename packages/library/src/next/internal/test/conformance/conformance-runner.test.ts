@@ -39,6 +39,7 @@ const bindingFor = (
   buildAggregateId: jest.fn(),
   buildEvent: jest.fn(),
   buildSnapshot: jest.fn(),
+  validateSeqNrValue: jest.fn(),
 });
 
 describe("runConformance", () => {
@@ -111,6 +112,7 @@ describe("runConformance", () => {
     expect(binding.buildAggregateId).not.toHaveBeenCalled();
     expect(binding.buildEvent).not.toHaveBeenCalled();
     expect(binding.buildSnapshot).not.toHaveBeenCalled();
+    expect(binding.validateSeqNrValue).not.toHaveBeenCalled();
   });
 
   test("passes seed items and faults to createStore before creation", async () => {
