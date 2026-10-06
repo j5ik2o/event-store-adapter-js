@@ -68,6 +68,10 @@ steps:
         next: reviewers
       - condition: 実装を進行できない
         next: ABORT
+      - condition: ユーザーへの確認事項があるためユーザー入力が必要
+        next: implement
+        requires_user_input: true
+        interactive_only: true
 
   - name: reviewers
     tags:

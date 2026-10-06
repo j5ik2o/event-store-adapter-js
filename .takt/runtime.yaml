@@ -6,7 +6,7 @@
 #
 # 役割の分担(2026-10-06 にオーナーが指定。GPT-6.1-Sol は使わない):
 #   設計(計画・再計画)、レビューの裁定・最終判定、割り当てのない段 … Opus 5.5
-#   実装(試験・実装・修正)                                       … Sonnet 5.5
+#   実装(試験・実装・修正)                                       … Sonnet 5.5。失敗が続いたときの ladder の上げ先は t2 の Opus 5.5
 #   並行のレビュー役                                             … 3 種類のモデルに 1 役ずつ固定で割り当てる
 #     Sonnet 5.5           … 仕様との食い違い(light-change)、設計の構造・CQRS とイベントソーシング(flash-default)
 #     DeepSeek V4.1 Flash  … AI 特有の問題(light-change)、バックエンド・セキュリティ(flash-default)
@@ -29,7 +29,7 @@ provider:
     t0-production-code: { provider: claude, model: claude-sonnet-5-5 }
     # T1: 修正と、構造化出力に対応した provider が要る段(selector と companion で使う)
     t1: { provider: claude, model: claude-sonnet-5-5 }
-    # T2: 既定。下の割り当てに当たらない段
+    # T2: 既定。下の割り当てに当たらない段と、試験の作成・再実装・修正の ladder の最後の上げ先
     t2: { provider: claude, model: claude-opus-5-5 }
     # T3: 設計(計画・再計画)と、レビューの裁定・最終判定
     t3-plan:  { provider: claude, model: claude-opus-5-5 }
@@ -66,6 +66,8 @@ provider:
       light-change/fix:                          { profile: t1 }
     internal_agents:
       selector: { profile: t1 }
+      # レビューと修正のループが続いたときの判断役。割り当てがないと、きっかけの段(修正: Sonnet)で動く
+      loop-judge: { profile: t3-judge }
     companions:
       ai-antipattern-review-companion: { profile: t1 }
       testing-review-companion:        { profile: t1 }
