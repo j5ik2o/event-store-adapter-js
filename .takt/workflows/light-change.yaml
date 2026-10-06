@@ -117,6 +117,8 @@ steps:
               format: supervisor-validation
             - name: summary.md
               format: supervisor-summary
+              # 人が読むための要約。判定の材料には supervisor-validation.md だけを使う
+              use_judge: false
       - name: spec-review
         capabilities: readonly
         tags:
