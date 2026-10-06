@@ -8,6 +8,7 @@ module.exports = {
     "!src/**/*.test.ts",
     "!src/**/*.spec.ts",
     "!src/internal/test/**",
+    "!src/next/internal/test/**",
     "!dist/**",
   ],
   coverageDirectory: "coverage",
