@@ -360,7 +360,7 @@ jobs:
       - name: Test semver detection
         run: python3 -m unittest discover -s .github/tests -v
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: '1.27.x'
           cache: false
