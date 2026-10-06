@@ -444,7 +444,7 @@ export type DynamoDBEventStoreInput<PE, PS> = Readonly<{
 
 ### 4.4 読み取り（DY-9・DY-10・DY-11・R-8）
 
-- `getLatestSnapshotById`: head の項目と、現在のスナップショット（`skey = 0`）を1回の `BatchGetItem`（強整合）で読む（DY-9）。`UnprocessedKeys` は読み切るまで再要求する。ヘッドがなければ `undefined`、あれば封筒（なくてもよい）と `headSeqNr` の組（DY-10）。2項目の読み取りは**原子的でない**（R-8）。`TransactGetItems` は使わない（P-25）。
+- `getLatestSnapshotById`: head の項目と、現在のスナップショット（`skey = 0`）を1回の `BatchGetItem`（強整合）で読む（DY-9）。`UnprocessedKeys` は読み切るまで再要求する。再要求は、残ったキーだけを強整合のまま指数バックオフで行い、上限と待ち時間は設定項目の読み取り（4.2）と同じ（`retryLimit`。既定 5 回。初回を数えない）にする。上限に達したら、未処理のキーを「ない」と判定せず、保存先エラーを返す（設計判断。DY-9 は上限を定めないが、上限がないと呼び出しが終わらないおそれがある）。ヘッドがなければ `undefined`、あれば封筒（なくてもよい）と `headSeqNr` の組（DY-10）。2項目の読み取りは**原子的でない**（R-8）。`TransactGetItems` は使わない（P-25）。
 - `getEventsByIdSinceSeqNr`: journal に `aid = :aid AND seq_nr >= :seq_nr`、`ConsistentRead = true` で `Query` する。昇順で、`LastEvaluatedKey` が返る間は読み切る（DY-11、R-5）。
 - 復元できない項目（必須属性の欠損、`payload` が `B` でない）は**保存先エラー**（読み取ったデータの欠損）にする。直列化の復元失敗は直列化エラー。
 
@@ -454,7 +454,7 @@ export type DynamoDBEventStoreInput<PE, PS> = Readonly<{
 
 1. 疎な GSI を `aid = :aid`、`ScanIndexForward = false` で `Query` し、読み切る（KEYS_ONLY）。
 2. 今書いた履歴を加え（GSI に見えていれば重ねない）、降順の先頭 n 件を残し、それより古いものを対象にする（S-2）。
-3. 削除方式: `BatchWriteItem` を25件ずつ（P-18）。`UnprocessedItems` は再送する。
+3. 削除方式: `BatchWriteItem` を25件ずつ（P-18）。`UnprocessedItems` は、残った項目だけを指数バックオフで再送する。上限と待ち時間は設定項目の読み取り（4.2）と同じ（`retryLimit`。既定 5 回。初回を数えない）にする。上限に達したら、残りを削除せずに保持の失敗として通知し、書き込みの結果は変えない。残った履歴は、次の保持処理で再び対象になる（設計判断。仕様は再送することだけを定め、上限を定めない。保持を書き込みの呼び出しの中で行うので、上限がないと呼び出しが終わらないおそれがある）。
 4. TTL 方式: 1件ずつ `UpdateItem`。`SET #ttl = :expires REMOVE active_history_seq_nr`、条件 `attribute_exists(active_history_seq_nr)`。`#ttl` は `ExpressionAttributeNames`（`ttl` が予約語のため）。`:expires` は印付け時点のエポック秒＋猶予秒。後の更新が条件失敗したら、印付け済みとして読み飛ばす。
 5. 件数を数えてから超過分を選ぶ方式は使わない（P-24）。印付き履歴は件数に数えず、期限は先送りしない（S-3）。
 - 失敗は書き込みの結果を変えない（S-4）。`onRetentionFailure` と `logger` で通知する。現行の `dynamodb-snapshot-retention-executor.ts` の、保持失敗を書き込み失敗にする挙動は置き換える。
@@ -734,3 +734,4 @@ DynamoDB は、`DynamoDBClient.middlewareStack` に、実行器が追加する�
 3. **DynamoDB Local 3.3.1 の挙動**: ハブの `tools/spikes/dynamodb-emulators/README.md` に、`ReturnValuesOnConditionCheckFailure = ALL_OLD`、Streams の NEW_IMAGE、強整合の `BatchGetItem`、疎な GSI、TTL の有効化の確認の記録がある。期限切れの削除と `UnprocessedKeys` の発生は調べていない記録である。
 4. **範囲の端の `Date` と T-13**: ミリ秒の `Date` を、ナノ秒の符号付き64bitの範囲で検査する（2.3）。範囲の端（約 1677 年・2262 年）の適合データ（`occurred-at-min`・`occurred-at-max`・`below-min`・`above-max`）で、ミリ秒の丸めの向きにより判定が変わる値があるか。実行器で値を変換して確かめる（未確認）。
 5. **公開 API の段階的な変更**: PR 12 で `index.ts` を一度に切り替える案は、実装計画 3 章の「main に PR ごとに squash マージする」と矛盾しないと読んだ。実装計画が、公開 API の段階的な変更を求めているかは、文面から読み切れない。
+6. **必須要素の欠落（T-2・T-10）の分類**: 4章の契約違反の表は W-6・W-9・T-9・T-11〜T-13 と W-8 の飛び番だけで、必須要素の欠落を挙げない。TypeScript では型が必須を表すが、型のない JavaScript から `aggregateId` や `payload` を欠いて呼ばれたときに、どの分類の失敗を返すかが仕様から読み取れない。仕様が分類を定めたら、`EventEnvelope.create`・`SnapshotEnvelope.create` の実行時の検査をそれに合わせる（未確認）。
