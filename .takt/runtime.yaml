@@ -27,7 +27,7 @@ provider:
     # T2: 既定。下の割り当てに当たらないステップ
     t2: { provider: codex, model: gpt-6.1-sol }
     # T3: 設計と、レビューの裁定・最終ゲートは GPT-6.1-Sol。実装(Sonnet 5.5)とは別ベンダーになる
-    t3-plan:  { provider: codex,  model: gpt-6.1-sol, options: { reasoning_effort: high } }
+    t3-plan:  { provider: claude, model: claude-opus-5-5 }
     t3-judge: { provider: codex,  model: gpt-6.1-sol, options: { reasoning_effort: high } }
   targets:
     steps:
@@ -40,7 +40,7 @@ provider:
       flash-implement-dynamic/reimplement:       { profile: t1 }
       flash-implement-dynamic/reimplement_final: { profile: t2 }
       flash-remediation-dynamic/fix:             { ladder: [t1, t2] }
-      # light-change が呼ぶ組み込みの mini-core。計画とレビューは GPT-6.1-Sol、実装と修正は Sonnet 5.5
+      # light-change が呼ぶ組み込みの mini-core。計画は Opus 5.5、レビューは GPT-6.1-Sol、実装と修正は Sonnet 5.5
       mini-core/plan:                            { profile: t3-plan }
       mini-core/implement:                       { profile: t0-production-code }
       mini-core/ai-antipattern-review-2nd:       { profile: t3-judge }
