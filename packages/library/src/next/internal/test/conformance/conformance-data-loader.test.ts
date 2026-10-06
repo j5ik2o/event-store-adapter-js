@@ -75,10 +75,16 @@ describe("loadConformanceData", () => {
         {
           id: "extra-time-case",
           rules: ["T-3"],
+          description: "time conversion",
           backends: ["memory"],
+          store: { retention_count: null, retention_mode: "delete" },
+          steps: [],
           fixtures: {
+            snapshots: {},
             events: {
               e1: {
+                aggregate_id: { type_name: "Order", value: "1" },
+                manifest: "",
                 seq_nr: 1,
                 occurred_at: "1969-12-31T23:59:59.999999999Z",
                 payload: { occurred_at: "1970-01-01T00:00:00.123456789Z" },
@@ -101,5 +107,65 @@ describe("loadConformanceData", () => {
     expect(jsonAt(c?.body, ...e1, "payload", "occurred_at")).toBe(
       "1970-01-01T00:00:00.123456789Z",
     );
+  });
+
+  test("fails when a rule is not a string", () => {
+    rewrite("values/aid.json", (t) =>
+      t.replace(/"rules": \[\s*"/, '"rules": [1, "'),
+    );
+    expect(() => loadConformanceData(copy as string)).toThrow();
+  });
+
+  test("fails with a schema violation when backends is not an array", () => {
+    rewrite("scenarios/core/retention-errors.json", (t) =>
+      t.replace(/"backends": \[[^\]]*\]/, '"backends": "memory"'),
+    );
+    expect(() => loadConformanceData(copy as string)).toThrow(
+      /retention-errors\.json: schema violation/,
+    );
+  });
+
+  test("reports a schema violation before expanding generators", () => {
+    const dir = makeCopy();
+    fs.writeFileSync(
+      path.join(dir, "scenarios", "extra.json"),
+      JSON.stringify({
+        format: "scenarios",
+        version: "1.0.0",
+        cases: [
+          {
+            id: "bad",
+            rules: ["T-3"],
+            generators: [{ target: "/x", character: "ab", byte_length: 2 }],
+          },
+        ],
+      }),
+    );
+    expect(() => loadConformanceData(dir)).toThrow(/schema violation/);
+  });
+
+  test("fails on invalid UTF-8 instead of replacing it", () => {
+    const dir = makeCopy();
+    fs.writeFileSync(
+      path.join(dir, "values", "aid.json"),
+      Buffer.from([0x7b, 0x22, 0xff, 0x22, 0x7d]),
+    );
+    expect(() => loadConformanceData(dir)).toThrow("invalid UTF-8");
+  });
+
+  test("accepts a correctly encoded U+FFFD in a file", () => {
+    rewrite("values/aid.json", (t) =>
+      t.replace('"description": "', '"description": "\uFFFD'),
+    );
+    expect(() => loadConformanceData(copy as string)).not.toThrow();
+  });
+
+  test("loads the exclusions from coverage.json with reasons", () => {
+    const { exclusions } = loadConformanceData(root);
+    expect(exclusions.map((e) => [e.rule, e.status])).toEqual([
+      ["W-5", "deleted"],
+      ["R-7", "caller-obligation"],
+    ]);
+    expect(exclusions.every((e) => e.reason !== "")).toBe(true);
   });
 });

@@ -1,8 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { CONFORMANCE_BACKENDS } from "./conformance-backend";
+import { selectConformanceCases } from "./conformance-case-selector";
 import { loadConformanceData } from "./conformance-data-loader";
+import { implementationCommitOf } from "./conformance-implementation-commit";
 import { verifyConformanceManifest } from "./conformance-manifest";
+import type { ConformanceReport } from "./conformance-report";
 import {
   renderConformanceReportJson,
   summarizeConformanceReport,
@@ -20,26 +23,33 @@ const data = loadConformanceData(root);
 const manifest = verifyConformanceManifest(root);
 
 describe.each(CONFORMANCE_BACKENDS)("conformance (%s)", (backend) => {
-  const report = runConformance({
-    data,
-    manifest,
-    backend,
-    implementationVersion,
-    binding: undefined,
+  let report: ConformanceReport;
+  beforeAll(async () => {
+    report = await runConformance({
+      data,
+      manifest,
+      backend,
+      implementationVersion,
+      implementationCommit: implementationCommitOf(process.env),
+      binding: undefined,
+    });
   });
 
   test("manifest matches the data files", () => {
     expect(manifest.ok).toBe(true);
   });
 
-  test.each(report.results.map((r) => [r.caseId, r] as const))(
-    "%s is neither passed nor failed and has a reason",
-    (_id, result) => {
-      expect(result.status).not.toBe("passed");
-      expect(result.status).not.toBe("failed");
-      expect(result.reason).not.toBe("");
-    },
-  );
+  test.each(
+    selectConformanceCases(data.cases, backend).map((c) => [c.id] as const),
+  )("%s is neither passed nor failed and has a reason", (caseId) => {
+    const result = report.results.find((r) => r.caseId === caseId);
+    if (result === undefined) {
+      throw new Error(`no result for ${caseId}`);
+    }
+    expect(result.status).not.toBe("passed");
+    expect(result.status).not.toBe("failed");
+    expect(result.reason).not.toBe("");
+  });
 
   test("counts match the expected totals", () => {
     const expected =

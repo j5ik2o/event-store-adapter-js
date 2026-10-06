@@ -1,12 +1,14 @@
-import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import type { ConformanceCase } from "./conformance-case";
 import type { ConformanceData } from "./conformance-data";
+import type { ConformanceExclusion } from "./conformance-exclusion";
 import { listConformanceFiles } from "./conformance-file-lister";
 import { expandGenerators } from "./conformance-generators";
 import { parseConformanceJson } from "./conformance-json-parser";
 import type { ConformanceJsonValue } from "./conformance-json-value";
 import { isSeqNrPath } from "./conformance-number-paths";
+import { createConformanceSchemaValidator } from "./conformance-schema-validator";
+import { readConformanceText } from "./conformance-text-reader";
 import { parseEpochNanos, parseOccurredAtEpochNanos } from "./conformance-time";
 
 const SUPPORTED_VERSION = "1.0.0";
@@ -86,7 +88,8 @@ const toCase = (
   if (
     !isRecord(raw) ||
     typeof raw.id !== "string" ||
-    !Array.isArray(raw.rules)
+    !Array.isArray(raw.rules) ||
+    !raw.rules.every((r) => typeof r === "string")
   ) {
     throw new Error(`${source}: case must have an id and rules`);
   }
@@ -97,29 +100,54 @@ const toCase = (
       : convertScenarioTimes(expanded);
   return {
     id: raw.id,
-    rules: raw.rules as readonly string[],
+    rules: raw.rules,
     source,
     format,
     body,
   };
 };
 
+const toExclusions = (
+  parsed: JsonRecord,
+  file: string,
+): readonly ConformanceExclusion[] => {
+  const raw = parsed.exclusions;
+  if (raw === undefined) {
+    return [];
+  }
+  if (!Array.isArray(raw)) {
+    throw new Error(`${file}: exclusions must be an array`);
+  }
+  return raw.map((e) => {
+    if (
+      !isRecord(e) ||
+      typeof e.rule !== "string" ||
+      typeof e.status !== "string" ||
+      typeof e.reason !== "string"
+    ) {
+      throw new Error(`${file}: exclusion must have rule, status and reason`);
+    }
+    return { rule: e.rule, status: e.status, reason: e.reason };
+  });
+};
+
 export function loadConformanceData(root: string): ConformanceData {
   const files = listConformanceFiles(root);
-  const cases = files
+  const validateSchema = createConformanceSchemaValidator(root);
+  const loaded = files
     .filter((file) => file.endsWith(".json"))
-    .flatMap((file): readonly ConformanceCase[] => {
+    .map((file) => {
       const format = expectedFormat(file);
       if (format === undefined) {
         throw new Error(`${file}: unexpected json file`);
       }
       const parsed = parseConformanceJson(
-        readFileSync(path.join(root, file), "utf8"),
+        readConformanceText(path.join(root, file)),
         file,
         (p) => isSeqNrPath(format, p),
       );
       if (format === "schema") {
-        return [];
+        return { cases: [], exclusions: [] };
       }
       if (
         !isRecord(parsed) ||
@@ -130,24 +158,34 @@ export function loadConformanceData(root: string): ConformanceData {
           `${file}: format must be "${format}" and version "${SUPPORTED_VERSION}"`,
         );
       }
+      // generators の展開より前に、対応するスキーマで検査する。
+      validateSchema(format, parsed, file);
+      if (format === "coverage") {
+        return { cases: [], exclusions: toExclusions(parsed, file) };
+      }
       if (
         format !== "values" &&
         format !== "scenarios" &&
         format !== "layout"
       ) {
-        return [];
+        return { cases: [], exclusions: [] };
       }
       if (!Array.isArray(parsed.cases)) {
         throw new Error(`${file}: cases must be an array`);
       }
-      return (parsed.cases as readonly ConformanceJsonValue[]).map((c) =>
-        toCase(c, file, format),
-      );
+      return {
+        cases: (parsed.cases as readonly ConformanceJsonValue[]).map((c) =>
+          toCase(c, file, format),
+        ),
+        exclusions: [],
+      };
     });
+  const cases = loaded.flatMap((l) => l.cases);
+  const exclusions = loaded.flatMap((l) => l.exclusions);
   const ids = cases.map((c) => c.id);
   const duplicate = ids.find((id, i) => ids.indexOf(id) !== i);
   if (duplicate !== undefined) {
     throw new Error(`duplicate case id: ${duplicate}`);
   }
-  return { version: SUPPORTED_VERSION, files, cases };
+  return { version: SUPPORTED_VERSION, files, exclusions, cases };
 }

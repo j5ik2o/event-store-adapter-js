@@ -3,10 +3,15 @@ import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { listConformanceFiles } from "./conformance-file-lister";
 import { parseConformanceJson } from "./conformance-json-parser";
+import { readConformanceText } from "./conformance-text-reader";
+
+const EXPECTED_VERSION = "1.0.0";
 
 export type ManifestVerification = {
   ok: boolean;
   version: string | undefined;
+  expectedVersion: string;
+  versionMatches: boolean;
   fileCount: number;
   mismatches: readonly string[];
 };
@@ -27,7 +32,7 @@ export function verifyConformanceManifest(root: string): ManifestVerification {
     (f) => f !== "manifest.json",
   );
   const manifest = parseConformanceJson(
-    readFileSync(path.join(root, "manifest.json"), "utf8"),
+    readConformanceText(path.join(root, "manifest.json")),
     "manifest.json",
     () => false,
   );
@@ -35,6 +40,8 @@ export function verifyConformanceManifest(root: string): ManifestVerification {
     return {
       ok: false,
       version: undefined,
+      expectedVersion: EXPECTED_VERSION,
+      versionMatches: false,
       fileCount: actual.length,
       mismatches: ["manifest.json: not an object"],
     };
@@ -46,9 +53,9 @@ export function verifyConformanceManifest(root: string): ManifestVerification {
     ? record.files.filter(isEntry)
     : [];
   const listed = new Map(entries.map((e) => [e.path, e.sha256]));
+  const versionMatches = version === EXPECTED_VERSION;
   const mismatches = [
     ...(record.format === "manifest" ? [] : ["manifest.json: format"]),
-    ...(version === "1.0.0" ? [] : ["manifest.json: version"]),
     ...(Array.isArray(record.files) && entries.length === record.files.length
       ? []
       : ["manifest.json: files is malformed"]),
@@ -67,8 +74,10 @@ export function verifyConformanceManifest(root: string): ManifestVerification {
       : ["manifest.json: files are not sorted by path"]),
   ];
   return {
-    ok: mismatches.length === 0,
+    ok: mismatches.length === 0 && versionMatches,
     version,
+    expectedVersion: EXPECTED_VERSION,
+    versionMatches,
     fileCount: actual.length,
     mismatches,
   };

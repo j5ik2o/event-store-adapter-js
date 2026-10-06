@@ -49,4 +49,26 @@ describe("parseConformanceJson", () => {
       "あ",
     ]);
   });
+
+  test.each([
+    ["1.0", "1"],
+    ["1e3", "1000"],
+    ["1.50e1", "15"],
+    ["10e-1", "1"],
+    ["9007199254740993.0", "9007199254740993"],
+  ])("reads %s as the integer %s on a bigint path", (text, expected) => {
+    const value = parseConformanceJson(`{"n":${text}}`, "int.json", always) as {
+      n: unknown;
+    };
+    expect(value.n).toBe(BigInt(expected));
+  });
+
+  test.each(["1.5", "1e-1", "1e5000"])(
+    "rejects %s on a bigint path",
+    (text) => {
+      expect(() =>
+        parseConformanceJson(`{"n":${text}}`, "frac.json", always),
+      ).toThrow("expected an integer");
+    },
+  );
 });

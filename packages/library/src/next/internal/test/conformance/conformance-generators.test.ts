@@ -68,4 +68,12 @@ describe("expandGenerators", () => {
       }),
     ).toThrow();
   });
+
+  test("accepts U+FFFD as a valid three byte character", () => {
+    const out = expandGenerators({
+      payload: "",
+      generators: [gen("/payload", "\uFFFD", 6)],
+    });
+    expect(jsonAt(out, "payload")).toBe("\uFFFD\uFFFD");
+  });
 });

@@ -3,6 +3,7 @@ import type { ConformanceJsonValue } from "./conformance-json-value";
 export type JsonPath = readonly (string | number)[];
 
 const NUMBER_PATTERN = /-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?/y;
+const MAX_EXPONENT_SHIFT = 1000;
 const ESCAPES: Readonly<Record<string, string>> = {
   '"': '"',
   "\\": "\\",
@@ -12,6 +13,35 @@ const ESCAPES: Readonly<Record<string, string>> = {
   n: "\n",
   r: "\r",
   t: "\t",
+};
+
+// 10 進表記の文字列から BigInt で正確に整数値を求める。整数にならなければ undefined。
+const exactInteger = (match: RegExpExecArray): bigint | undefined => {
+  const negative = match[0].startsWith("-");
+  const intPart = match[1];
+  const fraction = (match[2] ?? "").slice(1);
+  const exponent = match[3] === undefined ? 0 : Number(match[3].slice(1));
+  const mantissa = BigInt(intPart + fraction);
+  const shift = exponent - fraction.length;
+  if (mantissa === BigInt(0)) {
+    return BigInt(0);
+  }
+  // 桁数が極端な指数は、メモリを使い切る前に拒む（整数としては扱わない）。
+  if (Math.abs(shift) > MAX_EXPONENT_SHIFT) {
+    return undefined;
+  }
+  const unit = BigInt(`1${"0".repeat(Math.abs(shift))}`);
+  const magnitude =
+    shift >= 0
+      ? mantissa * unit
+      : mantissa % unit === BigInt(0)
+        ? mantissa / unit
+        : undefined;
+  return magnitude === undefined
+    ? undefined
+    : negative
+      ? -magnitude
+      : magnitude;
 };
 
 const formatPointer = (path: JsonPath): string =>
@@ -90,10 +120,10 @@ export function parseConformanceJson(
     }
     pos += match[0].length;
     if (isBigIntPath(path)) {
-      if (match[2] !== undefined || match[3] !== undefined) {
-        return fail("expected an integer", path);
-      }
-      return BigInt(match[0]);
+      const integer = exactInteger(match);
+      return integer === undefined
+        ? fail("expected an integer", path)
+        : integer;
     }
     const n = Number(match[0]);
     if (!Number.isFinite(n)) {

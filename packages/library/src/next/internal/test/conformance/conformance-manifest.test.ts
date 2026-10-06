@@ -51,4 +51,30 @@ describe("verifyConformanceManifest", () => {
     expect(result.ok).toBe(false);
     expect(result.mismatches.join("\n")).toContain("values/extra.json");
   });
+
+  test("reports the actual manifest version separately from the expected one", () => {
+    const dir = makeCopy();
+    const file = path.join(dir, "manifest.json");
+    fs.writeFileSync(
+      file,
+      fs
+        .readFileSync(file, "utf8")
+        .replace('"version": "1.0.0"', '"version": "9.9.9"'),
+    );
+    const result = verifyConformanceManifest(dir);
+    expect(result.version).toBe("9.9.9");
+    expect(result.expectedVersion).toBe("1.0.0");
+    expect(result.versionMatches).toBe(false);
+    expect(result.ok).toBe(false);
+    expect(result.mismatches.join("\n")).not.toContain("version");
+  });
+
+  test("fails on invalid UTF-8 in manifest.json", () => {
+    const dir = makeCopy();
+    fs.writeFileSync(
+      path.join(dir, "manifest.json"),
+      Buffer.from([0x7b, 0xff, 0x7d]),
+    );
+    expect(() => verifyConformanceManifest(dir)).toThrow("invalid UTF-8");
+  });
 });
