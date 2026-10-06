@@ -4,7 +4,7 @@
 # (docs/operations/repository-policy.md の 8 章)。変えるときは、まずこのファイルを変え、各リポジトリへ同じ内容を配る。
 # takt の組み込みの mini-core (plan → implement → 並列レビュー → 修正) を呼ぶ。手本は組み込みの backend-mini。
 # 段ごとのモデルは .takt/runtime.yaml の mini-core/* の割り当てで決まる
-# (計画とレビューは GPT-6.1-Sol、実装と修正は Sonnet 5.5)。
+# (計画は Opus 5.5、レビューは GPT-6.1-Sol、実装と修正は Sonnet 5.5)。
 name: light-change
 description: 文書・CI の設定・依存の更新・データの配布などの小さな変更向けの軽いワークフロー（plan → implement → 並列レビュー → 修正 → 完了）。flash-default の試験の先行作成と、複数観点のレビューと裁定を省く。
 max_steps: 21
