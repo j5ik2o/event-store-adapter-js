@@ -1,6 +1,6 @@
 {
   "name": "event-store-adapter-js",
-  "version": "4.0.2-snapshot.0",
+  "version": "5.0.0-snapshot.0",
   "description": "This library is designed to turn DynamoDB into an Event Store for Event Sourcing.",
   "packageManager": "pnpm@12.9.1",
   "engines": {
@@ -45,7 +45,6 @@
     "@google-cloud/spanner": "^9.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
-    "@types/winston": "^2.4.4",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "cross-env": "^10.1.0",
@@ -58,10 +57,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.413.0",
-    "aws-sdk": "^2.1459.0",
-    "moment": "^2.29.4",
-    "ulid": "^3.0.0",
-    "winston": "^3.10.0"
+    "ulid": "^3.0.0"
   },
   "peerDependencies": {
     "@google-cloud/spanner": "^8.7.1 || ^9.0.0"
