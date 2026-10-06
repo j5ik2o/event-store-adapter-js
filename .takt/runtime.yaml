@@ -4,14 +4,19 @@
 # 割り当てを変えるときは、まずこのファイルを変え、各リポジトリへ同じ内容を配る。
 # ~/.takt/runtime.yaml (全体) には何も書かない。全体の設定はすべてのプロジェクトに重ねて読まれるため。
 #
-# 役割の分担(オーナーの指定、2026-10-03。2026-10-05 に設計と既定を Opus 5.5 から GPT-6.1-Sol に変更):
-#   設計(計画・再計画)        … GPT-6.1-Sol(Codex)
-#   レビュー(裁定・最終ゲート) … GPT-6.1-Sol(Codex)。TAKT 0.67 以上が要る
-#   実装(テスト・実装)        … Sonnet 5.5
-#   割り当てのないステップ    … GPT-6.1-Sol(Codex)
-# takt を動かすのは作業者なので、Opus 5.5 は使わない(Opus 5.5 は司令塔だけが使う。repository-policy.md の 6 章)。
+# 役割の分担(2026-10-06 にオーナーが指定。GPT-6.1-Sol は使わない):
+#   設計(計画・再計画)、レビューの裁定・最終判定、割り当てのない段 … Opus 5.5
+#   実装(試験・実装・修正)                                       … Sonnet 5.5。失敗が続いたときの ladder の上げ先は t2 の Opus 5.5
+#   並行のレビュー役                                             … 3 種類のモデルに 1 役ずつ固定で割り当てる
+#     Sonnet 5.5           … 仕様との食い違い(light-change)、設計の構造・CQRS とイベントソーシング(flash-default)
+#     DeepSeek V4.1 Flash  … AI 特有の問題(light-change)、バックエンド・セキュリティ(flash-default)
+#     GLM 5.3 Flash        … 監督(light-change)、AI 特有の問題・試験・フロントエンド(flash-default)
+#   DeepSeek と GLM は OpenCode Go 経由で呼ぶ。
+# takt を動かすのは作業者なので、Opus 5.5 は原則として使わない。例外は設計・裁定・既定の段
+# (2026-10-06 にオーナーが指示。repository-policy.md の 6 章・8 章)。
 #
-# ステップの名前は takt-workflows の flash-default バンドル(ja)のもの。
+# 割り当てのキーは「ワークフロー名/段の名前」。takt はまずこの形で探し、なければ段の名前だけで探す。
+# 段の名前は takt-workflows の flash-default バンドル(ja)と、このグループの light-change のもの。
 # 上流のテンプレート: https://github.com/ideo-plus/takt-workflows/blob/main/runtime.project.yaml
 version: 1
 companion:
@@ -19,38 +24,50 @@ companion:
 provider:
   defaults: { profile: t2 }
   profiles:
-    # T0: 実装。テストの作成と実装
+    # T0: 実装。試験の作成と実装
     t0-test-code:       { provider: claude, model: claude-sonnet-5-5 }
     t0-production-code: { provider: claude, model: claude-sonnet-5-5 }
-    # T1: 構造化出力に対応した provider が要る(selector と companion で使う)
+    # T1: 修正と、構造化出力に対応した provider が要る段(selector と companion で使う)
     t1: { provider: claude, model: claude-sonnet-5-5 }
-    # T2: 既定。下の割り当てに当たらないステップ
-    t2: { provider: codex, model: gpt-6.1-sol }
-    # T3: 設計と、レビューの裁定・最終ゲートは GPT-6.1-Sol。実装(Sonnet 5.5)とは別ベンダーになる
-    t3-plan:  { provider: codex,  model: gpt-6.1-sol, options: { reasoning_effort: high } }
-    t3-judge: { provider: codex,  model: gpt-6.1-sol, options: { reasoning_effort: high } }
+    # T2: 既定。下の割り当てに当たらない段と、試験の作成・再実装・修正の ladder の最後の上げ先
+    t2: { provider: claude, model: claude-opus-5-5 }
+    # T3: 設計(計画・再計画)と、レビューの裁定・最終判定
+    t3-plan:  { provider: claude, model: claude-opus-5-5 }
+    t3-judge: { provider: claude, model: claude-opus-5-5 }
+    # レビュー役: 並行に動くレビュー役に 1 つずつ割り当てる
+    review-sonnet:   { provider: claude,   model: claude-sonnet-5-5 }
+    review-deepseek: { provider: opencode, model: opencode-go/deepseek-v4.1-flash }
+    review-glm:      { provider: opencode, model: opencode-go/glm-5.3-flash }
   targets:
     steps:
+      # flash-default
       development-core/plan:                     { profile: t3-plan }
       development-core/replan:                   { profile: t3-plan }
-      peer-review/review-adjudication:           { profile: t3-judge }
-      peer-review/final-gate:                    { profile: t3-judge }
       development-core/write_tests:              { ladder: [t0-test-code, t1, t2] }
       flash-implement-dynamic/implement:         { profile: t0-production-code }
       flash-implement-dynamic/reimplement:       { profile: t1 }
       flash-implement-dynamic/reimplement_final: { profile: t2 }
       flash-remediation-dynamic/fix:             { ladder: [t1, t2] }
-      # light-change が呼ぶ組み込みの mini-core。計画とレビューは GPT-6.1-Sol、実装と修正は Sonnet 5.5
-      mini-core/plan:                            { profile: t3-plan }
-      mini-core/implement:                       { profile: t0-production-code }
-      mini-core/ai-antipattern-review-2nd:       { profile: t3-judge }
-      mini-core/supervise:                       { profile: t3-judge }
-      mini-core/ai-antipattern-fix-parallel:     { profile: t1 }
-      mini-core/supervise_fix_parallel:          { profile: t1 }
-      mini-core/ai-antipattern-fix:              { profile: t1 }
-      mini-core/supervise_fix:                   { profile: t1 }
+      development-review/architecture-review:    { profile: review-sonnet }
+      development-review/cqrs-es-review:         { profile: review-sonnet }
+      development-review/backend-review:         { profile: review-deepseek }
+      development-review/security-review:        { profile: review-deepseek }
+      development-review/ai-antipattern-review:  { profile: review-glm }
+      development-review/testing-review:         { profile: review-glm }
+      development-review/frontend-review:        { profile: review-glm }
+      peer-review/review-adjudication:           { profile: t3-judge }
+      peer-review/final-gate:                    { profile: t3-judge }
+      # light-change
+      light-change/plan:                         { profile: t3-plan }
+      light-change/implement:                    { profile: t0-production-code }
+      light-change/ai-antipattern-review:        { profile: review-deepseek }
+      light-change/supervise:                    { profile: review-glm }
+      light-change/spec-review:                  { profile: review-sonnet }
+      light-change/fix:                          { profile: t1 }
     internal_agents:
       selector: { profile: t1 }
+      # レビューと修正のループが続いたときの判断役。割り当てがないと、きっかけの段(修正: Sonnet)で動く
+      loop-judge: { profile: t3-judge }
     companions:
       ai-antipattern-review-companion: { profile: t1 }
       testing-review-companion:        { profile: t1 }

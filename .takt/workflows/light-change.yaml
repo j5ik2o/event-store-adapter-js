@@ -2,30 +2,175 @@
 #
 # 各リポジトリの .takt/workflows/light-change.yaml は、このファイルをそのまま写して置く
 # (docs/operations/repository-policy.md の 8 章)。変えるときは、まずこのファイルを変え、各リポジトリへ同じ内容を配る。
-# takt の組み込みの mini-core (plan → implement → 並列レビュー → 修正) を呼ぶ。手本は組み込みの backend-mini。
-# 段ごとのモデルは .takt/runtime.yaml の mini-core/* の割り当てで決まる
-# (計画とレビューは GPT-6.1-Sol、実装と修正は Sonnet 5.5)。
+# takt の組み込みの mini-core を手本に、レビュー役を 3 人にしたもの(2026-10-06 にオーナーが指定)。
+#   plan → implement → 並行のレビュー(3 人) → 指摘があれば fix → もう一度レビュー
+# レビュー役は 1 人ずつ別のモデルで動く。段ごとのモデルは .takt/runtime.yaml の light-change/* の割り当てで決まる。
+#   計画 … Opus 5.5、実装と修正 … Sonnet 5.5
+#   AI 特有の問題(ai-antipattern-review) … DeepSeek V4.1 Flash
+#   監督(supervise)                      … GLM 5.3 Flash
+#   仕様との食い違い(spec-review)        … Sonnet 5.5
+# 3 人とも問題なしなら完了する。レビューと修正が 3 回続いたら、収束しているかを判断し、しなければ止める。
 name: light-change
-description: 文書・CI の設定・依存の更新・データの配布などの小さな変更向けの軽いワークフロー（plan → implement → 並列レビュー → 修正 → 完了）。flash-default の試験の先行作成と、複数観点のレビューと裁定を省く。
-max_steps: 21
-initial_step: develop
+description: 文書・CI の設定・依存の更新・データの配布などの小さな変更向けの軽いワークフロー（plan → implement → 3 人の並行レビュー → 修正 → 完了）。flash-default の試験の先行作成と、観点ごとのレビューと裁定を省く。
+max_steps: 17
+initial_step: plan
+all_steps:
+  rules:
+    - ref: findings-handling
+      position: before_instruction
+    - ref: plain-terminology
+      position: before_instruction
+loop_monitors:
+  - cycle:
+      - reviewers
+      - fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      instruction: loop-monitor-reviewers-fix
+      rules:
+        - condition: 健全（修正進捗があり、報告内容も収束している）
+          next: reviewers
+        - condition: 修正未完了または報告未収束だが、次のレビュー・修正が実行可能である
+          next: reviewers
+        - condition: 現行ループでは収束せず、別の検証・修正段階へ切り替える必要がある
+          next: ABORT
 steps:
-  - name: develop
-    kind: workflow_call
-    call: mini-core
-    args:
+  - name: plan
+    uses: development-core-plan
+    with:
       plan_policy:
         - design-planning
       plan_knowledge:
         - implementation-semantics
+      plan_instruction: plan
+      plan_report_format: plan
+    rules:
+      - condition: 要件が明確で実装可能
+        next: implement
+      - condition: ユーザーが質問をしている（実装タスクではない）
+        next: COMPLETE
+      - condition: 要件が不明確、情報不足
+        next: ABORT
+
+  - name: implement
+    uses: development-core-implement
+    with:
       development_policy:
         - coding-lite
         - testing-lite
       development_knowledge:
         - implementation-semantics
-      supervisor_persona: supervisor
+      implementation_instruction: implement
+      scope_report_format: coder-scope
     rules:
-      - condition: COMPLETE
-        next: COMPLETE
-      - condition: ABORT
+      - condition: 実装が完了した
+        next: reviewers
+      - condition: 実装を進行できない
         next: ABORT
+      - condition: ユーザーへの確認事項があるためユーザー入力が必要
+        next: implement
+        requires_user_input: true
+        interactive_only: true
+
+  - name: reviewers
+    tags:
+      - review
+    parallel:
+      - name: ai-antipattern-review
+        capabilities: readonly
+        tags:
+          - review
+        edit: false
+        persona: ai-antipattern-reviewer
+        policy:
+          - contract-change
+          - ai-antipattern
+          - review
+        instruction: ai-antipattern-review
+        rules:
+          - condition: AI特有の問題なし
+          - condition: AI特有の問題あり
+        output_contracts:
+          report:
+            - name: ai-antipattern-review.md
+              format: ai-antipattern-review
+      - name: supervise
+        capabilities: readonly
+        tags:
+          - review
+          - supervise
+        edit: false
+        persona: supervisor
+        policy:
+          - contract-change
+        knowledge:
+          - implementation-semantics
+        instruction: supervise
+        rules:
+          - condition: BLOCKED
+          - condition: APPROVE
+          - condition: REJECT
+        output_contracts:
+          report:
+            - name: supervisor-validation.md
+              format: supervisor-validation
+            - name: summary.md
+              format: supervisor-summary
+              # 人が読むための要約。判定の材料には supervisor-validation.md だけを使う
+              use_judge: false
+      - name: spec-review
+        capabilities: readonly
+        tags:
+          - review
+        edit: false
+        persona: architecture-reviewer
+        policy:
+          - contract-change
+          - review
+        knowledge:
+          - implementation-semantics
+        instruction: spec-conformance-review
+        rules:
+          - condition: 仕様との食い違いなし
+          - condition: 仕様との食い違いあり
+        output_contracts:
+          report:
+            - name: spec-review.md
+              format: architecture-review
+    rules:
+      - condition: any("error")
+        next: reviewers
+      - condition: any("BLOCKED")
+        next: ABORT
+      - condition: all("AI特有の問題なし", "APPROVE", "仕様との食い違いなし")
+        next: COMPLETE
+      - condition: any("AI特有の問題あり", "REJECT", "仕様との食い違いあり")
+        next: fix
+
+  - name: fix
+    capabilities: edit
+    tags:
+      - coding
+    edit: true
+    persona: coder
+    policy:
+      - contract-change
+      - coding-lite
+      - testing-lite
+    knowledge:
+      - implementation-semantics
+    required_permission_mode: edit
+    pass_previous_response: false
+    instruction: fix
+    rules:
+      - condition: 指摘の修正が完了した
+        next: reviewers
+      - condition: 修正不要（指摘対象を確認し、直す必要がないと判断した）
+        next: reviewers
+      - condition: 修正を進行できない
+        next: ABORT
+    output_contracts:
+      report:
+        - name: fix-report.md
+          format: fix-report
