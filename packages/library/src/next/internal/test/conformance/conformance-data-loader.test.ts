@@ -109,11 +109,14 @@ describe("loadConformanceData", () => {
     );
   });
 
-  test("fails when a rule is not a string", () => {
+  test("fails with a schema violation when a rule is not a string", () => {
     rewrite("values/aid.json", (t) =>
       t.replace(/"rules": \[\s*"/, '"rules": [1, "'),
     );
-    expect(() => loadConformanceData(copy as string)).toThrow();
+    // スキーマが rules の要素を文字列に限るので、ケースへの変換より前に検査で止まる
+    expect(() => loadConformanceData(copy as string)).toThrow(
+      /aid\.json: schema violation/,
+    );
   });
 
   test("fails with a schema violation when backends is not an array", () => {
