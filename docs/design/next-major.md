@@ -81,6 +81,7 @@ export namespace AggregateId {
 
 - `asString` は、型名が `-` を含まないこと（T-11）と、型名・値・区切りの UTF-8 バイト数の合計が 1024 以下であること（T-12）を検査し、違反は `Result` の失敗で返す。文字数ではなく `Buffer.byteLength(s, "utf8")` で数える。適合データの多バイトのケースは、これで検出できる。
 - 利用者が独自のオブジェクトを渡せるので、ストアの各操作も `AggregateId.asString` を通して再検査し、失敗はそのまま操作の失敗として返す。`AggregateId.of` を通っていない値でも T-11・T-12 が守られる（MEM-5 も同じ）。
+- 空の型名・空の値は許す。仕様（T-11・T-12）は禁じておらず、aid 文字列は `-` を含むので空にならない（指揮役の回答、2026-10-06）。適合データにこのケースはないので、PR 3 の単体試験で、型名が空（`-値`）・値が空（`型名-`）・両方が空（`-`）を確かめる。
 - 現行の `AggregateId` の `asString: () => string` は廃止する。型名と値だけを持つ。
 
 ### 2.3 整数と時刻の型（T-9・T-13・1.5）
@@ -115,7 +116,7 @@ export type EventEnvelopeInput<P = unknown> = Readonly<{
 }>;
 
 export namespace EventEnvelope {
-  /** T-2: manifest を "" で埋める。T-9・T-13・W-6 を検査し、違反は ContractViolation。 */
+  /** T-2: 必須要素の欠落を検査し、違反は ContractViolation（rule "T-2"）。manifest を "" で埋める。T-9・T-13・W-6 を検査し、違反は ContractViolation。 */
   export function create<P>(
     input: EventEnvelopeInput<P>,
   ): Result<EventEnvelope<P>, EventStoreError>;
@@ -123,10 +124,11 @@ export namespace EventEnvelope {
 ```
 
 - T-5: 封筒は不変（`Object.freeze`）。要素を足しても、構築関数が入力オブジェクト形式なので既存の利用コードは壊れない。
+- 必須要素の欠落（共通契約 T-2・T-10、P-42）: TypeScript では型が必須を表すが、型のない JavaScript から欠いて呼ばれることがある。そのため `EventEnvelope.create` と `SnapshotEnvelope.create` は実行時に検査し、契約違反（`rule: "T-2"`。スナップショットは `"T-10"`）を `Result` の失敗で返す。欠落とみなすのは、`aggregateId`・`seqNr`・`occurredAt`（スナップショットは `seqNr`）が `undefined` か `null` のとき、`payload`（スナップショットは `aggregate`）が `undefined` のときである。`payload` の JSON の `null` は値として許す。欠けたのが `seqNr` なら、メッセージに seqNr を含めない（E-3）。実装の PR 3 で、要素ごとに欠落の単体試験を書く。
 - T-3: ストアは `occurredAt` をストア側の時刻で置き換えない。読み取りで同じ値（ミリ秒精度）を返す。
 - `Date` は変更できる。そのため、メモリは `occurredAt` をミリ秒の数値（`getTime()`）で持ち、読み取りで返すたびに新しい `Date` を作る（MEM-6）。入力の `Date` の参照は保持しない。
 - 現行の `Event` の `typeName`・`id`・`isCreated` は廃止する。ドメインのイベントは `payload` に入れる。
-- `create` を通らない封筒も受け取るので、書き込みの入口で同じ検査を再度行う（W-6・T-9・T-13）。
+- `create` を通らない封筒も受け取るので、書き込みの入口（`persistEvent`・`persistEventAndSnapshot`）で同じ検査を再度行う（必須要素の欠落の T-2・T-10、W-6・T-9・T-13）。欠けた `payload` や `aggregate` が直列化の失敗に、欠けた `aggregateId` が例外になる前に、契約違反として返す。PR 5 の試験で、`create` を通さずに欠けた封筒を直接渡す場合を確かめる。
 
 ### 2.5 スナップショット封筒（T-10）
 
@@ -145,6 +147,7 @@ export type SnapshotEnvelopeInput<S = unknown> = Readonly<{
 }>;
 
 export namespace SnapshotEnvelope {
+  /** T-10: 必須要素の欠落を検査し、違反は ContractViolation（rule "T-10"）。manifest を "" で埋める。T-9 を検査する。 */
   export function create<S>(
     input: SnapshotEnvelopeInput<S>,
   ): Result<SnapshotEnvelope<S>, EventStoreError>;
@@ -256,7 +259,7 @@ export type EventStoreError =
   | { type: "configuration-error"; fieldName: string; message: string; cause?: unknown }
   | { type: "storage-error"; message: string; cause?: unknown };
 
-export type ContractRule = "T-9" | "T-11" | "T-12" | "T-13" | "W-6" | "W-8" | "W-9" | "D-7";
+export type ContractRule = "T-2" | "T-9" | "T-10" | "T-11" | "T-12" | "T-13" | "W-6" | "W-8" | "W-9" | "D-7";
 ```
 
 | 分類 | `type` | 主な発生 |
@@ -334,7 +337,7 @@ export type DynamoDBEventStoreInput<PE, PS> = Readonly<{
 }>;
 ```
 
-- 設定エラーになる値: `retention.count` が 1 以上の整数でない（S-1）。`graceSeconds` が 0 以上の整数でない。メモリで `mode.type = "ttl"`（MEM-3・MEM-12）。メモリで変更フィードを要求する設定（MEM-3・MEM-13）は、`MemoryStorageInput` に `changeFeed?: unknown` を持たせ、値が指定されていれば（`undefined` 以外）`MemoryStorage.create` が `configuration-error`（`fieldName = "changeFeed"`）を返す。型で項目を持たないだけでは、JavaScript からの入力を実行時に拒否できないためである。保持の設定はメモリの保存先が持つので、同じ `MemoryStorage` を共有するインスタンスは同じ設定を使う（`createMemory` は保持の設定を受け取らない）。DynamoDB で3テーブル名が空・同名、`snapshotAidIndexName` が空。保存先に記録された `store_id`・`layout_version` との食い違い（P-40）。
+- 設定エラーになる値: `retention.count` が 1 以上の整数でない（S-1）。`graceSeconds` が 0 以上の安全な整数（`Number.isSafeInteger`）でない。上限は定めない（指揮役の回答、2026-10-06）が、`number` で正確に表せない値（2^53 以上）は、生成時の不正な設定値として設定エラーにする。メモリで `mode.type = "ttl"`（MEM-3・MEM-12）。メモリで変更フィードを要求する設定（MEM-3・MEM-13）は、`MemoryStorageInput` に `changeFeed?: unknown` を持たせ、値が指定されていれば（`undefined` 以外）`MemoryStorage.create` が `configuration-error`（`fieldName = "changeFeed"`）を返す。型で項目を持たないだけでは、JavaScript からの入力を実行時に拒否できないためである。保持の設定はメモリの保存先が持つので、同じ `MemoryStorage` を共有するインスタンスは同じ設定を使う（`createMemory` は保持の設定を受け取らない）。DynamoDB で3テーブル名が空・同名、`snapshotAidIndexName` が空。保存先に記録された `store_id`・`layout_version` との食い違い（P-40）。
 - 「期限切れ方式」の名前は、仕様上のもの（`retention_mode = ttl`）に対応する。型の名前は `mode.type` とした。
 - S-4・MEM-11: 保持処理の失敗は書き込みの結果を変えない。`onRetentionFailure` コールバックに `RetentionFailure` を渡し、`logger.error` にも出す。コールバックが投げた例外は書き込みの結果に影響させず、`logger` に出す。公開 API の形は仕様で固定されていないので、この形は設計案である。
 - 同じ最終失敗は1回だけ通知する（観察側で同じ失敗の複数ログを1つに正規化してよい、という適合データの方針に合わせる）。
@@ -415,7 +418,7 @@ export type DynamoDBEventStoreInput<PE, PS> = Readonly<{
 
 1. 生成のたびに、設定項目 `__config__` の3件（journal は `seq_nr=0`、snapshot は `skey=0`、head は SK なし）を、1回の `BatchGetItem`（`ConsistentRead=true`）で読む。
 2. `UnprocessedKeys` は、そのキーだけを指数バックオフで強整合のまま再要求する。`Responses` は蓄積する。未処理がなくなるまで「存在しない」と判定しない。再要求の上限（`retryLimit`、初回を数えない）に達したら**保存先エラー**を返す（設定エラーにしない）。設計判断: 上限は回数で持ち、既定は 5 回（現行の保持処理の再試行の上限に合わせる）、バックオフの初期値は 50ms、1回の待ちの上限は 1000ms（倍々に増やす）。待つ処理は内部フック `sleep`（5.3）で差し替えられる。適合データの `dynamodb-config-retry-exhausted` は `retry_limit: 1` に未処理の応答を2回返す。1回目の再要求の後も未処理が残るので、上限到達で保存先エラーを返し、`configuration-create` の要求は送らない。
-3. 3つともなければ、新しい `store_id`（ランダム値）を作り、1つの `TransactWriteItems` で `attribute_not_exists(aid)` 条件付きの `Put` を3件行う。属性は `store_id`(S) と `layout_version`(N, 1) だけ。snapshot の設定項目は `active_history_seq_nr` を持たない。条件不成立（別の実行器が先に作った）なら、応答を捨てて3件を強整合で読み直し、手順4へ。
+3. 3つともなければ、新しい `store_id`（ランダム値）を作り、1つの `TransactWriteItems` で `attribute_not_exists(aid)` 条件付きの `Put` を3件行う。属性は `store_id`(S) と `layout_version`(N, 1) だけ。snapshot の設定項目は `active_history_seq_nr` を持たない。条件不成立（別の実行器が先に作った）なら、応答を捨てて3件を強整合で読み直し、手順4へ。取り消し理由が `TransactionConflict`（別の実行器が書いている最中）のときも、同じく読み直す。読み直しても3つともなければ、作成を繰り返さずに保存先エラーを返す（DY-8、P-44）。適合データにこの場面はないので、単体試験で、読み直しで設定項目が見つかる場合と、3つともなくて保存先エラーになる場合を確かめる。
 4. 3つともあり、`store_id` が3件で一致し、`layout_version` が自分の版（1）と同じなら続行する。
 5. それ以外（一部のみ、`store_id` 不一致、`layout_version` 違い）は設定エラー（P-40）。
 - 必要な IAM は、3テーブルへの `dynamodb:BatchGetItem` と `dynamodb:PutItem`。設定項目は条件付き `Put` だけで作る（更新・削除しない）。
@@ -436,7 +439,7 @@ export type DynamoDBEventStoreInput<PE, PS> = Readonly<{
 - **W-3**: 新規作成でヘッドの条件が不成立なら楽観ロック。
 - **W-7**: journal の条件が不成立なら楽観ロック。
 - **D-6**: `TransactionConflict` は楽観ロックに分類する。head 以外のスロットリングと、通信失敗・その他は保存先エラー。
-- `CancellationReasons` に複数の理由があるときは、全理由を見る。どの項目の理由でも `TransactionConflict` があれば D-6（楽観ロック）にする。次に head の `ConditionalCheckFailed` を D-5 で分類し（W-3・W-8）、journal の `ConditionalCheckFailed` は W-7（楽観ロック）にする。それ以外のスロットリングは保存先エラー。飛び番と W-7 が同時に起きる場面は適合データにない（指揮役の回答、2026-10-06）。
+- `CancellationReasons` に複数の理由があるときは、全理由を見る。どの項目の理由でも `TransactionConflict` があれば D-6（楽観ロック）にする。次に head の `ConditionalCheckFailed` を D-5 で分類し（W-3・W-8）、journal の `ConditionalCheckFailed` は W-7（楽観ロック）にする。それ以外のスロットリングは保存先エラー。この順は仕様で決まった（`dynamodb.md` 6.2、P-43。2026-10-06）。適合データには理由が複数の項目に付く場面がないので、単体試験で確かめる（例: ヘッドの条件不成立が飛び番を示し、別の項目が `TransactionConflict` を返したときに楽観ロックになる）。
 - **D-7**: 書き込み前に、書き込むすべての項目を見積もる。journal の項目、head の項目（`aid` と `type_name` を含む。`payload` は journal と head の両方に載る）、現在のスナップショットの項目、履歴のスナップショットの項目である。1つでも 409600 バイトを超えれば、一切送らずに契約違反（`rule: "D-7"`）にする（適合データの `no_requests_in_phases` に `commit` と `retention-*` がある）。属性名・型タグを含めた DynamoDB の項目サイズの計算規則を使う。適合データの4件（`dynamodb-item-size-event`・`-snapshot`・`-manifest`・`-head-overhead`）が、それぞれ別の項目の超過を確かめる。
 - **T-3**: `occurred_at` は `BigInt(date.getTime()) * BigInt(1000000)` の10進文字列を `N` で書く。読むときは BigInt で受け取り、ミリ秒の `Date` に戻す。浮動小数点を介さない。現行の `tsconfig` は target es6 なので、BigInt リテラル（`1n`）は使わず、`BigInt()` 関数を使う。`packages/library/tsconfig.json` の `lib` は `ESNext` なので、`BigInt` の型のために `lib` を足す必要はない。
 - **H-1**: 1つのトランザクションでヘッド・ジャーナル・スナップショットが確定する。変更フィードの供給源は head の Streams だけ（journal の Streams は使わない）。
@@ -455,7 +458,7 @@ export type DynamoDBEventStoreInput<PE, PS> = Readonly<{
 1. 疎な GSI を `aid = :aid`、`ScanIndexForward = false` で `Query` し、読み切る（KEYS_ONLY）。
 2. 今書いた履歴を加え（GSI に見えていれば重ねない）、降順の先頭 n 件を残し、それより古いものを対象にする（S-2）。
 3. 削除方式: `BatchWriteItem` を25件ずつ（P-18）。`UnprocessedItems` は、残った項目だけを指数バックオフで再送する。上限と待ち時間は設定項目の読み取り（4.2）と同じ（`retryLimit`。既定 5 回。初回を数えない）にする。上限に達したら、残りを削除せずに保持の失敗として通知し、書き込みの結果は変えない。残った履歴は、次の保持処理で再び対象になる（設計判断。仕様は再送することだけを定め、上限を定めない。保持を書き込みの呼び出しの中で行うので、上限がないと呼び出しが終わらないおそれがある）。
-4. TTL 方式: 1件ずつ `UpdateItem`。`SET #ttl = :expires REMOVE active_history_seq_nr`、条件 `attribute_exists(active_history_seq_nr)`。`#ttl` は `ExpressionAttributeNames`（`ttl` が予約語のため）。`:expires` は印付け時点のエポック秒＋猶予秒。後の更新が条件失敗したら、印付け済みとして読み飛ばす。
+4. TTL 方式: 1件ずつ `UpdateItem`。`SET #ttl = :expires REMOVE active_history_seq_nr`、条件 `attribute_exists(active_history_seq_nr)`。`#ttl` は `ExpressionAttributeNames`（`ttl` が予約語のため）。`:expires` は印付け時点のエポック秒＋猶予秒。和は 2^53 を超えうるので、`BigInt` で計算し、10 進文字列で N 属性に書く（`number` の加算では精度が落ちる）。単体試験で、猶予秒が `Number.MAX_SAFE_INTEGER` の境界を確かめる。後の更新が条件失敗したら、印付け済みとして読み飛ばす。
 5. 件数を数えてから超過分を選ぶ方式は使わない（P-24）。印付き履歴は件数に数えず、期限は先送りしない（S-3）。
 - 失敗は書き込みの結果を変えない（S-4）。`onRetentionFailure` と `logger` で通知する。現行の `dynamodb-snapshot-retention-executor.ts` の、保持失敗を書き込み失敗にする挙動は置き換える。
 - 現行の `deleteTtlMillis`（ミリ秒）は、`graceSeconds`（秒、`ttl` 属性はエポック秒）に置き換える。
@@ -642,7 +645,7 @@ DynamoDB は、`DynamoDBClient.middlewareStack` に、実行器が追加する�
 | PR 2: 適合の実行器の基盤 | データの読み込み、場面の実行、報告、`manifest` の照合、フックの置き場所（`src/next/internal/test/conformance/`）。`remove-test-artifacts.mjs` と `jest.config.ts` の除外を `next/internal/test` に広げる（5.0）。実行器は、自前の境界のインターフェイス（5.0）だけに依存し、中核の型に依存しない。実行器の単体試験 | 5.1・5.2・5.8、IP 5 の1 | 実装計画 4.2 の順（実行器 → 中核）を保つ。各ケースの実行は、メモリ（PR 8）・DynamoDB（PR 9〜11）で有効にする |
 | PR 3: 中核（値の型） | 集約 ID、イベント封筒、スナップショット封筒、整数・時刻の型 | T-1〜T-5、T-9〜T-13 | `index.ts` から公開しない |
 | PR 4: 中核（payload とエラー） | `PayloadSerializer`、`EventStoreError`（5分類）と構築関数 | T-6〜T-8、E-1〜E-3 | |
-| PR 5: 中核（操作） | `EventStore` の型と、書き込み・読み取りの入口の検査 | W-3〜W-9 の入口の検査、R-1〜R-6 | 保存先の照合は各保存先の PR |
+| PR 5: 中核（操作） | `EventStore` の型と、書き込み・読み取りの入口の検査 | T-2・T-10 と W-3〜W-9 の入口の検査、R-1〜R-6 | 保存先の照合は各保存先の PR |
 | PR 6: 中核（設定） | `SnapshotRetention`、`RetentionFailure`、入力の型と検査 | S-1・S-4（型） | |
 | PR 7: メモリの実装 | 新しいメモリ実装（`MemoryStorage`、排他制御、保持処理）と、その単体試験 | MEM-1〜MEM-13、R-8 | |
 | PR 8: メモリの実行器のフック | 実行器のメモリ用のフック（保持の決定的実行、内部履歴、障害の差し込み）。メモリの全ケースを有効にして通す。現行の `memory-event-store.test.ts` に代わる試験 | MEM の適合の事例、IP 5 の1（メモリ） | |
@@ -727,11 +730,14 @@ DynamoDB は、`DynamoDBClient.middlewareStack` に、実行器が追加する�
 
 ## 10. 未解決の疑問
 
-仕様の読み方が分からない点、仕様と食い違うように見える点。仕様を勝手に解釈して埋めない。指揮役の回答（2026-10-06）で解けた疑問は、本文へ移した。
+仕様の読み方が分からない点、仕様と食い違うように見える点。仕様を勝手に解釈して埋めない。指揮役の回答（2026-10-06）と、2026-10-06 の仕様の決定（P-42〜P-44。P-45 は rs の移行の手順なので関係しない）で解けた疑問は、本文へ移した。残るのは、実装のときに確かめる次の 3 つである。
 
-1. **適合データの精度の印の件数**: 指揮役のレビューは「ナノ秒用の8件、ミリ秒用の4件」と書く。実データでは、ナノ秒の印が8件（値の表に4件、場面に4件）、ミリ秒の印も8件（同じく4件ずつ）である。この文書は実データの件数で書いた（5.1）。
-2. **ミドルウェアの差し込みの段階**: `build` 段階で `maxAttempts: 1` と `replace-request`・`replace-response` を実現できるかは、SDK の版で挙動が変わりうる。実装の最初の PR で、小さな試作で確かめる（5.4）。
-3. **DynamoDB Local 3.3.1 の挙動**: ハブの `tools/spikes/dynamodb-emulators/README.md` に、`ReturnValuesOnConditionCheckFailure = ALL_OLD`、Streams の NEW_IMAGE、強整合の `BatchGetItem`、疎な GSI、TTL の有効化の確認の記録がある。期限切れの削除と `UnprocessedKeys` の発生は調べていない記録である。
-4. **範囲の端の `Date` と T-13**: ミリ秒の `Date` を、ナノ秒の符号付き64bitの範囲で検査する（2.3）。範囲の端（約 1677 年・2262 年）の適合データ（`occurred-at-min`・`occurred-at-max`・`below-min`・`above-max`）で、ミリ秒の丸めの向きにより判定が変わる値があるか。実行器で値を変換して確かめる（未確認）。
-5. **公開 API の段階的な変更**: PR 12 で `index.ts` を一度に切り替える案は、実装計画 3 章の「main に PR ごとに squash マージする」と矛盾しないと読んだ。実装計画が、公開 API の段階的な変更を求めているかは、文面から読み切れない。
-6. **必須要素の欠落（T-2・T-10）の分類**: 4章の契約違反の表は W-6・W-9・T-9・T-11〜T-13 と W-8 の飛び番だけで、必須要素の欠落を挙げない。TypeScript では型が必須を表すが、型のない JavaScript から `aggregateId` や `payload` を欠いて呼ばれたときに、どの分類の失敗を返すかが仕様から読み取れない。仕様が分類を定めたら、`EventEnvelope.create`・`SnapshotEnvelope.create` の実行時の検査をそれに合わせる（未確認）。
+1. **ミドルウェアの差し込みの段階**: `build` 段階で `maxAttempts: 1` と `replace-request`・`replace-response` を実現できるかは、SDK の版で挙動が変わりうる。実装の最初の PR で、小さな試作で確かめる（5.4）。
+2. **DynamoDB Local 3.3.1 の挙動**: ハブの `tools/spikes/dynamodb-emulators/README.md` に、`ReturnValuesOnConditionCheckFailure = ALL_OLD`、Streams の NEW_IMAGE、強整合の `BatchGetItem`、疎な GSI、TTL の有効化の確認の記録がある。期限切れの削除と `UnprocessedKeys` の発生は調べていない記録である。
+3. **範囲の端の `Date` と T-13**: ミリ秒の `Date` を、ナノ秒の符号付き64bitの範囲で検査する（2.3）。範囲の端（約 1677 年・2262 年）の適合データ（`occurred-at-min`・`occurred-at-max`・`below-min`・`above-max`）で、ミリ秒の丸めの向きにより判定が変わる値があるか。実行器で値を変換して確かめる（未確認）。
+
+解けた疑問:
+
+- 適合データの精度の印の件数: 指揮役のレビューの件数（ミリ秒用の4件）が誤りで、実データの件数（ナノ秒・ミリ秒とも8件）が正しい（5.1）。
+- 公開 API の段階的な変更: PR 12 で `index.ts` を一度に切り替える案は、実装計画 3 章と矛盾しない（指揮役の回答、2026-10-06。7.2・7.3）。
+- 必須要素の欠落（T-2・T-10）の分類: 契約違反にする（共通契約 T-2・T-10、P-42）。`EventEnvelope.create`・`SnapshotEnvelope.create` が実行時に検査する（2.4）。
