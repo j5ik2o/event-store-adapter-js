@@ -8,7 +8,7 @@ export function validateSeqNr(seqNr: unknown): Result<number, EventStoreError> {
   return Result.err(
     EventStoreError.contractViolation({
       rule: "T-9",
-      detail: `seqNr must be an integer between 0 and ${Number.MAX_SAFE_INTEGER}: ${String(seqNr)}`,
+      detail: `seqNr must be an integer between 0 and ${Number.MAX_SAFE_INTEGER}`,
       ...(typeof seqNr === "number" ? { seqNr } : {}),
     }),
   );
