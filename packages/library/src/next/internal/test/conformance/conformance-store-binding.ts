@@ -1,9 +1,9 @@
 import type { ConformanceAggregateIdInput } from "./conformance-aggregate-id-input";
 import type { ConformanceBackend } from "./conformance-backend";
 import type { ConformanceCreatedStore } from "./conformance-created-store";
-import type { ConformanceEventData } from "./conformance-event-data";
+import type { ConformanceEventInput } from "./conformance-event-input";
 import type { ConformanceOutcome } from "./conformance-outcome";
-import type { ConformanceSnapshotData } from "./conformance-snapshot-data";
+import type { ConformanceSnapshotInput } from "./conformance-snapshot-input";
 import type { ConformanceStoreCreation } from "./conformance-store-creation";
 
 export interface ConformanceStoreBinding<E, S> {
@@ -14,6 +14,7 @@ export interface ConformanceStoreBinding<E, S> {
   buildAggregateId(
     input: ConformanceAggregateIdInput,
   ): ConformanceOutcome<string>;
-  buildEvent(d: ConformanceEventData): ConformanceOutcome<E>;
-  buildSnapshot(d: ConformanceSnapshotData): ConformanceOutcome<S>;
+  buildEvent(d: ConformanceEventInput): ConformanceOutcome<E>;
+  buildSnapshot(d: ConformanceSnapshotInput): ConformanceOutcome<S>;
+  validateSeqNrValue(seqNr: bigint): ConformanceOutcome<bigint>;
 }

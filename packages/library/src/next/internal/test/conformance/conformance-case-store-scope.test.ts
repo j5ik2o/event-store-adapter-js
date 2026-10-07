@@ -17,6 +17,7 @@ const bindingReturning = (
   buildAggregateId: jest.fn(),
   buildEvent: jest.fn(),
   buildSnapshot: jest.fn(),
+  validateSeqNrValue: jest.fn(),
 });
 
 const okStore = () => {
