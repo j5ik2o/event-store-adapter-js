@@ -305,6 +305,82 @@ describe.each(writes)("%s event validation", (operation) => {
 });
 
 describe.each(operations)("%s aggregate ID validation", (operation) => {
+  test("delegates a frozen ID snapshot across an asynchronous target wait", async () => {
+    const target = createTarget();
+    const store = createValidatedEventStore(target);
+    const id = { typeName: "Order", value: "1" };
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const observed = Promise.withResolvers<{
+      aggregateId: AggregateId;
+      typeName: string;
+      value: string;
+      frozen: boolean;
+    }>();
+    const observeId = async (delegatedId: AggregateId) => {
+      entered.resolve();
+      await release.promise;
+      observed.resolve({
+        aggregateId: delegatedId,
+        typeName: delegatedId.typeName,
+        value: delegatedId.value,
+        frozen: Object.isFrozen(delegatedId),
+      });
+    };
+    target.persistEvent.mockImplementation(async (event) => {
+      await observeId(event.aggregateId);
+      return Result.ok(undefined);
+    });
+    target.persistEventAndSnapshot.mockImplementation(async (event) => {
+      await observeId(event.aggregateId);
+      return Result.ok(undefined);
+    });
+    target.getLatestSnapshotById.mockImplementation(async (aggregateId) => {
+      await observeId(aggregateId);
+      return Result.ok(undefined);
+    });
+    target.getEventsByIdSinceSeqNr.mockImplementation(async (aggregateId) => {
+      await observeId(aggregateId);
+      return Result.ok([]);
+    });
+
+    const pending = callWithId(store, operation, id);
+    await entered.promise;
+    id.typeName = "ChangedOrder";
+    id.value = "2";
+    release.resolve();
+    const result = await pending;
+    const consumed = await observed.promise;
+
+    expect(result.type).toBe("ok");
+    expect(consumed).toMatchObject({ typeName: "Order", value: "1" });
+    expect(consumed.aggregateId).not.toBe(id);
+    expect(consumed.frozen).toBe(true);
+    expectOnlyCall(target, operation);
+  });
+
+  test("reads each caller ID property once", async () => {
+    const target = createTarget();
+    const store = createValidatedEventStore(target);
+    const typeName = jest.fn(() => "Order");
+    const value = jest.fn(() => "1");
+    const id = {
+      get typeName() {
+        return typeName();
+      },
+      get value() {
+        return value();
+      },
+    };
+
+    const result = await callWithId(store, operation, id);
+
+    expect(result.type).toBe("ok");
+    expect(typeName).toHaveBeenCalledTimes(1);
+    expect(value).toHaveBeenCalledTimes(1);
+    expectOnlyCall(target, operation);
+  });
+
   test.each([
     [undefined, "T-2"],
     [null, "T-2"],

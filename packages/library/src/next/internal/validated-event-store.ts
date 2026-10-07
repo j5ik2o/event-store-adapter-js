@@ -8,7 +8,7 @@ import { validateSeqNr } from "./seq-nr-validation";
 
 function validateAggregateId(
   aggregateId: AggregateId,
-): Result<string, EventStoreError> {
+): Result<AggregateId, EventStoreError> {
   if (aggregateId === undefined || aggregateId === null) {
     return Result.err(
       EventStoreError.contractViolation({
@@ -17,7 +17,8 @@ function validateAggregateId(
       }),
     );
   }
-  return AggregateId.asString(aggregateId);
+  const { typeName, value } = aggregateId;
+  return AggregateId.of(typeName, value);
 }
 
 function validateEvent<P>(
@@ -28,7 +29,12 @@ function validateEvent<P>(
     return envelope;
   }
   const aggregateId = validateAggregateId(envelope.value.aggregateId);
-  return aggregateId.type === "err" ? aggregateId : envelope;
+  if (aggregateId.type === "err") {
+    return aggregateId;
+  }
+  return Result.ok(
+    Object.freeze({ ...envelope.value, aggregateId: aggregateId.value }),
+  );
 }
 
 export function createValidatedEventStore<PE, PS>(
@@ -72,7 +78,7 @@ export function createValidatedEventStore<PE, PS>(
       if (validated.type === "err") {
         return validated;
       }
-      return target.getLatestSnapshotById(aggregateId);
+      return target.getLatestSnapshotById(validated.value);
     },
 
     async getEventsByIdSinceSeqNr(aggregateId, seqNr) {
@@ -84,7 +90,10 @@ export function createValidatedEventStore<PE, PS>(
       if (validatedSeqNr.type === "err") {
         return validatedSeqNr;
       }
-      return target.getEventsByIdSinceSeqNr(aggregateId, validatedSeqNr.value);
+      return target.getEventsByIdSinceSeqNr(
+        validatedId.value,
+        validatedSeqNr.value,
+      );
     },
   });
 }
