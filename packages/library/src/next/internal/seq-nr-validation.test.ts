@@ -24,14 +24,19 @@ describe("validateSeqNr", () => {
     },
   );
 
-  test.each([1.5, Number.NaN, Number.POSITIVE_INFINITY, "1", null, undefined])(
-    "rejects non-integer or non-number %p with T-9",
-    (n) => {
-      const result = validateSeqNr(n);
+  test.each([
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    "1",
+    null,
+    undefined,
+    { toString: null, valueOf: null },
+  ])("rejects non-integer or non-number %p with T-9", (n) => {
+    const result = validateSeqNr(n);
 
-      expect(result.type).toBe("err");
-      if (result.type !== "err") throw new Error("unreachable");
-      expect(result.error).toMatchObject({ rule: "T-9" });
-    },
-  );
+    expect(result.type).toBe("err");
+    if (result.type !== "err") throw new Error("unreachable");
+    expect(result.error).toMatchObject({ rule: "T-9" });
+  });
 });
