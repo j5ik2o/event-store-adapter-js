@@ -4,14 +4,16 @@
 # 割り当てを変えるときは、まずこのファイルを変え、各リポジトリへ同じ内容を配る。
 # ~/.takt/runtime.yaml (全体) には何も書かない。全体の設定はすべてのプロジェクトに重ねて読まれるため。
 #
-# 役割の分担(2026-10-06 にオーナーが指定。GPT-6.1-Sol は使わない):
+# 通常の役割の分担(2026-10-06 にオーナーが指定。GPT-6.1-Sol は通常の段には割り当てない):
 #   設計(計画・再計画)、レビューの裁定・最終判定、割り当てのない段 … Opus 5.5
 #   実装(試験・実装・修正)                                       … Sonnet 5.5。失敗が続いたときの ladder の上げ先は t2 の Opus 5.5
 #   並行のレビュー役                                             … 3 種類のモデルに 1 役ずつ固定で割り当てる
 #     Sonnet 5.5           … 仕様との食い違い(light-change)、設計の構造・CQRS とイベントソーシング(flash-default)
 #     DeepSeek V4.1 Flash  … AI 特有の問題(light-change)、バックエンド・セキュリティ(flash-default)
 #     GLM 5.3 Flash        … 監督(light-change)、AI 特有の問題・試験・フロントエンド(flash-default)
-#   DeepSeek と GLM は OpenCode Go 経由で呼ぶ。
+#   通常の DeepSeek と GLM は OpenCode Go 経由で呼ぶ。
+# 利用上限に当たったときは config.yaml の候補に切り替える。GPT-6.1-Sol と Ollama Cloud も含む
+# (2026-10-07 にオーナーが指定)。
 # takt を動かすのは作業者なので、Opus 5.5 は原則として使わない。例外は設計・裁定・既定の段
 # (2026-10-06 にオーナーが指示。repository-policy.md の 6 章・8 章)。
 #
