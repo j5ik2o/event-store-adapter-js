@@ -2,13 +2,36 @@ import { validateOccurredAt } from "./occurred-at-validation";
 
 describe("validateOccurredAt", () => {
   test.each([-9223372036854, 9223372036854, 0])(
-    "accepts Date(%s) and returns it",
+    "accepts Date(%s) and returns an independent Date with the same time",
     (ms) => {
       const date = new Date(ms);
 
-      expect(validateOccurredAt(date)).toEqual({ type: "ok", value: date });
+      const result = validateOccurredAt(date);
+
+      expect(result).toEqual({ type: "ok", value: new Date(ms) });
+      if (result.type !== "ok") throw new Error("expected ok");
+      expect(result.value).not.toBe(date);
+      date.setTime(Number.NaN);
+      expect(result.value.getTime()).toBe(ms);
     },
   );
+
+  test("copies the validated milliseconds without rereading getTime", () => {
+    const date = new Date(7);
+    const getTime = jest
+      .fn()
+      .mockReturnValueOnce(7)
+      .mockReturnValue(9223372036855);
+    date.getTime = getTime;
+
+    const result = validateOccurredAt(date);
+
+    expect(result.type).toBe("ok");
+    if (result.type !== "ok") throw new Error("expected ok");
+    expect(result.value.getTime()).toBe(7);
+    expect(result.value).not.toBe(date);
+    expect(getTime).toHaveBeenCalledTimes(1);
+  });
 
   test.each([-9223372036855, 9223372036855])(
     "rejects Date(%s) with T-13 and the seqNr",

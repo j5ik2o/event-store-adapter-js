@@ -173,6 +173,111 @@ describe.each(writes)("%s event validation", (operation) => {
     },
   );
 
+  describe("caller property snapshot", () => {
+    test.each(["aggregateId", "seqNr", "occurredAt", "manifest", "payload"])(
+      "delegates the first event %s getter value",
+      async (key) => {
+        const target = createTarget();
+        const store = createValidatedEventStore(target);
+        const first = eventOf();
+        const getters = Object.fromEntries(
+          Object.entries(first).map(([name, value]) => [
+            name,
+            jest
+              .fn()
+              .mockReturnValueOnce(value)
+              .mockReturnValue(name === key ? undefined : value),
+          ]),
+        );
+        const event = Object.defineProperties(
+          {},
+          Object.fromEntries(
+            Object.entries(getters).map(([name, get]) => [name, { get }]),
+          ),
+        ) as EventEnvelope;
+
+        const result = await callWrite(store, operation, event, snapshotOf());
+
+        expect(result).toEqual(Result.ok(undefined));
+        expectOnlyCall(target, operation);
+        const delegated = target[operation].mock.calls[0][0];
+        expect(delegated).toEqual(first);
+        expect(delegated.payload).toBe(first.payload);
+        for (const getter of Object.values(getters)) {
+          expect(getter).toHaveBeenCalledTimes(1);
+        }
+      },
+    );
+
+    test.each(["aggregateId", "seqNr", "occurredAt", "payload"])(
+      "rejects a first missing event %s getter value before any target call",
+      async (key) => {
+        const target = createTarget();
+        const store = createValidatedEventStore(target);
+        const values = eventOf(7);
+        const getters = Object.fromEntries(
+          Object.entries(values).map(([name, value]) => [
+            name,
+            jest
+              .fn()
+              .mockReturnValueOnce(name === key ? undefined : value)
+              .mockReturnValue(value),
+          ]),
+        );
+        const event = Object.defineProperties(
+          {},
+          Object.fromEntries(
+            Object.entries(getters).map(([name, get]) => [name, { get }]),
+          ),
+        ) as EventEnvelope;
+
+        const result = await callWrite(store, operation, event, snapshotOf(7));
+
+        const error = expectViolation(result, "T-2");
+        if (key === "seqNr") {
+          expect(error).not.toHaveProperty("seqNr");
+          expect(error.message).not.toContain("seqNr=");
+        } else {
+          expect(error).toHaveProperty("seqNr", 7);
+          expect(error.message).toContain("seqNr=7");
+        }
+        expectNoCalls(target);
+        for (const getter of Object.values(getters)) {
+          expect(getter).toHaveBeenCalledTimes(1);
+        }
+      },
+    );
+  });
+
+  test.each([
+    [{ payload: undefined, seqNr: -1, occurredAt: new Date(NaN) }, "T-2"],
+    [{ seqNr: -1, occurredAt: new Date(NaN) }, "T-9"],
+    [{ seqNr: 0, occurredAt: new Date(NaN) }, "W-6"],
+    [
+      {
+        occurredAt: new Date(NaN),
+        aggregateId: { typeName: "bad-id", value: "1" },
+      },
+      "T-13",
+    ],
+  ] as const)(
+    "preserves event validation priority for %p: %s",
+    async (input, rule) => {
+      const target = createTarget();
+      const store = createValidatedEventStore(target);
+
+      const result = await callWrite(
+        store,
+        operation,
+        { ...eventOf(), ...input } as EventEnvelope,
+        snapshotOf(),
+      );
+
+      expectViolation(result, rule);
+      expectNoCalls(target);
+    },
+  );
+
   describe.each(["aggregateId", "seqNr", "occurredAt", "payload"])(
     "required %s",
     (key) => {
@@ -276,6 +381,51 @@ describe.each(writes)("%s event validation", (operation) => {
       expect(target[operation].mock.calls[0][0].occurredAt.getTime()).toBe(
         millis,
       );
+      expectOnlyCall(target, operation);
+    },
+  );
+
+  test.each([Number.NaN, -9223372036855, 9223372036855])(
+    "preserves occurredAt across an asynchronous target wait when the caller sets %s",
+    async (changedMillis) => {
+      const target = createTarget();
+      const store = createValidatedEventStore(target);
+      const occurredAt = new Date(7);
+      const event = { ...eventOf(), occurredAt };
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const observed = Promise.withResolvers<{
+        occurredAt: Date;
+        millis: number;
+      }>();
+      const observeTime = async (delegated: EventEnvelope) => {
+        entered.resolve();
+        await release.promise;
+        observed.resolve({
+          occurredAt: delegated.occurredAt,
+          millis: delegated.occurredAt.getTime(),
+        });
+      };
+      target.persistEvent.mockImplementation(async (delegated) => {
+        await observeTime(delegated);
+        return Result.ok(undefined);
+      });
+      target.persistEventAndSnapshot.mockImplementation(async (delegated) => {
+        await observeTime(delegated);
+        return Result.ok(undefined);
+      });
+
+      const pending = callWrite(store, operation, event, snapshotOf());
+      await entered.promise;
+      occurredAt.setTime(changedMillis);
+      release.resolve();
+      const result = await pending;
+      const consumed = await observed.promise;
+
+      expect(result).toEqual(Result.ok(undefined));
+      expect(consumed.millis).toBe(7);
+      expect(consumed.occurredAt).not.toBe(occurredAt);
+      expect(occurredAt.getTime()).toBe(changedMillis);
       expectOnlyCall(target, operation);
     },
   );
@@ -439,6 +589,121 @@ describe.each(operations)("%s aggregate ID validation", (operation) => {
 });
 
 describe("persistEventAndSnapshot snapshot validation", () => {
+  describe("caller property snapshot", () => {
+    test.each(["seqNr", "manifest", "aggregate"])(
+      "delegates the first snapshot %s getter value",
+      async (key) => {
+        const target = createTarget();
+        const store = createValidatedEventStore(target);
+        const first = snapshotOf();
+        const getters = Object.fromEntries(
+          Object.entries(first).map(([name, value]) => [
+            name,
+            jest
+              .fn()
+              .mockReturnValueOnce(value)
+              .mockReturnValue(name === key ? undefined : value),
+          ]),
+        );
+        const snapshot = Object.defineProperties(
+          {},
+          Object.fromEntries(
+            Object.entries(getters).map(([name, get]) => [name, { get }]),
+          ),
+        ) as SnapshotEnvelope;
+
+        const result = await store.persistEventAndSnapshot(eventOf(), snapshot);
+
+        expect(result).toEqual(Result.ok(undefined));
+        expectOnlyCall(target, "persistEventAndSnapshot");
+        const delegated = target.persistEventAndSnapshot.mock.calls[0][1];
+        expect(delegated).toEqual(first);
+        expect(delegated.aggregate).toBe(first.aggregate);
+        for (const getter of Object.values(getters)) {
+          expect(getter).toHaveBeenCalledTimes(1);
+        }
+      },
+    );
+
+    test.each(["seqNr", "aggregate"])(
+      "rejects a first missing snapshot %s getter value before any target call",
+      async (key) => {
+        const target = createTarget();
+        const store = createValidatedEventStore(target);
+        const values = snapshotOf(7);
+        const getters = Object.fromEntries(
+          Object.entries(values).map(([name, value]) => [
+            name,
+            jest
+              .fn()
+              .mockReturnValueOnce(name === key ? undefined : value)
+              .mockReturnValue(value),
+          ]),
+        );
+        const snapshot = Object.defineProperties(
+          {},
+          Object.fromEntries(
+            Object.entries(getters).map(([name, get]) => [name, { get }]),
+          ),
+        ) as SnapshotEnvelope;
+
+        const result = await store.persistEventAndSnapshot(
+          eventOf(7),
+          snapshot,
+        );
+
+        const error = expectViolation(result, "T-10");
+        if (key === "seqNr") {
+          expect(error).not.toHaveProperty("seqNr");
+          expect(error.message).not.toContain("seqNr=");
+        } else {
+          expect(error).toHaveProperty("seqNr", 7);
+          expect(error.message).toContain("seqNr=7");
+        }
+        expectNoCalls(target);
+        for (const getter of Object.values(getters)) {
+          expect(getter).toHaveBeenCalledTimes(1);
+        }
+      },
+    );
+  });
+
+  test("preserves T-10 before snapshot number validation", async () => {
+    const target = createTarget();
+    const store = createValidatedEventStore(target);
+
+    const result = await store.persistEventAndSnapshot(eventOf(), {
+      ...snapshotOf(),
+      seqNr: -1,
+      aggregate: undefined,
+    });
+
+    expectViolation(result, "T-10");
+    expectNoCalls(target);
+  });
+
+  test("rejects the first mismatched snapshot number even if its getter later matches", async () => {
+    const target = createTarget();
+    const store = createValidatedEventStore(target);
+    const seqNr = jest.fn().mockReturnValueOnce(2).mockReturnValue(1);
+    const snapshot = {
+      manifest: "snapshot/v1",
+      aggregate: null,
+      get seqNr() {
+        return seqNr();
+      },
+    };
+
+    const result = await store.persistEventAndSnapshot(eventOf(), snapshot);
+
+    const error = expectViolation(result, "W-9");
+    expect(error).toMatchObject({ seqNr: 1, snapshotSeqNr: 2 });
+    expect(error.message).toContain("seqNr=1");
+    expect(error.message).toContain("snapshotSeqNr=2");
+    expect(seqNr).toHaveBeenCalledTimes(1);
+    expectNoCalls(target);
+  });
+
   test.each([undefined, null])(
     "rejects an absent snapshot %p",
     async (input) => {

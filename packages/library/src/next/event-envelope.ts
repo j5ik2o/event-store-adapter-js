@@ -27,22 +27,29 @@ export namespace EventEnvelope {
         }),
       );
     }
+    const {
+      aggregateId,
+      seqNr: inputSeqNr,
+      occurredAt: inputOccurredAt,
+      manifest,
+      payload,
+    } = raw;
     const missing = [
-      raw.aggregateId == null ? "aggregateId" : undefined,
-      raw.seqNr == null ? "seqNr" : undefined,
-      raw.occurredAt == null ? "occurredAt" : undefined,
-      raw.payload === undefined ? "payload" : undefined,
+      aggregateId == null ? "aggregateId" : undefined,
+      inputSeqNr == null ? "seqNr" : undefined,
+      inputOccurredAt == null ? "occurredAt" : undefined,
+      payload === undefined ? "payload" : undefined,
     ].filter((name): name is string => name !== undefined);
     if (missing.length > 0) {
       return Result.err(
         EventStoreError.contractViolation({
           rule: "T-2",
           detail: `missing required element: ${missing.join(", ")}`,
-          ...(typeof raw.seqNr === "number" ? { seqNr: raw.seqNr } : {}),
+          ...(typeof inputSeqNr === "number" ? { seqNr: inputSeqNr } : {}),
         }),
       );
     }
-    const seqNr = validateSeqNr(raw.seqNr);
+    const seqNr = validateSeqNr(inputSeqNr);
     if (seqNr.type === "err") {
       return seqNr;
     }
@@ -55,17 +62,17 @@ export namespace EventEnvelope {
         }),
       );
     }
-    const occurredAt = validateOccurredAt(raw.occurredAt, seqNr.value);
+    const occurredAt = validateOccurredAt(inputOccurredAt, seqNr.value);
     if (occurredAt.type === "err") {
       return occurredAt;
     }
     return Result.ok(
       Object.freeze({
-        aggregateId: raw.aggregateId as AggregateId,
+        aggregateId: aggregateId as AggregateId,
         seqNr: seqNr.value,
         occurredAt: occurredAt.value,
-        manifest: raw.manifest ?? "",
-        payload: raw.payload as P,
+        manifest: manifest ?? "",
+        payload: payload as P,
       }),
     );
   }

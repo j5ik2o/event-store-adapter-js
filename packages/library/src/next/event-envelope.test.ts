@@ -44,6 +44,88 @@ describe("EventEnvelope.create", () => {
     expect("manifest" in omitted).toBe(false);
   });
 
+  describe("caller property snapshot", () => {
+    const keys = [
+      "aggregateId",
+      "seqNr",
+      "occurredAt",
+      "manifest",
+      "payload",
+    ] as const;
+
+    test.each(keys)("keeps the first %s getter value", (key) => {
+      const first = {
+        ...validInput(),
+        manifest: "m",
+        payload: { item: "book" },
+      };
+      const getters = Object.fromEntries(
+        Object.entries(first).map(([name, value]) => [
+          name,
+          jest
+            .fn()
+            .mockReturnValueOnce(value)
+            .mockReturnValue(name === key ? undefined : value),
+        ]),
+      );
+      const input = Object.defineProperties(
+        {},
+        Object.fromEntries(
+          Object.entries(getters).map(([name, get]) => [name, { get }]),
+        ),
+      );
+
+      const result = untyped(input);
+
+      expect(result).toEqual({ type: "ok", value: first });
+      if (result.type !== "ok") throw new Error("expected ok");
+      expect(result.value.payload).toBe(first.payload);
+      for (const getter of Object.values(getters)) {
+        expect(getter).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    test.each(["aggregateId", "seqNr", "occurredAt", "payload"])(
+      "rejects a first missing %s getter value with T-2",
+      (key) => {
+        const values = { ...validInput(), manifest: "m", seqNr: 7 };
+        const getters = Object.fromEntries(
+          Object.entries(values).map(([name, value]) => [
+            name,
+            jest
+              .fn()
+              .mockReturnValueOnce(name === key ? undefined : value)
+              .mockReturnValue(value),
+          ]),
+        );
+        const input = Object.defineProperties(
+          {},
+          Object.fromEntries(
+            Object.entries(getters).map(([name, get]) => [name, { get }]),
+          ),
+        );
+
+        const error = errorOf(untyped(input));
+
+        expect(error).toMatchObject({
+          type: "contract-violation",
+          rule: "T-2",
+        });
+        expect(error.message).toContain(key);
+        if (key === "seqNr") {
+          expect(error).not.toHaveProperty("seqNr");
+          expect(error.message).not.toContain("seqNr=");
+        } else {
+          expect(error).toHaveProperty("seqNr", 7);
+          expect(error.message).toContain("seqNr=7");
+        }
+        for (const getter of Object.values(getters)) {
+          expect(getter).toHaveBeenCalledTimes(1);
+        }
+      },
+    );
+  });
+
   test("rejects seqNr 0 with W-6 and the seqNr in the message", () => {
     const error = errorOf(EventEnvelope.create({ ...validInput(), seqNr: 0 }));
 

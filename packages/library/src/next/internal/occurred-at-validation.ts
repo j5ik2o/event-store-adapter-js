@@ -30,5 +30,5 @@ export function validateOccurredAt(
       "occurredAt must fit in signed 64-bit nanoseconds since the epoch",
     );
   }
-  return Result.ok(occurredAt);
+  return Result.ok(new Date(millis));
 }

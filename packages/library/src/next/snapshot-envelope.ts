@@ -23,28 +23,29 @@ export namespace SnapshotEnvelope {
         }),
       );
     }
+    const { seqNr: inputSeqNr, manifest, aggregate } = raw;
     const missing = [
-      raw.seqNr == null ? "seqNr" : undefined,
-      raw.aggregate === undefined ? "aggregate" : undefined,
+      inputSeqNr == null ? "seqNr" : undefined,
+      aggregate === undefined ? "aggregate" : undefined,
     ].filter((name): name is string => name !== undefined);
     if (missing.length > 0) {
       return Result.err(
         EventStoreError.contractViolation({
           rule: "T-10",
           detail: `missing required element: ${missing.join(", ")}`,
-          ...(typeof raw.seqNr === "number" ? { seqNr: raw.seqNr } : {}),
+          ...(typeof inputSeqNr === "number" ? { seqNr: inputSeqNr } : {}),
         }),
       );
     }
-    const seqNr = validateSeqNr(raw.seqNr);
+    const seqNr = validateSeqNr(inputSeqNr);
     if (seqNr.type === "err") {
       return seqNr;
     }
     return Result.ok(
       Object.freeze({
         seqNr: seqNr.value,
-        manifest: raw.manifest ?? "",
-        aggregate: raw.aggregate as S,
+        manifest: manifest ?? "",
+        aggregate: aggregate as S,
       }),
     );
   }

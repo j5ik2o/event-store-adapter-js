@@ -39,6 +39,83 @@ describe("SnapshotEnvelope.create", () => {
     expect("manifest" in omitted).toBe(false);
   });
 
+  describe("caller property snapshot", () => {
+    test.each(["seqNr", "manifest", "aggregate"])(
+      "keeps the first %s getter value",
+      (key) => {
+        const first = {
+          seqNr: 3,
+          manifest: "m",
+          aggregate: { items: ["book"] },
+        };
+        const getters = Object.fromEntries(
+          Object.entries(first).map(([name, value]) => [
+            name,
+            jest
+              .fn()
+              .mockReturnValueOnce(value)
+              .mockReturnValue(name === key ? undefined : value),
+          ]),
+        );
+        const input = Object.defineProperties(
+          {},
+          Object.fromEntries(
+            Object.entries(getters).map(([name, get]) => [name, { get }]),
+          ),
+        );
+
+        const result = untyped(input);
+
+        expect(result).toEqual({ type: "ok", value: first });
+        if (result.type !== "ok") throw new Error("expected ok");
+        expect(result.value.aggregate).toBe(first.aggregate);
+        for (const getter of Object.values(getters)) {
+          expect(getter).toHaveBeenCalledTimes(1);
+        }
+      },
+    );
+
+    test.each(["seqNr", "aggregate"])(
+      "rejects a first missing %s getter value with T-10",
+      (key) => {
+        const values = { seqNr: 7, manifest: "m", aggregate: null };
+        const getters = Object.fromEntries(
+          Object.entries(values).map(([name, value]) => [
+            name,
+            jest
+              .fn()
+              .mockReturnValueOnce(name === key ? undefined : value)
+              .mockReturnValue(value),
+          ]),
+        );
+        const input = Object.defineProperties(
+          {},
+          Object.fromEntries(
+            Object.entries(getters).map(([name, get]) => [name, { get }]),
+          ),
+        );
+
+        const error = errorOf(untyped(input));
+
+        expect(error).toMatchObject({
+          type: "contract-violation",
+          rule: "T-10",
+        });
+        expect(error.message).toContain(key);
+        if (key === "seqNr") {
+          expect(error).not.toHaveProperty("seqNr");
+          expect(error.message).not.toContain("seqNr=");
+        } else {
+          expect(error).toHaveProperty("seqNr", 7);
+          expect(error.message).toContain("seqNr=7");
+        }
+        for (const getter of Object.values(getters)) {
+          expect(getter).toHaveBeenCalledTimes(1);
+        }
+      },
+    );
+  });
+
   test.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
     "rejects seqNr %s with T-9",
     (seqNr) => {
