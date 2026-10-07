@@ -90,6 +90,21 @@ describe("AggregateId", () => {
     });
   });
 
+  test("of and asString return T-2 for missing or non-string elements", () => {
+    expect(errorOf(AggregateId.of(undefined as never, "1"))).toMatchObject({
+      rule: "T-2",
+    });
+    expect(errorOf(AggregateId.of("t", null as never))).toMatchObject({
+      rule: "T-2",
+    });
+    expect(errorOf(AggregateId.of(42 as never, "1"))).toMatchObject({
+      rule: "T-2",
+    });
+    expect(
+      errorOf(AggregateId.asString({ value: "1" } as never)),
+    ).toMatchObject({ rule: "T-2" });
+  });
+
   test("of returns a frozen value", () => {
     expect(Object.isFrozen(unwrap(AggregateId.of("a", "b")))).toBe(true);
   });

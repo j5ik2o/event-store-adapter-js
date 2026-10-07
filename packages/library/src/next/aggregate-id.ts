@@ -5,7 +5,14 @@ export type AggregateId = Readonly<{ typeName: string; value: string }>;
 
 const MAX_UTF8_BYTES = 1024;
 
-function check(typeName: string, value: string): EventStoreError | undefined {
+function check(typeName: unknown, value: unknown): EventStoreError | undefined {
+  // TypeScript の型は実行時に消えるため、型のない呼び出しでは必ず実行時に検査する。
+  if (typeof typeName !== "string" || typeof value !== "string") {
+    return EventStoreError.contractViolation({
+      rule: "T-2",
+      detail: "typeName and value must be strings",
+    });
+  }
   if (typeName.includes("-")) {
     return EventStoreError.contractViolation({
       rule: "T-11",
