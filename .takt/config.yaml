@@ -8,6 +8,8 @@ concurrency: 1
 # takt は、今と異なり、まだ試していない先頭の候補を選ぶ。下に書いた順に切り替える
 # Claude と OpenCode Go の後ろに Ollama Cloud の 3 モデルを置く(2026-10-07 にオーナーが指定)
 # Claude の 2 候補の後ろに Codex の GPT-6.1-Sol を置く(2026-10-07 にオーナーが指定)
+# ollama は OpenCode の独自の提供元名。http://localhost:11434/v1 の Ollama から Cloud のモデルを呼ぶ。
+# Ollama Cloud へのサインインとサーバーの起動、OpenCode へのモデル登録が要る(repository-policy.md の 8 章)。
 rate_limit_fallback:
   switch_chain:
     - { provider: claude,   model: claude-sonnet-5-5 }
