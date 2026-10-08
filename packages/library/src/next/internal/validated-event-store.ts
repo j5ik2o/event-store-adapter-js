@@ -6,7 +6,7 @@ import { EventStoreError } from "../event-store-error";
 import { SnapshotEnvelope } from "../snapshot-envelope";
 import { validateSeqNr } from "./seq-nr-validation";
 
-function validateAggregateId(
+export function validateAggregateId(
   aggregateId: AggregateId,
 ): Result<AggregateId, EventStoreError> {
   if (aggregateId === undefined || aggregateId === null) {
