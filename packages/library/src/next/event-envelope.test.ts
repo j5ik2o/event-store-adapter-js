@@ -44,6 +44,27 @@ describe("EventEnvelope.create", () => {
     expect("manifest" in omitted).toBe(false);
   });
 
+  test("normalizes an undefined manifest to an empty string", () => {
+    expect(
+      EventEnvelope.create({ ...validInput(), manifest: undefined }),
+    ).toMatchObject({ type: "ok", value: { manifest: "" } });
+  });
+
+  test.each([null, 0, false, {}, []])(
+    "rejects a non-string manifest %p with T-2",
+    (manifest) => {
+      const error = errorOf(untyped({ ...validInput(), manifest }));
+
+      expect(error).toMatchObject({
+        type: "contract-violation",
+        rule: "T-2",
+        seqNr: 1,
+      });
+      expect(error.message).toContain("T-2");
+      expect(error.message).toContain("seqNr=1");
+    },
+  );
+
   describe("caller property snapshot", () => {
     const keys = [
       "aggregateId",

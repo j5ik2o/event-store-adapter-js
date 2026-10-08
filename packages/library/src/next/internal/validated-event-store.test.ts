@@ -116,6 +116,24 @@ function callWithId(
 }
 
 describe.each(writes)("%s event validation", (operation) => {
+  test.each([null, 0, false, {}, []])(
+    "rejects a non-string event manifest %p before any target call",
+    async (manifest) => {
+      const target = createTarget();
+      const store = createValidatedEventStore(target);
+
+      const result = await callWrite(
+        store,
+        operation,
+        { ...eventOf(), manifest } as EventEnvelope,
+        snapshotOf(),
+      );
+
+      expectViolation(result, "T-2");
+      expectNoCalls(target);
+    },
+  );
+
   test.each([1, 2, Number.MAX_SAFE_INTEGER])(
     "delegates seqNr %s without consulting a head",
     async (seqNr) => {
@@ -589,6 +607,22 @@ describe.each(operations)("%s aggregate ID validation", (operation) => {
 });
 
 describe("persistEventAndSnapshot snapshot validation", () => {
+  test.each([null, 0, false, {}, []])(
+    "rejects a non-string snapshot manifest %p before any target call",
+    async (manifest) => {
+      const target = createTarget();
+      const store = createValidatedEventStore(target);
+
+      const result = await store.persistEventAndSnapshot(eventOf(), {
+        ...snapshotOf(),
+        manifest,
+      } as SnapshotEnvelope);
+
+      expectViolation(result, "T-10");
+      expectNoCalls(target);
+    },
+  );
+
   describe("caller property snapshot", () => {
     test.each(["seqNr", "manifest", "aggregate"])(
       "delegates the first snapshot %s getter value",

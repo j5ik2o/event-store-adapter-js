@@ -41,6 +41,15 @@ export namespace SnapshotEnvelope {
     if (seqNr.type === "err") {
       return seqNr;
     }
+    if (manifest !== undefined && typeof manifest !== "string") {
+      return Result.err(
+        EventStoreError.contractViolation({
+          rule: "T-10",
+          detail: "manifest must be a string",
+          seqNr: seqNr.value,
+        }),
+      );
+    }
     return Result.ok(
       Object.freeze({
         seqNr: seqNr.value,

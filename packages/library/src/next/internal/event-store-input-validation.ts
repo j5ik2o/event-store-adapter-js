@@ -8,7 +8,7 @@ type EventStoreInput<PE, PS> = Pick<
   "eventSerializer" | "snapshotSerializer" | "onRetentionFailure" | "logger"
 >;
 
-function validateSerializer<P>(
+export function validateSerializer<P>(
   serializer: PayloadSerializer<P> | undefined,
   fieldName: string,
 ): Result<PayloadSerializer<P>, EventStoreError> {
