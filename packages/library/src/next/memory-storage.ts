@@ -1,4 +1,21 @@
+import { Result } from "../result";
+import type { EventStoreError } from "./event-store-error";
+import { validateMemoryStorageInput } from "./internal/memory-storage-input-validation";
+import { createMemoryStorageRecords } from "./internal/memory-storage-records";
+import type { MemoryStorageInput } from "./memory-storage-input";
+
 declare const memoryStorageBrand: unique symbol;
 
-/** 保存先の実体と生成はメモリ実装の工程で追加する。 */
 export type MemoryStorage = Readonly<{ [memoryStorageBrand]: true }>;
+
+export namespace MemoryStorage {
+  export function create(
+    input?: MemoryStorageInput,
+  ): Result<MemoryStorage, EventStoreError> {
+    const configuration = validateMemoryStorageInput(input);
+    if (configuration.type === "err") return configuration;
+    return Result.ok(createMemoryStorageRecords(configuration.value));
+  }
+}
+
+Object.freeze(MemoryStorage);
