@@ -21,7 +21,7 @@ function validateAggregateId(
   return AggregateId.of(typeName, value);
 }
 
-function validateEvent<P>(
+export function validateEvent<P>(
   event: EventEnvelope<P>,
 ): Result<EventEnvelope<P>, EventStoreError> {
   const envelope = EventEnvelope.create(event);

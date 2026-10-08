@@ -39,6 +39,31 @@ describe("SnapshotEnvelope.create", () => {
     expect("manifest" in omitted).toBe(false);
   });
 
+  test("normalizes an undefined manifest to an empty string", () => {
+    expect(
+      SnapshotEnvelope.create({
+        seqNr: 0,
+        aggregate: null,
+        manifest: undefined,
+      }),
+    ).toMatchObject({ type: "ok", value: { manifest: "" } });
+  });
+
+  test.each([null, 0, false, {}, []])(
+    "rejects a non-string manifest %p with T-10",
+    (manifest) => {
+      const error = errorOf(untyped({ seqNr: 0, aggregate: null, manifest }));
+
+      expect(error).toMatchObject({
+        type: "contract-violation",
+        rule: "T-10",
+        seqNr: 0,
+      });
+      expect(error.message).toContain("T-10");
+      expect(error.message).toContain("seqNr=0");
+    },
+  );
+
   describe("caller property snapshot", () => {
     test.each(["seqNr", "manifest", "aggregate"])(
       "keeps the first %s getter value",

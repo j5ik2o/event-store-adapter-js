@@ -66,6 +66,15 @@ export namespace EventEnvelope {
     if (occurredAt.type === "err") {
       return occurredAt;
     }
+    if (manifest !== undefined && typeof manifest !== "string") {
+      return Result.err(
+        EventStoreError.contractViolation({
+          rule: "T-2",
+          detail: "manifest must be a string",
+          seqNr: seqNr.value,
+        }),
+      );
+    }
     return Result.ok(
       Object.freeze({
         aggregateId: aggregateId as AggregateId,
