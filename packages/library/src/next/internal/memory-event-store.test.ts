@@ -1,4 +1,5 @@
 import { Result } from "../../result";
+import type { AggregateId } from "../aggregate-id";
 import type { ContractRule } from "../contract-rule";
 import type { EventEnvelope } from "../event-envelope";
 import { EventStoreError } from "../event-store-error";
@@ -10,6 +11,7 @@ import * as memoryStorageRecords from "./memory-storage-records";
 import {
   commitMemoryStorageRecords,
   inspectMemoryStorageRecords,
+  readMemoryStorageEvents,
 } from "./memory-storage-records";
 
 function unwrap<T>(result: Result<T, EventStoreError>): T {
@@ -30,8 +32,8 @@ async function recordsOf(storage: MemoryStorage) {
   return unwrap(await inspectMemoryStorageRecords(storage)).records;
 }
 
-function expectViolation(
-  result: Result<void, EventStoreError>,
+function expectViolation<T>(
+  result: Result<T, EventStoreError>,
   rule: ContractRule,
 ) {
   expect(result).toMatchObject({
@@ -43,10 +45,13 @@ function expectViolation(
 }
 
 describe("createMemoryEventStoreInternal", () => {
-  test("provides only persistEvent", () => {
+  test("provides the two connected event operations", () => {
     const store = unwrap(createMemoryEventStoreInternal());
 
-    expect(Object.keys(store)).toEqual(["persistEvent"]);
+    expect(Object.keys(store)).toEqual([
+      "persistEvent",
+      "getEventsByIdSinceSeqNr",
+    ]);
   });
 
   test.each([null, false, 0, "settings", []])(
@@ -149,6 +154,555 @@ describe("createMemoryEventStoreInternal", () => {
         type: "err",
         error: { type: "optimistic-lock-conflict", headSeqNr: 2 },
       });
+    }
+    unwrap(await first.persistEvent(eventOf(3)));
+    expect(
+      unwrap(await first.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+    ).toEqual([eventOf(), eventOf(2), eventOf(3)]);
+    expect(
+      unwrap(await second.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+    ).toEqual([eventOf(), eventOf(2)]);
+  });
+});
+
+describe("memory getEventsByIdSinceSeqNr real records", () => {
+  test("restores all committed events in ascending order from an inclusive start with their real metadata and JSON payloads", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const store = unwrap(createMemoryEventStoreInternal({ storage }));
+    const events = [1, 2, 3].map((seqNr) => ({
+      ...eventOf(seqNr),
+      occurredAt: new Date(millis + seqNr),
+      manifest: seqNr === 1 ? "" : `event/v${seqNr}`,
+      payload: { item: `book-${seqNr}`, seqNr },
+    }));
+    for (const event of events) unwrap(await store.persistEvent(event));
+
+    for (const start of [0, 2, 4, Number.MAX_SAFE_INTEGER]) {
+      expect(
+        unwrap(
+          await store.getEventsByIdSinceSeqNr(events[0].aggregateId, start),
+        ),
+      ).toEqual(events.filter((event) => event.seqNr >= start));
+    }
+    expect(
+      unwrap(
+        await store.getEventsByIdSinceSeqNr(
+          { typeName: "Order", value: "missing" },
+          0,
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  test("matches the full validated aid and ignores caller stringification", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const store = unwrap(createMemoryEventStoreInternal({ storage }));
+    for (const seqNr of [1, 2, 3]) {
+      unwrap(await store.persistEvent(eventOf(seqNr)));
+    }
+    for (const aggregateId of [
+      { typeName: "Order", value: "10" },
+      { typeName: "Order", value: "1-2" },
+      { typeName: "Other", value: "1" },
+      { typeName: "", value: "1" },
+      { typeName: "EmptyValue", value: "" },
+      { typeName: "", value: "" },
+      { typeName: "型", value: "値".repeat(340) },
+    ]) {
+      const event = { ...eventOf(), aggregateId };
+      unwrap(await store.persistEvent(event));
+      expect(
+        unwrap(await store.getEventsByIdSinceSeqNr(aggregateId, 0)),
+      ).toEqual([event]);
+    }
+    const asString = jest.fn(() => "Order-10");
+    const callerToString = jest.fn(() => "Other-1");
+    const aggregateId = {
+      ...eventOf().aggregateId,
+      asString,
+      toString: callerToString,
+    };
+
+    expect(unwrap(await store.getEventsByIdSinceSeqNr(aggregateId, 0))).toEqual(
+      [eventOf(), eventOf(2), eventOf(3)],
+    );
+    expect(asString).not.toHaveBeenCalled();
+    expect(callerToString).not.toHaveBeenCalled();
+    expect(
+      unwrap(
+        await store.getEventsByIdSinceSeqNr(
+          { typeName: "Order", value: "" },
+          0,
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [undefined, 0, "T-2"],
+    [null, 0, "T-2"],
+    [{}, 0, "T-2"],
+    [{ typeName: 1, value: "1" }, 0, "T-2"],
+    [{ typeName: "Order", value: 1 }, 0, "T-2"],
+    [{ typeName: "Order-item", value: "1" }, 0, "T-11"],
+    [{ typeName: "型", value: `${"値".repeat(340)}a` }, 0, "T-12"],
+    [eventOf().aggregateId, undefined, "T-9"],
+    [eventOf().aggregateId, null, "T-9"],
+    [eventOf().aggregateId, -1, "T-9"],
+    [eventOf().aggregateId, 1.5, "T-9"],
+    [eventOf().aggregateId, NaN, "T-9"],
+    [eventOf().aggregateId, Infinity, "T-9"],
+    [eventOf().aggregateId, Number.MAX_SAFE_INTEGER + 1, "T-9"],
+    [eventOf().aggregateId, "2", "T-9"],
+    [eventOf().aggregateId, true, "T-9"],
+    [eventOf().aggregateId, BigInt(2), "T-9"],
+  ] as const)(
+    "rejects id=%p start=%p with %s before acquisition and restoration",
+    async (aggregateId, seqNr, rule) => {
+      const storage = unwrap(MemoryStorage.create());
+      const json = PayloadSerializer.json();
+      const deserialize = jest.fn(json.deserialize);
+      const store = unwrap(
+        createMemoryEventStoreInternal({
+          storage,
+          eventSerializer: { serialize: json.serialize, deserialize },
+        }),
+      );
+      unwrap(await store.persistEvent(eventOf()));
+      const read = jest.spyOn(memoryStorageRecords, "readMemoryStorageEvents");
+
+      try {
+        const result = await store.getEventsByIdSinceSeqNr(
+          aggregateId as AggregateId,
+          seqNr as number,
+        );
+
+        expectViolation(result, rule);
+        expect(read).not.toHaveBeenCalled();
+        expect(deserialize).not.toHaveBeenCalled();
+      } finally {
+        read.mockRestore();
+      }
+    },
+  );
+
+  test("does not restore payloads for a missing aid or a start beyond the tail", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const json = PayloadSerializer.json();
+    const deserialize = jest.fn(json.deserialize);
+    const store = unwrap(
+      createMemoryEventStoreInternal({
+        storage,
+        eventSerializer: { serialize: json.serialize, deserialize },
+      }),
+    );
+    unwrap(await store.persistEvent(eventOf()));
+
+    for (const [aggregateId, start] of [
+      [{ typeName: "Order", value: "missing" }, 0],
+      [eventOf().aggregateId, 2],
+    ] as const) {
+      expect(
+        unwrap(await store.getEventsByIdSinceSeqNr(aggregateId, start)),
+      ).toEqual([]);
+    }
+    expect(deserialize).not.toHaveBeenCalled();
+  });
+
+  test("fixes checked ID properties and the start before waiting on the storage queue", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const json = PayloadSerializer.json();
+    const deserialize = jest.fn(json.deserialize);
+    const store = unwrap(
+      createMemoryEventStoreInternal({
+        storage,
+        eventSerializer: { serialize: json.serialize, deserialize },
+      }),
+    );
+    for (const seqNr of [1, 2, 3])
+      unwrap(await store.persistEvent(eventOf(seqNr)));
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const blocking = commitMemoryStorageRecords(
+      storage,
+      {
+        ...eventOf(),
+        aggregateId: { typeName: "Blocker", value: "1" },
+        payload: Uint8Array.of(1),
+      },
+      undefined,
+      () => {
+        entered.resolve();
+        return release.promise;
+      },
+    );
+    await entered.promise;
+    let typeName = "Order";
+    let value = "1";
+    let start = 2;
+    const typeNameGetter = jest.fn(() => typeName);
+    const valueGetter = jest.fn(() => value);
+    const startGetter = jest.fn(() => start);
+    const input = {
+      aggregateId: {
+        get typeName() {
+          return typeNameGetter();
+        },
+        get value() {
+          return valueGetter();
+        },
+      },
+      get seqNr() {
+        return startGetter();
+      },
+    };
+    const read = jest.spyOn(memoryStorageRecords, "readMemoryStorageEvents");
+    const reading = store.getEventsByIdSinceSeqNr(
+      input.aggregateId,
+      input.seqNr,
+    );
+    try {
+      typeName = "Changed";
+      value = "other";
+      start = Number.MAX_SAFE_INTEGER;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(read).toHaveBeenCalledWith(storage, "Order-1", 2);
+      expect(deserialize).not.toHaveBeenCalled();
+      release.resolve();
+
+      expect(unwrap(await reading)).toEqual([eventOf(2), eventOf(3)]);
+      expect(typeNameGetter).toHaveBeenCalledTimes(1);
+      expect(valueGetter).toHaveBeenCalledTimes(1);
+      expect(startGetter).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(1);
+    } finally {
+      release.resolve();
+      await Promise.allSettled([blocking, reading]);
+      read.mockRestore();
+    }
+    unwrap(await blocking);
+  });
+
+  test("shares real records across entries while each entry owns its restoration", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const json = PayloadSerializer.json();
+    const firstDeserialize = jest.fn((bytes: Uint8Array, manifest: string) => ({
+      reader: "first",
+      manifest,
+      value: json.deserialize(bytes, manifest),
+    }));
+    const secondDeserialize = jest.fn(
+      (bytes: Uint8Array, manifest: string) => ({
+        reader: "second",
+        manifest,
+        value: json.deserialize(bytes, manifest),
+      }),
+    );
+    const first = unwrap(
+      createMemoryEventStoreInternal<unknown>({
+        storage,
+        eventSerializer: {
+          serialize: json.serialize,
+          deserialize: firstDeserialize,
+        },
+      }),
+    );
+    const second = unwrap(
+      createMemoryEventStoreInternal<unknown>({
+        storage,
+        eventSerializer: {
+          serialize: json.serialize,
+          deserialize: secondDeserialize,
+        },
+      }),
+    );
+    unwrap(await first.persistEvent(eventOf()));
+
+    expect(
+      unwrap(await second.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+    ).toEqual([
+      {
+        ...eventOf(),
+        payload: {
+          reader: "second",
+          manifest: "event/v1",
+          value: eventOf().payload,
+        },
+      },
+    ]);
+    expect(firstDeserialize).not.toHaveBeenCalled();
+    unwrap(await second.persistEvent(eventOf(2)));
+    expect(
+      unwrap(await first.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+    ).toEqual(
+      [eventOf(), eventOf(2)].map((event) => ({
+        ...event,
+        payload: {
+          reader: "first",
+          manifest: event.manifest,
+          value: event.payload,
+        },
+      })),
+    );
+    expect(secondDeserialize).toHaveBeenCalledTimes(1);
+    expect(firstDeserialize).toHaveBeenCalledTimes(2);
+    expect(
+      (await recordsOf(storage))
+        .get("Order-1")
+        ?.events.map((event) => event.payload),
+    ).toEqual(
+      [eventOf(), eventOf(2)].map((event) => json.serialize(event.payload)),
+    );
+  });
+
+  test("isolates reads from separate storage with the same aid", async () => {
+    const first = unwrap(
+      createMemoryEventStoreInternal({
+        storage: unwrap(MemoryStorage.create()),
+      }),
+    );
+    const second = unwrap(
+      createMemoryEventStoreInternal({
+        storage: unwrap(MemoryStorage.create()),
+      }),
+    );
+    unwrap(await first.persistEvent(eventOf()));
+    expect(
+      unwrap(await second.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+    ).toEqual([]);
+    const other = { ...eventOf(), payload: "other destination" };
+    unwrap(await second.persistEvent(other));
+    unwrap(await first.persistEvent(eventOf(2)));
+
+    expect(
+      unwrap(await first.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+    ).toEqual([eventOf(), eventOf(2)]);
+    expect(
+      unwrap(await second.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+    ).toEqual([other]);
+  });
+
+  test("waits for a real asynchronous append, copies all records under the same lock, and restores outside that lock", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const writer = unwrap(createMemoryEventStoreInternal({ storage }));
+    const json = PayloadSerializer.json();
+    const thirdEntered = jest.fn();
+    const deserialize = jest.fn((bytes: Uint8Array, manifest: string) => {
+      // 後続の実追記が既に排他へ進めることを、復元器自身から観測する。
+      expect(thirdEntered).toHaveBeenCalledTimes(1);
+      return json.deserialize(bytes, manifest);
+    });
+    const reader = unwrap(
+      createMemoryEventStoreInternal({
+        storage,
+        eventSerializer: { serialize: json.serialize, deserialize },
+      }),
+    );
+    unwrap(await writer.persistEvent(eventOf()));
+    const enteredSecond = Promise.withResolvers<void>();
+    const releaseSecond = Promise.withResolvers<void>();
+    const enteredThird = Promise.withResolvers<void>();
+    const releaseThird = Promise.withResolvers<void>();
+    const originalCommit = commitMemoryStorageRecords;
+    const commit = jest
+      .spyOn(memoryStorageRecords, "commitMemoryStorageRecords")
+      .mockImplementation((destination, event, snapshot, beforeCommit) =>
+        originalCommit(destination, event, snapshot, async () => {
+          await beforeCommit?.();
+          if (event.seqNr === 2) {
+            enteredSecond.resolve();
+            await releaseSecond.promise;
+          } else if (event.seqNr === 3) {
+            thirdEntered();
+            enteredThird.resolve();
+            await releaseThird.promise;
+          }
+        }),
+      );
+    const writingSecond = writer.persistEvent(eventOf(2));
+    await enteredSecond.promise;
+    const completed = jest.fn();
+    const reading = reader
+      .getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)
+      .then((result) => {
+        completed();
+        return result;
+      });
+    const writingThird = writer.persistEvent(eventOf(3));
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(completed).not.toHaveBeenCalled();
+      expect(deserialize).not.toHaveBeenCalled();
+      expect(thirdEntered).not.toHaveBeenCalled();
+      releaseSecond.resolve();
+      unwrap(await writingSecond);
+      await enteredThird.promise;
+
+      expect(unwrap(await reading)).toEqual([eventOf(), eventOf(2)]);
+      expect(deserialize.mock.calls).toEqual([
+        [json.serialize(eventOf().payload), "event/v1"],
+        [json.serialize(eventOf(2).payload), "event/v1"],
+      ]);
+      releaseThird.resolve();
+      unwrap(await writingThird);
+      expect(
+        unwrap(await reader.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+      ).toEqual([eventOf(), eventOf(2), eventOf(3)]);
+    } finally {
+      releaseSecond.resolve();
+      releaseThird.resolve();
+      await Promise.allSettled([writingSecond, reading, writingThird]);
+      commit.mockRestore();
+    }
+  });
+
+  test("keeps saved values independent of input ID, Date, bytes, returned results, and a mutating deserializer", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const events = [1, 2, 3].map((seqNr) => ({
+      ...eventOf(seqNr),
+      aggregateId: { typeName: "Order", value: "1" },
+      payload: { item: "book", seqNr },
+    }));
+    const bytes = events.map((event) =>
+      Buffer.from(JSON.stringify(event.payload)),
+    );
+    const json = PayloadSerializer.json();
+    const store = unwrap(
+      createMemoryEventStoreInternal({
+        storage,
+        eventSerializer: {
+          serialize: (payload: { item: string; seqNr: number }) =>
+            bytes[payload.seqNr - 1],
+          deserialize: (input: Uint8Array, manifest: string) => {
+            const payload = json.deserialize(input, manifest) as {
+              item: string;
+              seqNr: number;
+            };
+            input.fill(0);
+            return payload;
+          },
+        },
+      }),
+    );
+    for (const event of events) unwrap(await store.persistEvent(event));
+    const before = await recordsOf(storage);
+    for (const event of events) {
+      event.aggregateId.typeName = "Changed";
+      event.aggregateId.value = "other";
+      event.occurredAt.setTime(NaN);
+      event.payload.item = "changed";
+    }
+    for (const input of bytes) input.fill(99);
+    const aggregateId = { typeName: "Order", value: "1" };
+
+    const results = unwrap(await store.getEventsByIdSinceSeqNr(aggregateId, 0));
+    expect(results).toEqual([eventOf(), eventOf(2), eventOf(3)]);
+    aggregateId.value = "changed";
+    results[0].occurredAt.setTime(NaN);
+    results[0].payload.item = "changed result";
+    results.splice(1);
+
+    expect(await recordsOf(storage)).toEqual(before);
+    expect(
+      unwrap(await store.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+    ).toEqual([eventOf(), eventOf(2), eventOf(3)]);
+    expect(await recordsOf(storage)).toEqual(before);
+  });
+
+  test("the storage reader returns independent bytes and metadata from real persisted records", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const store = unwrap(createMemoryEventStoreInternal({ storage }));
+    for (const seqNr of [1, 2, 3])
+      unwrap(await store.persistEvent(eventOf(seqNr)));
+    const before = await recordsOf(storage);
+
+    const records = unwrap(
+      await readMemoryStorageEvents(storage, "Order-1", 2),
+    );
+    expect(records).toEqual(before.get("Order-1")?.events.slice(1));
+    for (const record of records) record.payload.fill(0);
+    records.splice(0);
+
+    expect(await recordsOf(storage)).toEqual(before);
+    expect(
+      unwrap(await store.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+    ).toEqual([eventOf(), eventOf(2), eventOf(3)]);
+  });
+
+  test.each([
+    new Error("cannot restore"),
+    "cannot restore",
+    42,
+    null,
+    undefined,
+    { code: "failure" },
+    Symbol("failure"),
+    BigInt(1),
+  ])(
+    "classifies a second-event deserialization failure %p with the original cause and no partial success",
+    async (cause) => {
+      const storage = unwrap(MemoryStorage.create());
+      const json = PayloadSerializer.json();
+      const deserialize = jest
+        .fn(json.deserialize)
+        .mockImplementationOnce(json.deserialize)
+        .mockImplementationOnce(() => {
+          throw cause;
+        });
+      const store = unwrap(
+        createMemoryEventStoreInternal({
+          storage,
+          eventSerializer: { serialize: json.serialize, deserialize },
+        }),
+      );
+      for (const seqNr of [1, 2, 3])
+        unwrap(await store.persistEvent(eventOf(seqNr)));
+      const before = await recordsOf(storage);
+
+      const result = await store.getEventsByIdSinceSeqNr(
+        eventOf().aggregateId,
+        0,
+      );
+
+      expect(result).toMatchObject({
+        type: "err",
+        error: { type: "serialization-error", operation: "deserialize" },
+      });
+      if (result.type !== "err")
+        throw new Error("expected deserialization error");
+      expect(result.error.cause).toBe(cause);
+      expect(result).not.toHaveProperty("value");
+      expect(deserialize).toHaveBeenCalledTimes(2);
+      expect(await recordsOf(storage)).toEqual(before);
+      expect(
+        unwrap(await store.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+      ).toEqual([eventOf(), eventOf(2), eventOf(3)]);
+    },
+  );
+
+  test("preserves a real storage read error and does not start restoration", async () => {
+    const deserialize = jest.fn(() => null);
+    const store = unwrap(
+      createMemoryEventStoreInternal({
+        storage: {} as MemoryStorage,
+        eventSerializer: { serialize: () => Uint8Array.of(1), deserialize },
+      }),
+    );
+    const read = jest.spyOn(memoryStorageRecords, "readMemoryStorageEvents");
+    try {
+      const result = await store.getEventsByIdSinceSeqNr(
+        eventOf().aggregateId,
+        0,
+      );
+
+      expect(result).toMatchObject({
+        type: "err",
+        error: { type: "storage-error", cause: expect.any(TypeError) },
+      });
+      expect(result).toBe(await read.mock.results[0].value);
+      expect(deserialize).not.toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
     }
   });
 });

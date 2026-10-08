@@ -83,6 +83,28 @@ function copySnapshot(
   });
 }
 
+/** 検査済みのキーと開始番号で、同じ排他制御内に全件の独立した記録を確保する。 */
+export async function readMemoryStorageEvents(
+  storage: MemoryStorage,
+  aggregateId: string,
+  seqNr: number,
+): Promise<Result<StoredEvent[], EventStoreError>> {
+  try {
+    const state = stateOf(storage);
+    return await withStorageLock(state, () =>
+      Result.ok(
+        (state.records.get(aggregateId)?.events ?? [])
+          .filter((event) => event.seqNr >= seqNr)
+          .map(copyEvent),
+      ),
+    );
+  } catch (cause) {
+    return Result.err(
+      EventStoreError.storage("memory event read failed", cause),
+    );
+  }
+}
+
 /** シリアライザは呼び出し側が所有し、この入口には直列化済み封筒を渡す。 */
 export async function commitMemoryStorageRecords(
   storage: MemoryStorage,
