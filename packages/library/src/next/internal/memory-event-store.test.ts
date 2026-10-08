@@ -1,10 +1,12 @@
-import type { Result } from "../../result";
+import { Result } from "../../result";
 import type { ContractRule } from "../contract-rule";
 import type { EventEnvelope } from "../event-envelope";
-import type { EventStoreError } from "../event-store-error";
+import { EventStoreError } from "../event-store-error";
+import * as memoryStorageModule from "../memory-storage";
 import { MemoryStorage } from "../memory-storage";
 import { PayloadSerializer } from "../payload-serializer";
 import { createMemoryEventStoreInternal } from "./memory-event-store";
+import * as memoryStorageRecords from "./memory-storage-records";
 import {
   commitMemoryStorageRecords,
   inspectMemoryStorageRecords,
@@ -69,6 +71,68 @@ describe("createMemoryEventStoreInternal", () => {
       type: "err",
       error: { type: "configuration-error", fieldName: "eventSerializer" },
     });
+  });
+
+  test("preserves a default storage creation dependency error without side effects and restores normal creation and append", async () => {
+    const originalMemoryStorage = MemoryStorage;
+    const cause = new Error("controlled storage creation failure");
+    const error = EventStoreError.storage("storage creation failed", cause);
+    const failure = Result.err(error);
+    // 有効な既定設定では自然発生しないため、生成依存の戻り値を一度だけ制御する。
+    const create = jest
+      .fn(originalMemoryStorage.create)
+      .mockReturnValueOnce(failure);
+    const serializer = PayloadSerializer.json();
+    const serialize = jest.fn(serializer.serialize);
+    const deserialize = jest.fn(serializer.deserialize);
+    const input = { eventSerializer: { serialize, deserialize } };
+    const commit = jest.spyOn(
+      memoryStorageRecords,
+      "commitMemoryStorageRecords",
+    );
+
+    try {
+      const replacement = jest.replaceProperty(
+        memoryStorageModule,
+        "MemoryStorage",
+        { create },
+      );
+      try {
+        const result = createMemoryEventStoreInternal(input);
+
+        expect(result).toBe(failure);
+        expect(result).toMatchObject({
+          type: "err",
+          error: { type: "storage-error" },
+        });
+        if (result.type !== "err")
+          throw new Error("expected storage creation error");
+        expect(result.error).toBe(error);
+        expect(result.error.cause).toBe(cause);
+        expect(create).toHaveBeenCalledTimes(1);
+        expect(create).toHaveBeenCalledWith();
+        expect(serialize).not.toHaveBeenCalled();
+        expect(deserialize).not.toHaveBeenCalled();
+        expect(commit).not.toHaveBeenCalled();
+      } finally {
+        replacement.restore();
+      }
+
+      expect(memoryStorageModule.MemoryStorage).toBe(originalMemoryStorage);
+      const store = unwrap(createMemoryEventStoreInternal(input));
+      unwrap(await store.persistEvent(eventOf()));
+      unwrap(await store.persistEvent(eventOf(2)));
+
+      expect(serialize).toHaveBeenCalledTimes(2);
+      expect(commit).toHaveBeenCalledTimes(2);
+      const storage = commit.mock.calls[0][0];
+      expect(commit.mock.calls[1][0]).toBe(storage);
+      const records = (await recordsOf(storage)).get("Order-1");
+      expect(records?.head.seqNr).toBe(2);
+      expect(records?.events.map((saved) => saved.seqNr)).toEqual([1, 2]);
+    } finally {
+      commit.mockRestore();
+    }
   });
 
   test("omitting storage creates independent destinations", async () => {
