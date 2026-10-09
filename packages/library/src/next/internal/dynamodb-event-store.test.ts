@@ -422,6 +422,12 @@ describe("initializeDynamoDBEventStoreInternal with DynamoDB Local 3.3.1", () =>
     expect(result.value.settings.snapshotSerializer).toBe(snapshotSerializer);
     expect(result.value.settings.onRetentionFailure).toBe(onRetentionFailure);
     expect(result.value.settings.logger).toBe(logger);
+    expect(Object.keys(result.value).sort()).toEqual([
+      "configuration",
+      "persistEvent",
+      "settings",
+    ]);
+    expect(typeof result.value.persistEvent).toBe("function");
     expect(Object.isFrozen(result.value)).toBe(true);
     expect(Object.isFrozen(result.value.configuration)).toBe(true);
     expect(plan.snapshot().observations).toHaveLength(1);

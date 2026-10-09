@@ -1,13 +1,15 @@
 import { Result } from "../../result";
 import type { DynamoDBEventStoreInput } from "../dynamodb-event-store-input";
+import type { EventStore } from "../event-store";
 import type { EventStoreError } from "../event-store-error";
 import { validateDynamoDBEventStoreInput } from "./dynamodb-event-store-input-validation";
+import { createDynamoDBPersistEvent } from "./dynamodb-persist-event";
 import {
   type DynamoDBStoreConfiguration,
   ensureDynamoDBStoreConfiguration,
 } from "./dynamodb-store-configuration";
 
-/** 設定確定までの内部生成入口。製品4操作を持つEventStoreは返さない。 */
+/** 設定確定後のイベント単独追記を返す内部入口。製品4操作を持つEventStoreは返さない。 */
 export async function initializeDynamoDBEventStoreInternal<
   PE = unknown,
   PS = unknown,
@@ -22,6 +24,7 @@ export async function initializeDynamoDBEventStoreInternal<
         { type: "ok" }
       >["value"];
       configuration: DynamoDBStoreConfiguration;
+      persistEvent: EventStore<PE, PS>["persistEvent"];
     }>,
     EventStoreError
   >
@@ -37,6 +40,7 @@ export async function initializeDynamoDBEventStoreInternal<
     Object.freeze({
       settings: settings.value,
       configuration: configuration.value,
+      persistEvent: createDynamoDBPersistEvent(settings.value),
     }),
   );
 }
