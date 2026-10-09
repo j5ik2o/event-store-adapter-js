@@ -205,7 +205,7 @@ describe("MemoryStorage atomic records", () => {
         head: { seqNr: 3, payload: Uint8Array.of(3) },
         events: [{ seqNr: 1 }, { seqNr: 2 }, { seqNr: 3 }],
         snapshot: snapshot(3),
-        history: count === undefined ? [] : [snapshot(1), snapshot(3)],
+        history: count === undefined ? [] : [snapshot(3)],
       });
     },
   );
@@ -249,7 +249,7 @@ describe("MemoryStorage atomic records", () => {
       ).toMatchObject({
         head: { seqNr: 2 },
         snapshot: snapshot(2),
-        history: [snapshot(1), snapshot(2)],
+        history: [snapshot(2)],
       });
     },
   );
@@ -297,7 +297,7 @@ describe("MemoryStorage atomic records", () => {
       ).toMatchObject({
         head: { seqNr },
         snapshot: snapshot(seqNr),
-        history: existing ? [snapshot(1), snapshot(2)] : [snapshot(1)],
+        history: [snapshot(seqNr)],
       });
     },
   );
@@ -592,7 +592,6 @@ describe("MemoryStorage related boundaries", () => {
       aggregate: Uint8Array.of(4, 5),
     });
     expect(record.history).toEqual([
-      snapshot(1),
       {
         seqNr: 2,
         manifest: "original-snapshot",

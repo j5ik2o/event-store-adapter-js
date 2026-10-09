@@ -804,18 +804,25 @@ describe("memory getLatestSnapshotById real records", () => {
     const originalCommit = commitMemoryStorageRecords;
     const commit = jest
       .spyOn(memoryStorageRecords, "commitMemoryStorageRecords")
-      .mockImplementation((destination, event, snapshot, beforeCommit) =>
-        originalCommit(destination, event, snapshot, async () => {
-          await beforeCommit?.();
-          if (event.seqNr === 2) {
-            enteredSecond.resolve();
-            await releaseSecond.promise;
-          } else if (event.seqNr === 3) {
-            thirdEntered();
-            enteredThird.resolve();
-            await releaseThird.promise;
-          }
-        }),
+      .mockImplementation(
+        (destination, event, snapshot, beforeCommit, retention) =>
+          originalCommit(
+            destination,
+            event,
+            snapshot,
+            async () => {
+              await beforeCommit?.();
+              if (event.seqNr === 2) {
+                enteredSecond.resolve();
+                await releaseSecond.promise;
+              } else if (event.seqNr === 3) {
+                thirdEntered();
+                enteredThird.resolve();
+                await releaseThird.promise;
+              }
+            },
+            retention,
+          ),
       );
     const writingSecond = writer.persistEventAndSnapshot(
       eventOf(2),
@@ -1442,18 +1449,25 @@ describe("memory getEventsByIdSinceSeqNr real records", () => {
     const originalCommit = commitMemoryStorageRecords;
     const commit = jest
       .spyOn(memoryStorageRecords, "commitMemoryStorageRecords")
-      .mockImplementation((destination, event, snapshot, beforeCommit) =>
-        originalCommit(destination, event, snapshot, async () => {
-          await beforeCommit?.();
-          if (event.seqNr === 2) {
-            enteredSecond.resolve();
-            await releaseSecond.promise;
-          } else if (event.seqNr === 3) {
-            thirdEntered();
-            enteredThird.resolve();
-            await releaseThird.promise;
-          }
-        }),
+      .mockImplementation(
+        (destination, event, snapshot, beforeCommit, retention) =>
+          originalCommit(
+            destination,
+            event,
+            snapshot,
+            async () => {
+              await beforeCommit?.();
+              if (event.seqNr === 2) {
+                enteredSecond.resolve();
+                await releaseSecond.promise;
+              } else if (event.seqNr === 3) {
+                thirdEntered();
+                enteredThird.resolve();
+                await releaseThird.promise;
+              }
+            },
+            retention,
+          ),
       );
     const writingSecond = writer.persistEvent(eventOf(2));
     await enteredSecond.promise;
@@ -2253,7 +2267,7 @@ describe("memory persistEventAndSnapshot real records", () => {
                 head: savedEvents[seqNr - 1],
                 events: savedEvents,
                 snapshot: snapshots[seqNr - 1],
-                history: count === undefined ? [] : snapshots,
+                history: count === undefined ? [] : snapshots.slice(-count),
               },
             ],
           ]),
@@ -2407,8 +2421,15 @@ describe("memory persistEventAndSnapshot real records", () => {
       const originalCommit = commitMemoryStorageRecords;
       const commit = jest
         .spyOn(memoryStorageRecords, "commitMemoryStorageRecords")
-        .mockImplementation((destination, event, snapshot) =>
-          originalCommit(destination, event, snapshot, beforeCommit),
+        .mockImplementation(
+          (destination, event, snapshot, _beforeCommit, retention) =>
+            originalCommit(
+              destination,
+              event,
+              snapshot,
+              beforeCommit,
+              retention,
+            ),
         );
       try {
         const result = await store.persistEventAndSnapshot(
@@ -2507,7 +2528,7 @@ describe("memory persistEventAndSnapshot real records", () => {
             );
             const after = (await recordsOf(storage)).get("Order-1");
             expect(after?.head.seqNr).toBe(2);
-            expect(after?.history.map((saved) => saved.seqNr)).toEqual([1, 2]);
+            expect(after?.history.map((saved) => saved.seqNr)).toEqual([2]);
           } finally {
             commit.mockRestore();
           }
@@ -2531,10 +2552,17 @@ describe("memory persistEventAndSnapshot real records", () => {
       const originalCommit = commitMemoryStorageRecords;
       const commit = jest
         .spyOn(memoryStorageRecords, "commitMemoryStorageRecords")
-        .mockImplementation((destination, event, snapshot) =>
-          originalCommit(destination, event, snapshot, () => {
-            throw cause;
-          }),
+        .mockImplementation(
+          (destination, event, snapshot, _beforeCommit, retention) =>
+            originalCommit(
+              destination,
+              event,
+              snapshot,
+              () => {
+                throw cause;
+              },
+              retention,
+            ),
         );
       try {
         expect(
@@ -2555,7 +2583,7 @@ describe("memory persistEventAndSnapshot real records", () => {
       expect(after?.head.seqNr).toBe(2);
       expect(after?.snapshot?.seqNr).toBe(2);
       expect(after?.history.map((saved) => saved.seqNr)).toEqual(
-        count === undefined ? [] : [1, 2],
+        count === undefined ? [] : [2],
       );
     },
   );
@@ -2570,11 +2598,18 @@ describe("memory persistEventAndSnapshot real records", () => {
     const originalCommit = commitMemoryStorageRecords;
     const commit = jest
       .spyOn(memoryStorageRecords, "commitMemoryStorageRecords")
-      .mockImplementation((destination, event, snapshot) =>
-        originalCommit(destination, event, snapshot, () => {
-          entered.resolve();
-          return release.promise;
-        }),
+      .mockImplementation(
+        (destination, event, snapshot, _beforeCommit, retention) =>
+          originalCommit(
+            destination,
+            event,
+            snapshot,
+            () => {
+              entered.resolve();
+              return release.promise;
+            },
+            retention,
+          ),
       );
     const writing = store.persistEventAndSnapshot(eventOf(2), snapshotOf(2));
     const eventRead = jest.fn();
@@ -2631,7 +2666,6 @@ describe("memory persistEventAndSnapshot real records", () => {
           ),
         },
         history: [
-          ...(before.get("Order-1")?.history ?? []),
           {
             ...snapshotOf(2),
             aggregate: new TextEncoder().encode(
@@ -2759,7 +2793,6 @@ describe("memory persistEventAndSnapshot real records", () => {
       });
       expect(record.events[0]).toEqual(first.get("Order-1")?.head);
       expect(record.history).toEqual([
-        { seqNr: 1, manifest: "snapshot/v1", aggregate: Uint8Array.of(1, 1) },
         { seqNr: 2, manifest: "snapshot/v2", aggregate: Uint8Array.of(4, 5) },
       ]);
       const expectedEvents = [
@@ -2809,6 +2842,9 @@ describe("memory persistEventAndSnapshot real records", () => {
 
     unwrap(await first.persistEventAndSnapshot(eventOf(), snapshotOf()));
     unwrap(await second.persistEventAndSnapshot(eventOf(2), snapshotOf(2)));
+    expect(
+      (await recordsOf(storage)).get("Order-1")?.snapshot?.aggregate,
+    ).toEqual(Uint8Array.of(222));
     unwrap(await first.persistEventAndSnapshot(eventOf(3), snapshotOf(3)));
 
     const record = (await recordsOf(storage)).get("Order-1");
@@ -2818,8 +2854,6 @@ describe("memory persistEventAndSnapshot real records", () => {
       [11],
     ]);
     expect(record?.history.map((snapshot) => [...snapshot.aggregate])).toEqual([
-      [111],
-      [222],
       [111],
     ]);
     expect(record?.snapshot?.aggregate).toEqual(Uint8Array.of(111));
@@ -2852,7 +2886,7 @@ describe("memory persistEventAndSnapshot real records", () => {
     const originalCommit = commitMemoryStorageRecords;
     const commit = jest
       .spyOn(memoryStorageRecords, "commitMemoryStorageRecords")
-      .mockImplementation((storage, event, snapshot) =>
+      .mockImplementation((storage, event, snapshot, beforeCommit, retention) =>
         originalCommit(
           storage,
           event,
@@ -2862,7 +2896,8 @@ describe("memory persistEventAndSnapshot real records", () => {
                 entered.resolve();
                 return release.promise;
               }
-            : undefined,
+            : beforeCommit,
+          retention,
         ),
       );
     const pending = first.persistEventAndSnapshot(eventOf(2), snapshotOf(2));
@@ -2892,7 +2927,7 @@ describe("memory persistEventAndSnapshot real records", () => {
       (await recordsOf(firstStorage))
         .get("Order-1")
         ?.history.map((snapshot) => snapshot.seqNr),
-    ).toEqual([1, 2]);
+    ).toEqual([2]);
     expect(
       unwrap(await second.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
     ).toEqual([otherEvent]);
