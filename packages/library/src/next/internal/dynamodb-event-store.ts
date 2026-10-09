@@ -3,13 +3,16 @@ import type { DynamoDBEventStoreInput } from "../dynamodb-event-store-input";
 import type { EventStore } from "../event-store";
 import type { EventStoreError } from "../event-store-error";
 import { validateDynamoDBEventStoreInput } from "./dynamodb-event-store-input-validation";
-import { createDynamoDBPersistEvent } from "./dynamodb-persist-event";
+import {
+  createDynamoDBPersistEvent,
+  createDynamoDBPersistEventAndSnapshot,
+} from "./dynamodb-persist-event";
 import {
   type DynamoDBStoreConfiguration,
   ensureDynamoDBStoreConfiguration,
 } from "./dynamodb-store-configuration";
 
-/** 設定確定後のイベント単独追記を返す内部入口。製品4操作を持つEventStoreは返さない。 */
+/** 設定確定後の単独追記と同時追記を返す内部入口。製品4操作を持つEventStoreは返さない。 */
 export async function initializeDynamoDBEventStoreInternal<
   PE = unknown,
   PS = unknown,
@@ -25,6 +28,7 @@ export async function initializeDynamoDBEventStoreInternal<
       >["value"];
       configuration: DynamoDBStoreConfiguration;
       persistEvent: EventStore<PE, PS>["persistEvent"];
+      persistEventAndSnapshot: EventStore<PE, PS>["persistEventAndSnapshot"];
     }>,
     EventStoreError
   >
@@ -41,6 +45,9 @@ export async function initializeDynamoDBEventStoreInternal<
       settings: settings.value,
       configuration: configuration.value,
       persistEvent: createDynamoDBPersistEvent(settings.value),
+      persistEventAndSnapshot: createDynamoDBPersistEventAndSnapshot(
+        settings.value,
+      ),
     }),
   );
 }

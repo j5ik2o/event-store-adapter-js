@@ -1,4 +1,7 @@
-import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import type {
+  DynamoDBClient,
+  TransactWriteItemsCommandInput,
+} from "@aws-sdk/client-dynamodb";
 
 type Observation = {
   commandName: string | undefined;
@@ -28,10 +31,14 @@ export class DynamoDBPersistEventObservation {
               : request.body,
         };
         this.observations = [...this.observations, observation];
+        const items = (args.input as TransactWriteItemsCommandInput)
+          .TransactItems;
         const commit =
           context.commandName === "TransactWriteItemsCommand" &&
-          (args.input as { TransactItems?: unknown[] }).TransactItems
-            ?.length === 2;
+          items !== undefined &&
+          items.length >= 2 &&
+          items.length <= 4 &&
+          items[0].Put?.Item?.aid?.S !== "__config__";
         if (commit) {
           const index = this.faults.findIndex(({ applied }) => applied === 0);
           if (index !== -1) {
