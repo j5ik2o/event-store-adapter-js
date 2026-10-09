@@ -2,6 +2,7 @@ import { Result } from "../../result";
 import { AggregateId } from "../aggregate-id";
 import { EventEnvelope } from "../event-envelope";
 import { EventStoreError } from "../event-store-error";
+import type { LatestSnapshot } from "../latest-snapshot";
 import type { MemoryStorage } from "../memory-storage";
 import { SnapshotEnvelope } from "../snapshot-envelope";
 import type { validateMemoryStorageInput } from "./memory-storage-input-validation";
@@ -102,6 +103,34 @@ export async function readMemoryStorageEvents(
   } catch (cause) {
     return Result.err(
       EventStoreError.storage("memory event read failed", cause),
+    );
+  }
+}
+
+/** 検査済みのキーで、同じ排他制御内にヘッド番号と独立したsnapshotを確保する。 */
+export async function readMemoryStorageLatestSnapshot(
+  storage: MemoryStorage,
+  aggregateId: string,
+): Promise<Result<LatestSnapshot<Uint8Array> | undefined, EventStoreError>> {
+  try {
+    const state = stateOf(storage);
+    return await withStorageLock(state, () => {
+      const record = state.records.get(aggregateId);
+      return Result.ok(
+        record === undefined
+          ? undefined
+          : Object.freeze({
+              headSeqNr: record.head.seqNr,
+              snapshot:
+                record.snapshot === undefined
+                  ? undefined
+                  : copySnapshot(record.snapshot),
+            }),
+      );
+    });
+  } catch (cause) {
+    return Result.err(
+      EventStoreError.storage("memory snapshot read failed", cause),
     );
   }
 }

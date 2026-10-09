@@ -17,7 +17,20 @@ export function validateAggregateId(
       }),
     );
   }
-  const { typeName, value } = aggregateId;
+  let typeName: string;
+  let value: string;
+  try {
+    typeName = aggregateId.typeName;
+    value = aggregateId.value;
+  } catch (cause) {
+    return Result.err(
+      EventStoreError.contractViolation({
+        rule: "T-2",
+        detail: "aggregateId element access failed",
+        cause,
+      }),
+    );
+  }
   return AggregateId.of(typeName, value);
 }
 
