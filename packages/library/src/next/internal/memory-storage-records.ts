@@ -23,6 +23,7 @@ type AggregateRecords = Readonly<{
   head: StoredEvent;
   events: readonly StoredEvent[];
   snapshot: SnapshotEnvelope<Uint8Array> | undefined;
+  history: readonly SnapshotEnvelope<Uint8Array>[];
 }>;
 
 type StorageState = {
@@ -170,11 +171,16 @@ export async function commitMemoryStorageRecords(
         head: eventRecord,
         events: Object.freeze([...(current?.events ?? []), eventRecord]),
         snapshot: snapshotRecord ?? current?.snapshot,
+        history:
+          snapshotRecord === undefined ||
+          state.configuration.retention === undefined
+            ? (current?.history ?? Object.freeze([]))
+            : Object.freeze([...(current?.history ?? []), snapshotRecord]),
       });
       const records = new Map(state.records);
       records.set(eventRecord.aggregateId, next);
       await beforeCommit?.();
-      // ヘッド・イベント・現在スナップショットを一度の参照置換で公開する。
+      // ヘッド・イベント・現在スナップショット・履歴を一度の参照置換で公開する。
       state.records = records;
       return Result.ok(undefined);
     });
@@ -211,6 +217,7 @@ export async function inspectMemoryStorageRecords(
                   record.snapshot === undefined
                     ? undefined
                     : copySnapshot(record.snapshot),
+                history: Object.freeze(record.history.map(copySnapshot)),
               }),
             ]),
           ),

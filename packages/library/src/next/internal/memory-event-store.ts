@@ -9,16 +9,23 @@ import {
   readMemoryStorageEvents,
 } from "./memory-storage-records";
 import { validateSeqNr } from "./seq-nr-validation";
-import { validateAggregateId, validateEvent } from "./validated-event-store";
+import {
+  validateAggregateId,
+  validateEvent,
+  validateEventAndSnapshot,
+} from "./validated-event-store";
 
-/** 今回接続するイベントの追記と読取を返す内部入口。 */
-export function createMemoryEventStoreInternal<PE = unknown>(
+/** 実装済みのイベント追記・snapshot同時追記・イベント読取を返す内部入口。 */
+export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
   input?: Pick<
-    MemoryEventStoreInput<PE, unknown>,
-    "storage" | "eventSerializer"
+    MemoryEventStoreInput<PE, PS>,
+    "storage" | "eventSerializer" | "snapshotSerializer"
   >,
 ): Result<
-  Pick<EventStore<PE>, "persistEvent" | "getEventsByIdSinceSeqNr">,
+  Pick<
+    EventStore<PE, PS>,
+    "persistEvent" | "persistEventAndSnapshot" | "getEventsByIdSinceSeqNr"
+  >,
   EventStoreError
 > {
   if (
@@ -29,10 +36,18 @@ export function createMemoryEventStoreInternal<PE = unknown>(
       EventStoreError.configuration("input", "input must be an object"),
     );
   }
-  const { storage: inputStorage, eventSerializer: inputSerializer } =
-    input ?? {};
+  const {
+    storage: inputStorage,
+    eventSerializer: inputSerializer,
+    snapshotSerializer: inputSnapshotSerializer,
+  } = input ?? {};
   const serializer = validateSerializer(inputSerializer, "eventSerializer");
   if (serializer.type === "err") return serializer;
+  const snapshotSerializer = validateSerializer(
+    inputSnapshotSerializer,
+    "snapshotSerializer",
+  );
+  if (snapshotSerializer.type === "err") return snapshotSerializer;
   const storage =
     inputStorage === undefined
       ? MemoryStorage.create()
@@ -41,7 +56,10 @@ export function createMemoryEventStoreInternal<PE = unknown>(
 
   return Result.ok(
     Object.freeze<
-      Pick<EventStore<PE>, "persistEvent" | "getEventsByIdSinceSeqNr">
+      Pick<
+        EventStore<PE, PS>,
+        "persistEvent" | "persistEventAndSnapshot" | "getEventsByIdSinceSeqNr"
+      >
     >({
       async persistEvent(event) {
         const validated = validateEvent(event);
@@ -67,6 +85,55 @@ export function createMemoryEventStoreInternal<PE = unknown>(
           ...validated.value,
           payload: bytes,
         });
+      },
+
+      async persistEventAndSnapshot(event, snapshot) {
+        const validated = validateEventAndSnapshot(event, snapshot);
+        if (validated.type === "err") return validated;
+
+        let eventBytes: Uint8Array;
+        try {
+          const bytes = serializer.value.serialize(
+            validated.value.event.payload,
+          );
+          if (!(bytes instanceof Uint8Array)) {
+            throw new TypeError("serializer.serialize must return Uint8Array");
+          }
+          eventBytes = new Uint8Array(bytes);
+        } catch (cause) {
+          return Result.err(
+            EventStoreError.serialization(
+              "serialize",
+              "event payload serialization failed",
+              cause,
+            ),
+          );
+        }
+
+        let snapshotBytes: Uint8Array;
+        try {
+          const bytes = snapshotSerializer.value.serialize(
+            validated.value.snapshot.aggregate,
+          );
+          if (!(bytes instanceof Uint8Array)) {
+            throw new TypeError("serializer.serialize must return Uint8Array");
+          }
+          snapshotBytes = new Uint8Array(bytes);
+        } catch (cause) {
+          return Result.err(
+            EventStoreError.serialization(
+              "serialize",
+              "snapshot payload serialization failed",
+              cause,
+            ),
+          );
+        }
+
+        return commitMemoryStorageRecords(
+          storage.value,
+          { ...validated.value.event, payload: eventBytes },
+          { ...validated.value.snapshot, aggregate: snapshotBytes },
+        );
       },
 
       async getEventsByIdSinceSeqNr(aggregateId, seqNr) {
