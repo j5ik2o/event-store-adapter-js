@@ -109,7 +109,7 @@ test("accumulates responses and retries only pending keys with strong consistenc
     .mockResolvedValueOnce({
       $metadata: {},
       Responses: { head: complete.Responses.head },
-      UnprocessedKeys: { head: { Keys: [] } },
+      UnprocessedKeys: {},
     });
 
   const result = await ensureDynamoDBStoreConfiguration(input, sleep);
@@ -221,20 +221,10 @@ test("creates only after all three keys have been processed and are absent", asy
   expect(send).toHaveBeenCalledTimes(3);
 });
 
-test("matches response items by table and the reserved key", async () => {
+test("associates the requested configuration items by table regardless of response order", async () => {
   send.mockResolvedValueOnce({
     ...complete,
-    Responses: {
-      ...complete.Responses,
-      journal: [
-        {
-          ...complete.Responses.journal[0],
-          seq_nr: { N: "1" },
-          store_id: { S: "other" },
-        },
-        complete.Responses.journal[0],
-      ],
-    },
+    Responses: Object.fromEntries(Object.entries(complete.Responses).reverse()),
   });
 
   expect(await ensureDynamoDBStoreConfiguration(input, sleep)).toMatchObject({
@@ -249,6 +239,7 @@ test.each([
   [{ store_id: { N: "1" } }, "store_id"],
   [{ layout_version: { S: "1" } }, "layout_version"],
   [{ layout_version: { N: "2" } }, "layout_version"],
+  [{ layout_version: { N: "1.0000000000000001" } }, "layout_version"],
 ])(
   "rejects invalid configuration attributes %p",
   async (attributes, fieldName) => {

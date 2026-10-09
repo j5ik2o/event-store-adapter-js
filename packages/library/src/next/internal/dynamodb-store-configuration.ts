@@ -64,28 +64,19 @@ async function readConfiguration(
       const response = await input.client.send(
         new BatchGetItemCommand({ RequestItems: requestItems }),
       );
-      for (const [tableName, received] of Object.entries(
+      // 各表に予約キーを1件だけ要求するため、返る項目もそのキーの1件だけ。
+      for (const [tableName, [item]] of Object.entries(
         response.Responses ?? {},
       )) {
-        const expected = keys.find((entry) => entry.tableName === tableName);
-        const item = received.find(
-          (candidate) =>
-            expected !== undefined &&
-            Object.entries(expected.key).every(
-              ([name, value]) =>
-                candidate[name]?.S === value.S &&
-                candidate[name]?.N === value.N,
-            ),
-        );
         if (item !== undefined) items = new Map([...items, [tableName, item]]);
       }
       requestItems = Object.fromEntries(
-        Object.entries(response.UnprocessedKeys ?? {})
-          .filter(([, pending]) => (pending.Keys?.length ?? 0) > 0)
-          .map(([tableName, pending]) => [
+        Object.entries(response.UnprocessedKeys ?? {}).map(
+          ([tableName, pending]) => [
             tableName,
             { ...pending, ConsistentRead: true },
-          ]),
+          ],
+        ),
       );
       if (Object.keys(requestItems).length === 0) {
         return Result.ok(keys.map(({ tableName }) => items.get(tableName)));
@@ -111,8 +102,9 @@ async function readConfiguration(
 function reconcileConfiguration(
   items: (Record<string, AttributeValue> | undefined)[],
 ): Result<DynamoDBStoreConfiguration | undefined, EventStoreError> {
-  if (items.every((item) => item === undefined)) return Result.ok(undefined);
-  if (items.some((item) => item === undefined)) {
+  const present = items.filter((item) => item !== undefined);
+  if (present.length === 0) return Result.ok(undefined);
+  if (present.length !== items.length) {
     return Result.err(
       EventStoreError.configuration(
         "tables",
@@ -120,11 +112,11 @@ function reconcileConfiguration(
       ),
     );
   }
-  const storeId = items[0]?.store_id?.S;
+  const storeId = present[0].store_id?.S;
   if (
     typeof storeId !== "string" ||
     storeId.length === 0 ||
-    items.some((item) => item?.store_id?.S !== storeId)
+    present.some((item) => item.store_id?.S !== storeId)
   ) {
     return Result.err(
       EventStoreError.configuration(
@@ -133,7 +125,8 @@ function reconcileConfiguration(
       ),
     );
   }
-  if (items.some((item) => Number(item?.layout_version?.N) !== 1)) {
+  // DynamoDBのNは余分なゼロを除いた文字列。Numberへの変換では版1近傍が丸められる。
+  if (present.some((item) => item.layout_version?.N !== "1")) {
     return Result.err(
       EventStoreError.configuration(
         "layout_version",

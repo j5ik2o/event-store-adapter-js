@@ -569,6 +569,160 @@ describe("initializeDynamoDBEventStoreInternal with DynamoDB Local 3.3.1", () =>
     30_000,
   );
 
+  test.each(
+    (["journal", "snapshot", "head"] as const).flatMap((role) =>
+      [false, true].map((afterConflict) => [role, afterConflict] as const),
+    ),
+  )(
+    "a near-one layout_version in %s rejects settings (conflict reread: %p)",
+    async (role, afterConflict) => {
+      const input = await scenario();
+      const items = {
+        ...seed,
+        [role]: { ...seed[role], layout_version: { N: "1.0000000000000001" } },
+      };
+      let installations = 0;
+      const install = async () => {
+        await local.seedConfiguration(input.tables, items);
+        installations += 1;
+      };
+      if (!afterConflict) await install();
+      const plan = recordRequests(input.client, {
+        beforeSend: async (name) => {
+          if (afterConflict && name === "TransactWriteItemsCommand")
+            await install();
+        },
+      });
+
+      const result = await initializeDynamoDBEventStoreInternal(input);
+      const saved = await local.readConfiguration(input.tables);
+
+      evidence = {
+        ...evidence,
+        items,
+        afterConflict,
+        installations,
+        result,
+        saved,
+      };
+      expect(saved[role].Item?.layout_version).toEqual({
+        N: "1.0000000000000001",
+      });
+      for (const name of ["journal", "snapshot", "head"] as const)
+        expect(saved[name].Item).toEqual(items[name]);
+      expect(result.type).toBe("err");
+      if (result.type !== "err")
+        throw new Error("expected an unsupported version");
+      expect(result.error).toMatchObject({
+        type: "configuration-error",
+        fieldName: "layout_version",
+      });
+      expect(installations).toBe(1);
+      const observations = plan.snapshot().observations;
+      expect(observations.map(({ commandName }) => commandName)).toEqual(
+        afterConflict
+          ? [
+              "BatchGetItemCommand",
+              "TransactWriteItemsCommand",
+              "BatchGetItemCommand",
+            ]
+          : ["BatchGetItemCommand"],
+      );
+      expectInitialBatch(observations[0].input, input.tables);
+      if (afterConflict) {
+        expect(observations[1].error).toBeInstanceOf(
+          TransactionCanceledException,
+        );
+        expect(
+          (
+            observations[1].error as TransactionCanceledException
+          ).CancellationReasons?.some(
+            ({ Code }) => Code === "ConditionalCheckFailed",
+          ),
+        ).toBe(true);
+        expectInitialBatch(observations[2].input, input.tables);
+      }
+      plan.assertApplied();
+    },
+    30_000,
+  );
+
+  test.each(["1.0", "1e0", "0001.000"])(
+    "a numeric representation %s of version 1 remains valid on reopen",
+    async (number) => {
+      const input = await scenario();
+      const items = Object.fromEntries(
+        Object.entries(seed).map(([role, item]) => [
+          role,
+          { ...item, layout_version: { N: number } },
+        ]),
+      );
+      await local.seedConfiguration(input.tables, items);
+      const before = await local.readConfiguration(input.tables);
+      const plan = recordRequests(input.client);
+
+      const opened = await initializeDynamoDBEventStoreInternal(input);
+      const reopened = await initializeDynamoDBEventStoreInternal(input);
+      const after = await local.readConfiguration(input.tables);
+
+      evidence = { ...evidence, items, before, opened, reopened, after };
+      for (const role of ["journal", "snapshot", "head"] as const) {
+        expect(before[role].Item?.layout_version).toEqual({ N: "1" });
+        expect(after[role].Item).toEqual(before[role].Item);
+      }
+      expect(opened).toMatchObject({
+        type: "ok",
+        value: { configuration: { storeId: "seeded-store", layoutVersion: 1 } },
+      });
+      expect(reopened).toMatchObject({
+        type: "ok",
+        value: { configuration: { storeId: "seeded-store", layoutVersion: 1 } },
+      });
+      expect(
+        plan.snapshot().observations.map(({ commandName }) => commandName),
+      ).toEqual(["BatchGetItemCommand", "BatchGetItemCommand"]);
+      plan.assertApplied();
+    },
+    30_000,
+  );
+
+  test.each(
+    (["journal", "snapshot", "head"] as const).flatMap((role) =>
+      (["store_id", "layout_version"] as const).map(
+        (fieldName) => [role, fieldName] as const,
+      ),
+    ),
+  )(
+    "configuration in %s missing %s rejects settings without creating",
+    async (role, fieldName) => {
+      const input = await scenario();
+      const incomplete: Record<string, AttributeValue> = { ...seed[role] };
+      delete incomplete[fieldName];
+      await local.seedConfiguration(input.tables, {
+        ...seed,
+        [role]: incomplete,
+      });
+      const before = await local.readConfiguration(input.tables);
+      const plan = recordRequests(input.client);
+
+      const result = await initializeDynamoDBEventStoreInternal(input);
+      const after = await local.readConfiguration(input.tables);
+
+      expect(result).toMatchObject({
+        type: "err",
+        error: { type: "configuration-error", fieldName },
+      });
+      expect(
+        plan.snapshot().observations.map(({ commandName }) => commandName),
+      ).toEqual(["BatchGetItemCommand"]);
+      expect(before[role].Item).toEqual(incomplete);
+      for (const name of ["journal", "snapshot", "head"] as const)
+        expect(after[name].Item).toEqual(before[name].Item);
+      evidence = { ...evidence, before, result, after };
+    },
+    30_000,
+  );
+
   test("real partial responses accumulate through three requests without creating", async () => {
     const input = await scenario();
     await local.seedConfiguration(input.tables, seed);
