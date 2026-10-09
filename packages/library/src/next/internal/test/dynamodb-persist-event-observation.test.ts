@@ -121,3 +121,67 @@ test("a replace-request fault fires once, before delegation, and later calls rea
     client.destroy();
   }
 });
+
+test.each([3, 4])(
+  "applies faults and the send gate to a %i-action pair commit",
+  async (count) => {
+    const { client, handle } = fixtureClient();
+    const gate = jest.fn().mockResolvedValue(undefined);
+    const observation = new DynamoDBPersistEventObservation(client, gate);
+    const cause = new Error("planned pair failure");
+    const pair = {
+      TransactItems: [
+        ...commit.TransactItems,
+        ...[0, 1].slice(0, count - 2).map((skey) => ({
+          Put: {
+            TableName: "snapshot",
+            Item: { aid: { S: "Order-1" }, skey: { N: skey.toString() } },
+          },
+        })),
+      ],
+    };
+    observation.failNext(cause);
+    try {
+      await expect(
+        client.send(new TransactWriteItemsCommand(pair)),
+      ).rejects.toBe(cause);
+      expect(handle).not.toHaveBeenCalled();
+      expect(gate).not.toHaveBeenCalled();
+      observation.assertApplied();
+      await client.send(new TransactWriteItemsCommand(pair));
+      expect(gate).toHaveBeenCalledTimes(1);
+      expect(handle).toHaveBeenCalledTimes(1);
+      expect(observation.snapshot().observations[1].input).toEqual(pair);
+      expect(observation.snapshot().observations[1].upstream).toBeDefined();
+    } finally {
+      client.destroy();
+    }
+  },
+);
+
+test("configuration creation leaves a pair fault and gate untouched", async () => {
+  const { client, handle } = fixtureClient();
+  const gate = jest.fn().mockResolvedValue(undefined);
+  const observation = new DynamoDBPersistEventObservation(client, gate);
+  const cause = new Error("planned pair failure");
+  observation.failNext(cause);
+  try {
+    await client.send(
+      new TransactWriteItemsCommand({
+        TransactItems: ["journal", "snapshot", "head"].map((TableName) => ({
+          Put: { TableName, Item: { aid: { S: "__config__" } } },
+        })),
+      }),
+    );
+    expect(handle).toHaveBeenCalledTimes(1);
+    expect(gate).not.toHaveBeenCalled();
+    expect(observation.snapshot().unapplied).toEqual([0]);
+    await expect(
+      client.send(new TransactWriteItemsCommand(commit)),
+    ).rejects.toBe(cause);
+    expect(handle).toHaveBeenCalledTimes(1);
+    observation.assertApplied();
+  } finally {
+    client.destroy();
+  }
+});
