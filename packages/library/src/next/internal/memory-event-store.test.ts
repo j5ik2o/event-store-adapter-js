@@ -13,6 +13,7 @@ import {
   commitMemoryStorageRecords,
   inspectMemoryStorageRecords,
   readMemoryStorageEvents,
+  readMemoryStorageLatestSnapshot,
 } from "./memory-storage-records";
 
 function unwrap<T>(result: Result<T, EventStoreError>): T {
@@ -51,12 +52,13 @@ function expectViolation<T>(
 }
 
 describe("createMemoryEventStoreInternal", () => {
-  test("provides the three connected operations", () => {
+  test("provides the four connected operations", () => {
     const store = unwrap(createMemoryEventStoreInternal());
 
     expect(Object.keys(store)).toEqual([
       "persistEvent",
       "persistEventAndSnapshot",
+      "getLatestSnapshotById",
       "getEventsByIdSinceSeqNr",
     ]);
   });
@@ -188,6 +190,683 @@ describe("createMemoryEventStoreInternal", () => {
     expect(
       unwrap(await second.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
     ).toEqual([eventOf(), eventOf(2)]);
+  });
+});
+
+describe("memory getLatestSnapshotById real records", () => {
+  test("observes missing, event-only, pair, and subsequent event-only commits on the same storage", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const json = PayloadSerializer.json();
+    const deserializeEvent = jest.fn(json.deserialize);
+    const deserializeSnapshot = jest.fn(json.deserialize);
+    const store = unwrap(
+      createMemoryEventStoreInternal({
+        storage,
+        eventSerializer: {
+          serialize: json.serialize,
+          deserialize: deserializeEvent,
+        },
+        snapshotSerializer: {
+          serialize: json.serialize,
+          deserialize: deserializeSnapshot,
+        },
+      }),
+    );
+    const aggregateId = eventOf().aggregateId;
+
+    expect(
+      unwrap(await store.getLatestSnapshotById(aggregateId)),
+    ).toBeUndefined();
+    expect(deserializeSnapshot).not.toHaveBeenCalled();
+    unwrap(await store.persistEvent(eventOf()));
+    expect(unwrap(await store.getLatestSnapshotById(aggregateId))).toEqual({
+      headSeqNr: 1,
+      snapshot: undefined,
+    });
+    expect(deserializeSnapshot).not.toHaveBeenCalled();
+
+    unwrap(await store.persistEventAndSnapshot(eventOf(2), snapshotOf(2)));
+    const paired = unwrap(await store.getLatestSnapshotById(aggregateId));
+    expect(paired).toEqual({ headSeqNr: 2, snapshot: snapshotOf(2) });
+    unwrap(await store.persistEvent(eventOf(3)));
+    expect(unwrap(await store.getLatestSnapshotById(aggregateId))).toEqual({
+      headSeqNr: 3,
+      snapshot: snapshotOf(2),
+    });
+    expect(paired).toEqual({ headSeqNr: 2, snapshot: snapshotOf(2) });
+    expect(deserializeSnapshot.mock.calls).toEqual([
+      [json.serialize(snapshotOf(2).aggregate), "snapshot/v1"],
+      [json.serialize(snapshotOf(2).aggregate), "snapshot/v1"],
+    ]);
+    expect(deserializeEvent).not.toHaveBeenCalled();
+    const records = (await recordsOf(storage)).get("Order-1");
+    expect(records?.head).toEqual({
+      aggregateId: "Order-1",
+      seqNr: 3,
+      occurredAt: millis,
+      manifest: "event/v1",
+      payload: json.serialize(eventOf(3).payload),
+    });
+    expect(records?.snapshot).toEqual({
+      ...snapshotOf(2),
+      aggregate: json.serialize(snapshotOf(2).aggregate),
+    });
+  });
+
+  test("matches complete validated keys, including empty and UTF-8 boundary IDs, without caller stringification", async () => {
+    const store = unwrap(createMemoryEventStoreInternal());
+    const asString = jest.fn(() => "Order-10");
+    const callerToString = jest.fn(() => "Other-1");
+    const callerId = {
+      typeName: "Order",
+      value: "1",
+      asString,
+      toString: callerToString,
+    };
+    const ids: AggregateId[] = [
+      callerId,
+      { typeName: "Order", value: "10" },
+      { typeName: "Order", value: "1-2" },
+      { typeName: "Other", value: "1" },
+      { typeName: "", value: "1" },
+      { typeName: "EmptyValue", value: "" },
+      { typeName: "", value: "" },
+      { typeName: "型", value: "値".repeat(340) },
+    ];
+    for (const aggregateId of ids) {
+      const snapshot = {
+        ...snapshotOf(),
+        aggregate: `${aggregateId.typeName}-${aggregateId.value}`,
+      };
+      unwrap(
+        await store.persistEventAndSnapshot(
+          { ...eventOf(), aggregateId },
+          snapshot,
+        ),
+      );
+    }
+
+    for (const aggregateId of ids) {
+      expect(unwrap(await store.getLatestSnapshotById(aggregateId))).toEqual({
+        headSeqNr: 1,
+        snapshot: {
+          ...snapshotOf(),
+          aggregate: `${aggregateId.typeName}-${aggregateId.value}`,
+        },
+      });
+    }
+    expect(
+      unwrap(
+        await store.getLatestSnapshotById({ typeName: "Order", value: "" }),
+      ),
+    ).toBeUndefined();
+    expect(asString).not.toHaveBeenCalled();
+    expect(callerToString).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [undefined, "T-2"],
+    [null, "T-2"],
+    [{}, "T-2"],
+    [{ typeName: 1, value: "1" }, "T-2"],
+    [{ typeName: "Order", value: 1 }, "T-2"],
+    [{ typeName: "Order-item", value: "1" }, "T-11"],
+    [{ typeName: "型", value: `${"値".repeat(340)}a` }, "T-12"],
+  ] as const)(
+    "rejects %p with %s before storage acquisition even while its queue is held",
+    async (aggregateId, rule) => {
+      const storage = unwrap(MemoryStorage.create());
+      const json = PayloadSerializer.json();
+      const deserialize = jest.fn(json.deserialize);
+      const store = unwrap(
+        createMemoryEventStoreInternal({
+          storage,
+          snapshotSerializer: { serialize: json.serialize, deserialize },
+        }),
+      );
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const blocking = commitMemoryStorageRecords(
+        storage,
+        {
+          ...eventOf(),
+          payload: Uint8Array.of(1),
+        },
+        undefined,
+        () => {
+          entered.resolve();
+          return release.promise;
+        },
+      );
+      const read = jest.spyOn(
+        memoryStorageRecords,
+        "readMemoryStorageLatestSnapshot",
+      );
+      const completed = jest.fn();
+      const reading = store
+        .getLatestSnapshotById(aggregateId as AggregateId)
+        .then((result) => {
+          completed();
+          return result;
+        });
+      try {
+        await entered.promise;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(completed).toHaveBeenCalledTimes(1);
+        expectViolation(await reading, rule);
+        expect(read).not.toHaveBeenCalled();
+        expect(deserialize).not.toHaveBeenCalled();
+      } finally {
+        release.resolve();
+        await Promise.allSettled([blocking, reading]);
+        read.mockRestore();
+      }
+      unwrap(await blocking);
+    },
+  );
+
+  test("fixes checked ID properties once before waiting on the storage queue", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const json = PayloadSerializer.json();
+    const deserialize = jest.fn(json.deserialize);
+    const store = unwrap(
+      createMemoryEventStoreInternal({
+        storage,
+        snapshotSerializer: { serialize: json.serialize, deserialize },
+      }),
+    );
+    unwrap(await store.persistEventAndSnapshot(eventOf(), snapshotOf()));
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const blocking = commitMemoryStorageRecords(
+      storage,
+      {
+        ...eventOf(),
+        aggregateId: { typeName: "Blocker", value: "1" },
+        payload: Uint8Array.of(1),
+      },
+      undefined,
+      () => {
+        entered.resolve();
+        return release.promise;
+      },
+    );
+    let typeName = "Order";
+    let value = "1";
+    const typeNameGetter = jest.fn(() => typeName);
+    const valueGetter = jest.fn(() => value);
+    const input = {
+      get typeName() {
+        return typeNameGetter();
+      },
+      get value() {
+        return valueGetter();
+      },
+    };
+    const read = jest.spyOn(
+      memoryStorageRecords,
+      "readMemoryStorageLatestSnapshot",
+    );
+    const reading = store.getLatestSnapshotById(input);
+    try {
+      await entered.promise;
+      typeName = "Changed";
+      value = "other";
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(read).toHaveBeenCalledWith(storage, "Order-1");
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(typeNameGetter).toHaveBeenCalledTimes(1);
+      expect(valueGetter).toHaveBeenCalledTimes(1);
+      expect(deserialize).not.toHaveBeenCalled();
+      release.resolve();
+
+      expect(unwrap(await reading)).toEqual({
+        headSeqNr: 1,
+        snapshot: snapshotOf(),
+      });
+      expect(typeNameGetter).toHaveBeenCalledTimes(1);
+      expect(valueGetter).toHaveBeenCalledTimes(1);
+    } finally {
+      release.resolve();
+      await Promise.allSettled([blocking, reading]);
+      read.mockRestore();
+    }
+    unwrap(await blocking);
+  });
+
+  test("shares committed snapshots while each entry owns its snapshot restoration", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const json = PayloadSerializer.json();
+    const firstDeserialize = jest.fn((bytes: Uint8Array, manifest: string) => ({
+      reader: "first",
+      value: json.deserialize(bytes, manifest),
+    }));
+    const secondDeserialize = jest.fn(
+      (bytes: Uint8Array, manifest: string) => ({
+        reader: "second",
+        value: json.deserialize(bytes, manifest),
+      }),
+    );
+    const first = unwrap(
+      createMemoryEventStoreInternal<unknown, unknown>({
+        storage,
+        snapshotSerializer: {
+          serialize: json.serialize,
+          deserialize: firstDeserialize,
+        },
+      }),
+    );
+    const second = unwrap(
+      createMemoryEventStoreInternal<unknown, unknown>({
+        storage,
+        snapshotSerializer: {
+          serialize: json.serialize,
+          deserialize: secondDeserialize,
+        },
+      }),
+    );
+    unwrap(await first.persistEventAndSnapshot(eventOf(), snapshotOf()));
+    expect(
+      unwrap(await second.getLatestSnapshotById(eventOf().aggregateId)),
+    ).toEqual({
+      headSeqNr: 1,
+      snapshot: {
+        ...snapshotOf(),
+        aggregate: { reader: "second", value: snapshotOf().aggregate },
+      },
+    });
+    expect(firstDeserialize).not.toHaveBeenCalled();
+    unwrap(await second.persistEventAndSnapshot(eventOf(2), snapshotOf(2)));
+    expect(
+      unwrap(await first.getLatestSnapshotById(eventOf().aggregateId)),
+    ).toEqual({
+      headSeqNr: 2,
+      snapshot: {
+        ...snapshotOf(2),
+        aggregate: { reader: "first", value: snapshotOf(2).aggregate },
+      },
+    });
+    expect(firstDeserialize.mock.calls).toEqual([
+      [json.serialize(snapshotOf(2).aggregate), "snapshot/v1"],
+    ]);
+    expect(secondDeserialize.mock.calls).toEqual([
+      [json.serialize(snapshotOf().aggregate), "snapshot/v1"],
+    ]);
+  });
+
+  test("isolates the same aid and its queue on a separate storage", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const first = unwrap(createMemoryEventStoreInternal({ storage }));
+    const second = unwrap(
+      createMemoryEventStoreInternal({
+        storage: unwrap(MemoryStorage.create()),
+      }),
+    );
+    unwrap(await first.persistEventAndSnapshot(eventOf(), snapshotOf()));
+    expect(
+      unwrap(await second.getLatestSnapshotById(eventOf().aggregateId)),
+    ).toBeUndefined();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const blocking = commitMemoryStorageRecords(
+      storage,
+      {
+        ...eventOf(2),
+        payload: Uint8Array.of(2),
+      },
+      undefined,
+      () => {
+        entered.resolve();
+        return release.promise;
+      },
+    );
+    const other = { ...snapshotOf(), aggregate: "other storage" };
+    try {
+      await entered.promise;
+      unwrap(await second.persistEventAndSnapshot(eventOf(), other));
+      expect(
+        unwrap(await second.getLatestSnapshotById(eventOf().aggregateId)),
+      ).toEqual({
+        headSeqNr: 1,
+        snapshot: other,
+      });
+    } finally {
+      release.resolve();
+      await Promise.allSettled([blocking]);
+    }
+    unwrap(await blocking);
+    expect(
+      unwrap(await first.getLatestSnapshotById(eventOf().aggregateId)),
+    ).toEqual({
+      headSeqNr: 2,
+      snapshot: snapshotOf(),
+    });
+    expect(
+      unwrap(await second.getLatestSnapshotById(eventOf().aggregateId)),
+    ).toEqual({
+      headSeqNr: 1,
+      snapshot: other,
+    });
+  });
+
+  test("waits for a real pair publication and restores its atomic head and snapshot outside the queue", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const writer = unwrap(createMemoryEventStoreInternal({ storage }));
+    const json = PayloadSerializer.json();
+    const thirdEntered = jest.fn();
+    const deserialize = jest.fn((bytes: Uint8Array, manifest: string) => {
+      // 復元器自身から、後続の実commitが同じqueueへ進入済みであることを観測する。
+      expect(thirdEntered).toHaveBeenCalledTimes(1);
+      return json.deserialize(bytes, manifest);
+    });
+    const reader = unwrap(
+      createMemoryEventStoreInternal({
+        storage,
+        snapshotSerializer: { serialize: json.serialize, deserialize },
+      }),
+    );
+    unwrap(await writer.persistEventAndSnapshot(eventOf(), snapshotOf()));
+    const enteredSecond = Promise.withResolvers<void>();
+    const releaseSecond = Promise.withResolvers<void>();
+    const enteredThird = Promise.withResolvers<void>();
+    const releaseThird = Promise.withResolvers<void>();
+    const originalCommit = commitMemoryStorageRecords;
+    const commit = jest
+      .spyOn(memoryStorageRecords, "commitMemoryStorageRecords")
+      .mockImplementation((destination, event, snapshot, beforeCommit) =>
+        originalCommit(destination, event, snapshot, async () => {
+          await beforeCommit?.();
+          if (event.seqNr === 2) {
+            enteredSecond.resolve();
+            await releaseSecond.promise;
+          } else if (event.seqNr === 3) {
+            thirdEntered();
+            enteredThird.resolve();
+            await releaseThird.promise;
+          }
+        }),
+      );
+    const writingSecond = writer.persistEventAndSnapshot(
+      eventOf(2),
+      snapshotOf(2),
+    );
+    const completed = jest.fn();
+    const reading = reader
+      .getLatestSnapshotById(eventOf().aggregateId)
+      .then((result) => {
+        completed();
+        return result;
+      });
+    const writingThird = writer.persistEventAndSnapshot(
+      eventOf(3),
+      snapshotOf(3),
+    );
+    try {
+      await enteredSecond.promise;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(completed).not.toHaveBeenCalled();
+      expect(deserialize).not.toHaveBeenCalled();
+      expect(thirdEntered).not.toHaveBeenCalled();
+      releaseSecond.resolve();
+      unwrap(await writingSecond);
+      await enteredThird.promise;
+
+      const captured = unwrap(await reading);
+      expect(captured).toEqual({ headSeqNr: 2, snapshot: snapshotOf(2) });
+      expect(deserialize.mock.calls).toEqual([
+        [json.serialize(snapshotOf(2).aggregate), "snapshot/v1"],
+      ]);
+      releaseThird.resolve();
+      unwrap(await writingThird);
+      expect(
+        unwrap(await reader.getLatestSnapshotById(eventOf().aggregateId)),
+      ).toEqual({
+        headSeqNr: 3,
+        snapshot: snapshotOf(3),
+      });
+      expect(captured).toEqual({ headSeqNr: 2, snapshot: snapshotOf(2) });
+    } finally {
+      releaseSecond.resolve();
+      releaseThird.resolve();
+      await Promise.allSettled([writingSecond, reading, writingThird]);
+      commit.mockRestore();
+    }
+  });
+
+  test.each([false, true])(
+    "keeps metadata and bytes independent of inputs, results, restoration and inspection (Buffer=%p)",
+    async (useBuffer) => {
+      const storage = unwrap(MemoryStorage.create({ retention: { count: 1 } }));
+      const scratch = useBuffer
+        ? Buffer.from([99, 4, 5, 99])
+        : Uint8Array.of(99, 4, 5, 99);
+      const bytes = scratch.subarray(1, 3);
+      const eventBytes = Uint8Array.of(1, 2);
+      const deserialize = jest.fn((input: Uint8Array) => {
+        const aggregate = new Uint8Array(input);
+        input.fill(0);
+        return aggregate;
+      });
+      const store = unwrap(
+        createMemoryEventStoreInternal<Uint8Array, Uint8Array>({
+          storage,
+          eventSerializer: {
+            serialize: () => eventBytes,
+            deserialize: (input) => new Uint8Array(input),
+          },
+          snapshotSerializer: { serialize: () => bytes, deserialize },
+        }),
+      );
+      const event = {
+        ...eventOf(),
+        aggregateId: { ...eventOf().aggregateId },
+        payload: Uint8Array.of(1, 2),
+      };
+      const snapshot = { ...snapshotOf(), aggregate: Uint8Array.of(4, 5) };
+      unwrap(await store.persistEventAndSnapshot(event, snapshot));
+      const before = await recordsOf(storage);
+      event.aggregateId.typeName = "Changed";
+      event.aggregateId.value = "other";
+      event.seqNr = 99;
+      event.occurredAt.setTime(NaN);
+      event.manifest = "changed";
+      event.payload.fill(99);
+      snapshot.seqNr = 99;
+      snapshot.manifest = "changed";
+      snapshot.aggregate.fill(99);
+      eventBytes.fill(99);
+      scratch.fill(99);
+
+      const result = unwrap(
+        await store.getLatestSnapshotById(eventOf().aggregateId),
+      );
+      const expected = {
+        headSeqNr: 1,
+        snapshot: {
+          seqNr: 1,
+          manifest: "snapshot/v1",
+          aggregate: Uint8Array.of(4, 5),
+        },
+      };
+      expect(result).toEqual(expected);
+      if (result === undefined || result.snapshot === undefined)
+        throw new Error("expected snapshot");
+      expect(Reflect.set(result, "headSeqNr", 99)).toBe(false);
+      expect(Reflect.set(result.snapshot, "seqNr", 99)).toBe(false);
+      expect(Reflect.set(result.snapshot, "manifest", "changed result")).toBe(
+        false,
+      );
+      result.snapshot.aggregate.fill(88);
+      expect(deserialize.mock.calls[0][0]).toEqual(Uint8Array.of(0, 0));
+
+      const observed = await recordsOf(storage);
+      const record = observed.get("Order-1");
+      if (record === undefined || record.snapshot === undefined)
+        throw new Error("expected stored snapshot");
+      expect(record.head).toEqual({
+        aggregateId: "Order-1",
+        seqNr: 1,
+        occurredAt: millis,
+        manifest: "event/v1",
+        payload: Uint8Array.of(1, 2),
+      });
+      expect(record.snapshot).toEqual(expected.snapshot);
+      record.head.payload.fill(77);
+      for (const saved of record.events) saved.payload.fill(77);
+      record.snapshot.aggregate.fill(77);
+      for (const saved of record.history) saved.aggregate.fill(77);
+      (observed as Map<string, unknown>).clear();
+
+      expect(await recordsOf(storage)).toEqual(before);
+      expect(
+        unwrap(await store.getLatestSnapshotById(eventOf().aggregateId)),
+      ).toEqual(expected);
+      expect(await recordsOf(storage)).toEqual(before);
+    },
+  );
+
+  test("the storage snapshot reader returns independent bytes and immutable metadata", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const store = unwrap(createMemoryEventStoreInternal({ storage }));
+    expect(
+      unwrap(await readMemoryStorageLatestSnapshot(storage, "Order-1")),
+    ).toBeUndefined();
+    unwrap(await store.persistEvent(eventOf()));
+    expect(
+      unwrap(await readMemoryStorageLatestSnapshot(storage, "Order-1")),
+    ).toEqual({ headSeqNr: 1, snapshot: undefined });
+    unwrap(await store.persistEventAndSnapshot(eventOf(2), snapshotOf(2)));
+    const before = await recordsOf(storage);
+    const result = unwrap(
+      await readMemoryStorageLatestSnapshot(storage, "Order-1"),
+    );
+    expect(result).toEqual({
+      headSeqNr: 2,
+      snapshot: before.get("Order-1")?.snapshot,
+    });
+    if (result === undefined || result.snapshot === undefined)
+      throw new Error("expected snapshot bytes");
+    expect(Reflect.set(result, "headSeqNr", 99)).toBe(false);
+    expect(Reflect.set(result.snapshot, "manifest", "changed")).toBe(false);
+    result.snapshot.aggregate.fill(0);
+
+    expect(await recordsOf(storage)).toEqual(before);
+    expect(
+      unwrap(await store.getLatestSnapshotById(eventOf().aggregateId)),
+    ).toEqual({ headSeqNr: 2, snapshot: snapshotOf(2) });
+  });
+
+  test("uses the supplied non-JSON snapshot serializer for an arbitrary domain function", async () => {
+    const aggregate = () => BigInt(37);
+    const serialize = jest.fn((value: () => bigint) =>
+      Uint8Array.of(Number(value())),
+    );
+    const deserialize = jest.fn((bytes: Uint8Array) => () => BigInt(bytes[0]));
+    const deserializeEvent = jest.fn(() => null);
+    const storage = unwrap(MemoryStorage.create());
+    const store = unwrap(
+      createMemoryEventStoreInternal<unknown, () => bigint>({
+        storage,
+        eventSerializer: {
+          serialize: PayloadSerializer.json().serialize,
+          deserialize: deserializeEvent,
+        },
+        snapshotSerializer: { serialize, deserialize },
+      }),
+    );
+    const snapshot = { seqNr: 1, manifest: "opaque/function-値", aggregate };
+    unwrap(await store.persistEventAndSnapshot(eventOf(), snapshot));
+
+    const result = unwrap(
+      await store.getLatestSnapshotById(eventOf().aggregateId),
+    );
+    expect(result).toMatchObject({
+      headSeqNr: 1,
+      snapshot: { seqNr: 1, manifest: snapshot.manifest },
+    });
+    expect(result?.snapshot?.aggregate()).toBe(BigInt(37));
+    expect(serialize.mock.calls).toEqual([[aggregate]]);
+    expect(deserialize.mock.calls).toEqual([
+      [Uint8Array.of(37), snapshot.manifest],
+    ]);
+    expect(deserializeEvent).not.toHaveBeenCalled();
+    expect((await recordsOf(storage)).get("Order-1")?.snapshot).toEqual({
+      seqNr: 1,
+      manifest: snapshot.manifest,
+      aggregate: Uint8Array.of(37),
+    });
+  });
+
+  test.each([
+    new Error("cannot restore"),
+    "cannot restore",
+    42,
+    null,
+    undefined,
+    { code: "failure" },
+    Symbol("failure"),
+    BigInt(1),
+  ])(
+    "classifies snapshot restoration failure %p and preserves the original cause",
+    async (cause) => {
+      const storage = unwrap(MemoryStorage.create());
+      const json = PayloadSerializer.json();
+      const deserialize = jest
+        .fn(json.deserialize)
+        .mockImplementationOnce(() => {
+          throw cause;
+        });
+      const store = unwrap(
+        createMemoryEventStoreInternal({
+          storage,
+          snapshotSerializer: { serialize: json.serialize, deserialize },
+        }),
+      );
+      unwrap(await store.persistEventAndSnapshot(eventOf(), snapshotOf()));
+      const before = await recordsOf(storage);
+
+      const result = await store.getLatestSnapshotById(eventOf().aggregateId);
+      expect(result).toMatchObject({
+        type: "err",
+        error: { type: "serialization-error", operation: "deserialize" },
+      });
+      if (result.type !== "err")
+        throw new Error("expected deserialization error");
+      expect(result.error.cause).toBe(cause);
+      expect(result).not.toHaveProperty("value");
+      expect(deserialize.mock.calls).toEqual([
+        [json.serialize(snapshotOf().aggregate), "snapshot/v1"],
+      ]);
+      expect(await recordsOf(storage)).toEqual(before);
+      expect(
+        unwrap(await store.getLatestSnapshotById(eventOf().aggregateId)),
+      ).toEqual({ headSeqNr: 1, snapshot: snapshotOf() });
+    },
+  );
+
+  test("preserves a real snapshot storage read error without starting restoration", async () => {
+    const deserialize = jest.fn(() => null);
+    const store = unwrap(
+      createMemoryEventStoreInternal({
+        storage: {} as MemoryStorage,
+        snapshotSerializer: { serialize: () => Uint8Array.of(1), deserialize },
+      }),
+    );
+    const read = jest.spyOn(
+      memoryStorageRecords,
+      "readMemoryStorageLatestSnapshot",
+    );
+    try {
+      const result = await store.getLatestSnapshotById(eventOf().aggregateId);
+      expect(result).toMatchObject({
+        type: "err",
+        error: { type: "storage-error", cause: expect.any(TypeError) },
+      });
+      expect(result).toBe(await read.mock.results[0].value);
+      expect(deserialize).not.toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
+    }
   });
 });
 

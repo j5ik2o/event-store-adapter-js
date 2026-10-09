@@ -7,6 +7,7 @@ import { validateSerializer } from "./event-store-input-validation";
 import {
   commitMemoryStorageRecords,
   readMemoryStorageEvents,
+  readMemoryStorageLatestSnapshot,
 } from "./memory-storage-records";
 import { validateSeqNr } from "./seq-nr-validation";
 import {
@@ -15,19 +16,13 @@ import {
   validateEventAndSnapshot,
 } from "./validated-event-store";
 
-/** 実装済みのイベント追記・snapshot同時追記・イベント読取を返す内部入口。 */
+/** 実Storageに接続した4操作を返す内部入口。公開factoryと保持処理は後続。 */
 export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
   input?: Pick<
     MemoryEventStoreInput<PE, PS>,
     "storage" | "eventSerializer" | "snapshotSerializer"
   >,
-): Result<
-  Pick<
-    EventStore<PE, PS>,
-    "persistEvent" | "persistEventAndSnapshot" | "getEventsByIdSinceSeqNr"
-  >,
-  EventStoreError
-> {
+): Result<EventStore<PE, PS>, EventStoreError> {
   if (
     input === null ||
     (input !== undefined && (typeof input !== "object" || Array.isArray(input)))
@@ -55,12 +50,7 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
   if (storage.type === "err") return storage;
 
   return Result.ok(
-    Object.freeze<
-      Pick<
-        EventStore<PE, PS>,
-        "persistEvent" | "persistEventAndSnapshot" | "getEventsByIdSinceSeqNr"
-      >
-    >({
+    Object.freeze<EventStore<PE, PS>>({
       async persistEvent(event) {
         const validated = validateEvent(event);
         if (validated.type === "err") return validated;
@@ -134,6 +124,45 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
           { ...validated.value.event, payload: eventBytes },
           { ...validated.value.snapshot, aggregate: snapshotBytes },
         );
+      },
+
+      async getLatestSnapshotById(aggregateId) {
+        const validatedId = validateAggregateId(aggregateId);
+        if (validatedId.type === "err") return validatedId;
+        const aid = `${validatedId.value.typeName}-${validatedId.value.value}`;
+
+        const records = await readMemoryStorageLatestSnapshot(
+          storage.value,
+          aid,
+        );
+        if (records.type === "err") return records;
+        if (records.value === undefined) return Result.ok(undefined);
+
+        try {
+          return Result.ok(
+            Object.freeze({
+              headSeqNr: records.value.headSeqNr,
+              snapshot:
+                records.value.snapshot === undefined
+                  ? undefined
+                  : Object.freeze({
+                      ...records.value.snapshot,
+                      aggregate: snapshotSerializer.value.deserialize(
+                        records.value.snapshot.aggregate,
+                        records.value.snapshot.manifest,
+                      ),
+                    }),
+            }),
+          );
+        } catch (cause) {
+          return Result.err(
+            EventStoreError.serialization(
+              "deserialize",
+              "snapshot payload deserialization failed",
+              cause,
+            ),
+          );
+        }
       },
 
       async getEventsByIdSinceSeqNr(aggregateId, seqNr) {
