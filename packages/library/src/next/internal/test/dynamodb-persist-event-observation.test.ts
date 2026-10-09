@@ -1,12 +1,14 @@
 import {
   DynamoDBClient,
   GetItemCommand,
+  QueryCommand,
+  type QueryCommandOutput,
   ResourceNotFoundException,
   TransactWriteItemsCommand,
 } from "@aws-sdk/client-dynamodb";
 import { DynamoDBPersistEventObservation } from "./dynamodb-persist-event-observation";
 
-function fixtureClient(failure = false) {
+function fixtureClient(failure = false, output: unknown = {}) {
   const handle = jest.fn().mockResolvedValue({
     response: {
       statusCode: failure ? 400 : 200,
@@ -18,7 +20,7 @@ function fixtureClient(failure = false) {
                 __type: "ResourceNotFoundException",
                 message: "fixture failure",
               }
-            : {},
+            : output,
         ),
       ),
     },
@@ -180,6 +182,285 @@ test("configuration creation leaves a pair fault and gate untouched", async () =
       client.send(new TransactWriteItemsCommand(commit)),
     ).rejects.toBe(cause);
     expect(handle).toHaveBeenCalledTimes(1);
+    observation.assertApplied();
+  } finally {
+    client.destroy();
+  }
+});
+
+test("read faults select the operation, journal and page without touching GSI or other tables", async () => {
+  const { client, handle } = fixtureClient();
+  const observation = new DynamoDBPersistEventObservation(client);
+  const cause = new Error("second page failed");
+  const query = {
+    TableName: "journal",
+    KeyConditionExpression: "aid = :aid",
+    ExpressionAttributeValues: { ":aid": { S: "Order-1" } },
+  };
+  observation.failReadEvents({
+    operation: 2,
+    table: "journal",
+    page: 2,
+    cause,
+  });
+  try {
+    await client.send(new QueryCommand(query));
+    observation.beginReadEvents("journal", 1);
+    await client.send(new QueryCommand(query));
+    observation.beginReadEvents("journal", 2);
+    await client.send(new QueryCommand({ ...query, TableName: "snapshot" }));
+    await client.send(new QueryCommand({ ...query, IndexName: "history" }));
+    await client.send(new QueryCommand(query));
+    expect(() => observation.assertApplied()).toThrow("not applied");
+    await expect(client.send(new QueryCommand(query))).rejects.toBe(cause);
+    expect(handle).toHaveBeenCalledTimes(5);
+    const saved = observation.snapshot();
+    expect(saved.queryFaults[0]).toMatchObject({
+      applied: 1,
+      injection: "replace-request",
+    });
+    expect(saved.observations[5]).toMatchObject({
+      readEvents: { operation: 2, table: "journal", page: 2 },
+      error: cause,
+    });
+    expect(saved.observations[5].upstream).toBeUndefined();
+    observation.assertApplied();
+    await client.send(new QueryCommand(query));
+    expect(handle).toHaveBeenCalledTimes(6);
+  } finally {
+    client.destroy();
+  }
+});
+
+test("records the original SDK response separately from a delivered replacement", async () => {
+  const { client, handle } = fixtureClient();
+  const observation = new DynamoDBPersistEventObservation(client);
+  observation.beginReadEvents("journal", 3);
+  observation.replaceReadEvents({
+    operation: 3,
+    table: "journal",
+    page: 1,
+    replace: (output) => ({ ...output, Items: [{ aid: { S: "Order-1" } }] }),
+  });
+  try {
+    const returned = await client.send(
+      new QueryCommand({ TableName: "journal" }),
+    );
+    expect(returned.Items).toEqual([{ aid: { S: "Order-1" } }]);
+    const saved = observation.snapshot().observations[0];
+    expect((saved.upstream as QueryCommandOutput).Items).toBeUndefined();
+    expect(saved.returned).toEqual(returned);
+    expect(handle).toHaveBeenCalledTimes(1);
+    observation.assertApplied();
+  } finally {
+    client.destroy();
+  }
+});
+
+test("a replacement failure preserves the upstream response and its cause", async () => {
+  const { client } = fixtureClient();
+  const observation = new DynamoDBPersistEventObservation(client);
+  const cause = new Error("replacement failed");
+  observation.beginReadEvents("journal", 1);
+  observation.replaceReadEvents({
+    operation: 1,
+    table: "journal",
+    page: 1,
+    replace() {
+      throw cause;
+    },
+  });
+  try {
+    await expect(
+      client.send(new QueryCommand({ TableName: "journal" })),
+    ).rejects.toBe(cause);
+    expect(observation.snapshot().observations[0].upstream).toBeDefined();
+    expect(observation.snapshot().observations[0].error).toBe(cause);
+    observation.assertApplied();
+  } finally {
+    client.destroy();
+  }
+});
+
+test.each([undefined, { aid: { S: "Order-1" }, seq_nr: { N: "4" } }])(
+  "truncates an oversized raw page to its actual prefix regardless of the raw LEK %p",
+  async (lastEvaluatedKey) => {
+    const items = Array.from({ length: 4 }, (_, n) => ({
+      aid: { S: "Order-1" },
+      seq_nr: { N: (n + 1).toString() },
+      payload: { B: Buffer.alloc(320000, n + 1).toString("base64") },
+    }));
+    const { client, handle } = fixtureClient(false, {
+      Items: items,
+      Count: 4,
+      ScannedCount: 4,
+      LastEvaluatedKey: lastEvaluatedKey,
+    });
+    const observation = new DynamoDBPersistEventObservation(client);
+    observation.beginReadEvents("journal", 1);
+    try {
+      const delivered = await client.send(
+        new QueryCommand({ TableName: "journal" }),
+      );
+      const raw = observation.snapshot().observations[0]
+        .upstream as QueryCommandOutput;
+      expect(raw.Items).toHaveLength(4);
+      expect(raw.Count).toBe(4);
+      expect(raw.LastEvaluatedKey).toEqual(lastEvaluatedKey);
+      expect(delivered.Items).toEqual(raw.Items?.slice(0, 3));
+      expect(delivered).toMatchObject({
+        Count: 3,
+        ScannedCount: 3,
+        LastEvaluatedKey: { aid: { S: "Order-1" }, seq_nr: { N: "3" } },
+      });
+      expect(observation.snapshot().observations[0].returned).toEqual(
+        delivered,
+      );
+      expect(handle).toHaveBeenCalledTimes(1);
+      observation.assertApplied();
+    } finally {
+      client.destroy();
+    }
+  },
+);
+
+test.each([1048575, 1048576, 1048577])(
+  "uses UTF-8 attribute names and values and raw B bytes at %i bytes",
+  async (totalBytes) => {
+    const items = Array.from({ length: 4 }, (_, n) => ({
+      aid: { S: "Order-界" },
+      seq_nr: { N: (n + 1).toString() },
+      界: {
+        B: Buffer.alloc(n === 3 ? totalBytes - 786520 : 262144, n + 1).toString(
+          "base64",
+        ),
+      },
+    }));
+    // 各項目: aid(3)+Order-界(9)+seq_nr(6)+N(1)+界(3)=22 bytes。
+    const { client } = fixtureClient(false, { Items: items, Count: 4 });
+    const observation = new DynamoDBPersistEventObservation(client);
+    observation.beginReadEvents("journal", 1);
+    try {
+      const delivered = await client.send(
+        new QueryCommand({ TableName: "journal" }),
+      );
+      const raw = observation.snapshot().observations[0]
+        .upstream as QueryCommandOutput;
+      if (totalBytes > 1048576) {
+        expect(delivered.Items).toEqual(raw.Items?.slice(0, 3));
+        expect(delivered.LastEvaluatedKey).toEqual({
+          aid: { S: "Order-界" },
+          seq_nr: { N: "3" },
+        });
+      } else expect(delivered).toEqual(raw);
+    } finally {
+      client.destroy();
+    }
+  },
+);
+
+test.each([
+  {},
+  { Items: [], LastEvaluatedKey: {} },
+  { Items: [{ aid: { S: "Order-1" }, seq_nr: { N: "1" } }] },
+  {
+    Items: [{ aid: { S: "Order-1" }, seq_nr: { N: "1" } }],
+    LastEvaluatedKey: { aid: { S: "Order-1" }, seq_nr: { N: "1" } },
+  },
+])(
+  "preserves a non-oversized page, its LEK and terminal response %p",
+  async (output) => {
+    const { client, handle } = fixtureClient(false, output);
+    const observation = new DynamoDBPersistEventObservation(client);
+    observation.beginReadEvents("journal", 1);
+    try {
+      const delivered = await client.send(
+        new QueryCommand({ TableName: "journal" }),
+      );
+      const saved = observation.snapshot().observations[0];
+      expect(delivered).toEqual(saved.upstream);
+      expect(saved.returned).toEqual(delivered);
+      expect(handle).toHaveBeenCalledTimes(1);
+    } finally {
+      client.destroy();
+    }
+  },
+);
+
+test("leaves oversized GSI, other-table and unmarked Query responses untouched", async () => {
+  const items = Array.from({ length: 4 }, (_, n) => ({
+    aid: { S: "Order-1" },
+    seq_nr: { N: (n + 1).toString() },
+    payload: { B: Buffer.alloc(320000).toString("base64") },
+  }));
+  const { client, handle } = fixtureClient(false, { Items: items });
+  const observation = new DynamoDBPersistEventObservation(client);
+  try {
+    await client.send(new QueryCommand({ TableName: "journal" }));
+    observation.beginReadEvents("journal", 1);
+    await client.send(
+      new QueryCommand({ TableName: "journal", IndexName: "history" }),
+    );
+    await client.send(new QueryCommand({ TableName: "snapshot" }));
+    for (const saved of observation.snapshot().observations) {
+      expect((saved.upstream as QueryCommandOutput).Items).toHaveLength(4);
+      expect(saved.returned).toBeUndefined();
+      expect(saved.readEvents).toBeUndefined();
+    }
+    const delivered = await client.send(
+      new QueryCommand({ TableName: "journal" }),
+    );
+    expect(delivered.Items).toHaveLength(3);
+    expect(observation.snapshot().observations[3].readEvents).toEqual({
+      operation: 1,
+      table: "journal",
+      page: 1,
+    });
+    expect(handle).toHaveBeenCalledTimes(4);
+  } finally {
+    client.destroy();
+  }
+});
+
+test("applies the existing response fault once after byte correction and records its final response", async () => {
+  const items = Array.from({ length: 4 }, (_, n) => ({
+    aid: { S: "Order-1" },
+    seq_nr: { N: (n + 1).toString() },
+    payload: { B: Buffer.alloc(320000).toString("base64") },
+  }));
+  const { client, handle } = fixtureClient(false, { Items: items });
+  const observation = new DynamoDBPersistEventObservation(client);
+  const replace = jest.fn((output: QueryCommandOutput) => ({
+    ...output,
+    Items: output.Items?.map((item) => ({ ...item, manifest: { S: "fault" } })),
+  }));
+  observation.beginReadEvents("journal", 1);
+  observation.replaceReadEvents({
+    operation: 1,
+    table: "journal",
+    page: 1,
+    replace,
+  });
+  try {
+    const first = await client.send(new QueryCommand({ TableName: "journal" }));
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace.mock.calls[0][0].Items).toHaveLength(3);
+    expect(first.Items?.map((item) => item.manifest.S)).toEqual([
+      "fault",
+      "fault",
+      "fault",
+    ]);
+    expect(observation.snapshot().observations[0].returned).toEqual(first);
+    const second = await client.send(
+      new QueryCommand({ TableName: "journal" }),
+    );
+    expect(second.Items?.every((item) => item.manifest === undefined)).toBe(
+      true,
+    );
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(observation.snapshot().queryFaults[0].applied).toBe(1);
+    expect(observation.snapshot().queryUnapplied).toEqual([]);
+    expect(handle).toHaveBeenCalledTimes(2);
     observation.assertApplied();
   } finally {
     client.destroy();
