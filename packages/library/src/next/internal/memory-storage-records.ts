@@ -1,10 +1,13 @@
+import type { Logger } from "../../logger";
 import { Result } from "../../result";
 import { AggregateId } from "../aggregate-id";
 import { EventEnvelope } from "../event-envelope";
 import { EventStoreError } from "../event-store-error";
 import type { LatestSnapshot } from "../latest-snapshot";
 import type { MemoryStorage } from "../memory-storage";
+import type { RetentionFailure } from "../retention-failure";
 import { SnapshotEnvelope } from "../snapshot-envelope";
+import type { MemoryRetentionHooks } from "./memory-retention-hooks";
 import type { validateMemoryStorageInput } from "./memory-storage-input-validation";
 
 type Configuration = Extract<
@@ -85,6 +88,79 @@ function copySnapshot(
   });
 }
 
+async function retainHistory(
+  state: StorageState,
+  aggregateId: string,
+  record: AggregateRecords,
+  justWrittenSeqNr: number | undefined,
+  hooks: MemoryRetentionHooks | undefined,
+): Promise<void> {
+  const retention = state.configuration.retention;
+  if (retention === undefined) return;
+  const seqNrs = Object.freeze(
+    record.history.map((snapshot) => snapshot.seqNr),
+  );
+  const listed =
+    hooks?.listHistory === undefined
+      ? seqNrs
+      : await hooks.listHistory(aggregateId, seqNrs);
+  const candidates = [
+    ...new Set([
+      ...listed,
+      ...(justWrittenSeqNr === undefined ? [] : [justWrittenSeqNr]),
+    ]),
+  ]
+    .sort((a, b) => b - a)
+    .slice(retention.count)
+    .sort((a, b) => a - b);
+  let history = record.history;
+  for (const seqNr of candidates) {
+    await hooks?.beforeDelete?.(aggregateId, seqNr);
+    history = Object.freeze(
+      history.filter((snapshot) => snapshot.seqNr !== seqNr),
+    );
+    const records = new Map(state.records);
+    records.set(aggregateId, Object.freeze({ ...record, history }));
+    state.records = records;
+  }
+}
+
+async function logNotificationFailure(
+  logger: Logger,
+  cause: unknown,
+): Promise<void> {
+  try {
+    await logger.error("retention failure notification failed", cause);
+  } catch (loggingCause) {
+    try {
+      console.error(
+        "retention failure notification logging failed",
+        cause,
+        loggingCause,
+      );
+    } catch {
+      // 通知経路がともに失敗しても、確定した書き込みの成功は変えない。
+    }
+  }
+}
+
+async function notifyRetentionFailure(
+  failure: RetentionFailure,
+  logger: Logger,
+  onRetentionFailure: ((failure: RetentionFailure) => void) | undefined,
+): Promise<void> {
+  try {
+    await logger.error(failure);
+  } catch (cause) {
+    await logNotificationFailure(logger, cause);
+  }
+  try {
+    await onRetentionFailure?.(failure);
+  } catch (cause) {
+    await logNotificationFailure(logger, cause);
+  }
+}
+
 /** 検査済みのキーと開始番号で、同じ排他制御内に全件の独立した記録を確保する。 */
 export async function readMemoryStorageEvents(
   storage: MemoryStorage,
@@ -141,6 +217,11 @@ export async function commitMemoryStorageRecords(
   event: EventEnvelope<Uint8Array>,
   snapshot?: SnapshotEnvelope<Uint8Array>,
   beforeCommit?: () => void | Promise<void>,
+  retention: Readonly<{
+    hooks?: MemoryRetentionHooks;
+    logger?: Logger;
+    onRetentionFailure?: (failure: RetentionFailure) => void;
+  }> = {},
 ): Promise<Result<void, EventStoreError>> {
   try {
     const envelope = EventEnvelope.create(event);
@@ -175,7 +256,8 @@ export async function commitMemoryStorageRecords(
     });
 
     const state = stateOf(storage);
-    return await withStorageLock(state, async () => {
+    let retentionFailure: RetentionFailure | undefined;
+    const result = await withStorageLock(state, async () => {
       const current = state.records.get(eventRecord.aggregateId);
       const headSeqNr = current?.head.seqNr ?? 0;
       if (eventRecord.seqNr <= headSeqNr) {
@@ -211,8 +293,31 @@ export async function commitMemoryStorageRecords(
       await beforeCommit?.();
       // ヘッド・イベント・現在スナップショット・履歴を一度の参照置換で公開する。
       state.records = records;
+      try {
+        await retainHistory(
+          state,
+          eventRecord.aggregateId,
+          next,
+          snapshotRecord?.seqNr,
+          retention.hooks,
+        );
+      } catch (cause) {
+        retentionFailure = Object.freeze({
+          kind: "retention-failure",
+          aggregateId: eventRecord.aggregateId,
+          cause,
+        });
+      }
       return Result.ok(undefined);
     });
+    if (retentionFailure !== undefined) {
+      await notifyRetentionFailure(
+        retentionFailure,
+        retention.logger ?? console,
+        retention.onRetentionFailure,
+      );
+    }
+    return result;
   } catch (cause) {
     return Result.err(EventStoreError.storage("memory commit failed", cause));
   }

@@ -3,7 +3,8 @@ import type { EventStore } from "../event-store";
 import { EventStoreError } from "../event-store-error";
 import type { MemoryEventStoreInput } from "../memory-event-store-input";
 import { MemoryStorage } from "../memory-storage";
-import { validateSerializer } from "./event-store-input-validation";
+import { validateEventStoreInput } from "./event-store-input-validation";
+import type { MemoryRetentionHooks } from "./memory-retention-hooks";
 import {
   commitMemoryStorageRecords,
   readMemoryStorageEvents,
@@ -16,38 +17,26 @@ import {
   validateEventAndSnapshot,
 } from "./validated-event-store";
 
-/** 実Storageに接続した4操作を返す内部入口。公開factoryと保持処理は後続。 */
+/** 実Storageと保持処理に接続した4操作を返す内部入口。外部公開は後続。 */
 export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
-  input?: Pick<
-    MemoryEventStoreInput<PE, PS>,
-    "storage" | "eventSerializer" | "snapshotSerializer"
-  >,
+  input?: MemoryEventStoreInput<PE, PS>,
+  hooks?: MemoryRetentionHooks,
 ): Result<EventStore<PE, PS>, EventStoreError> {
-  if (
-    input === null ||
-    (input !== undefined && (typeof input !== "object" || Array.isArray(input)))
-  ) {
-    return Result.err(
-      EventStoreError.configuration("input", "input must be an object"),
-    );
-  }
+  const settings = validateEventStoreInput(input);
+  if (settings.type === "err") return settings;
   const {
-    storage: inputStorage,
-    eventSerializer: inputSerializer,
-    snapshotSerializer: inputSnapshotSerializer,
-  } = input ?? {};
-  const serializer = validateSerializer(inputSerializer, "eventSerializer");
-  if (serializer.type === "err") return serializer;
-  const snapshotSerializer = validateSerializer(
-    inputSnapshotSerializer,
-    "snapshotSerializer",
-  );
-  if (snapshotSerializer.type === "err") return snapshotSerializer;
+    eventSerializer: serializer,
+    snapshotSerializer,
+    logger,
+    onRetentionFailure,
+  } = settings.value;
+  const inputStorage = input?.storage;
   const storage =
     inputStorage === undefined
       ? MemoryStorage.create()
       : Result.ok(inputStorage);
   if (storage.type === "err") return storage;
+  const retention = Object.freeze({ hooks, logger, onRetentionFailure });
 
   return Result.ok(
     Object.freeze<EventStore<PE, PS>>({
@@ -57,7 +46,7 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
 
         let bytes: Uint8Array;
         try {
-          bytes = serializer.value.serialize(validated.value.payload);
+          bytes = serializer.serialize(validated.value.payload);
           if (!(bytes instanceof Uint8Array)) {
             throw new TypeError("serializer.serialize must return Uint8Array");
           }
@@ -71,10 +60,13 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
           );
         }
 
-        return commitMemoryStorageRecords(storage.value, {
-          ...validated.value,
-          payload: bytes,
-        });
+        return commitMemoryStorageRecords(
+          storage.value,
+          { ...validated.value, payload: bytes },
+          undefined,
+          undefined,
+          retention,
+        );
       },
 
       async persistEventAndSnapshot(event, snapshot) {
@@ -83,9 +75,7 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
 
         let eventBytes: Uint8Array;
         try {
-          const bytes = serializer.value.serialize(
-            validated.value.event.payload,
-          );
+          const bytes = serializer.serialize(validated.value.event.payload);
           if (!(bytes instanceof Uint8Array)) {
             throw new TypeError("serializer.serialize must return Uint8Array");
           }
@@ -102,7 +92,7 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
 
         let snapshotBytes: Uint8Array;
         try {
-          const bytes = snapshotSerializer.value.serialize(
+          const bytes = snapshotSerializer.serialize(
             validated.value.snapshot.aggregate,
           );
           if (!(bytes instanceof Uint8Array)) {
@@ -123,6 +113,8 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
           storage.value,
           { ...validated.value.event, payload: eventBytes },
           { ...validated.value.snapshot, aggregate: snapshotBytes },
+          undefined,
+          retention,
         );
       },
 
@@ -147,7 +139,7 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
                   ? undefined
                   : Object.freeze({
                       ...records.value.snapshot,
-                      aggregate: snapshotSerializer.value.deserialize(
+                      aggregate: snapshotSerializer.deserialize(
                         records.value.snapshot.aggregate,
                         records.value.snapshot.manifest,
                       ),
@@ -187,7 +179,7 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
                 seqNr: record.seqNr,
                 occurredAt: new Date(record.occurredAt),
                 manifest: record.manifest,
-                payload: serializer.value.deserialize(
+                payload: serializer.deserialize(
                   record.payload,
                   record.manifest,
                 ),
