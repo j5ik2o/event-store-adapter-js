@@ -37,6 +37,34 @@ export function validateEvent<P>(
   );
 }
 
+export function validateEventAndSnapshot<PE, PS>(
+  event: EventEnvelope<PE>,
+  snapshot: SnapshotEnvelope<PS>,
+): Result<
+  Readonly<{ event: EventEnvelope<PE>; snapshot: SnapshotEnvelope<PS> }>,
+  EventStoreError
+> {
+  const validatedEvent = validateEvent(event);
+  if (validatedEvent.type === "err") return validatedEvent;
+  const validatedSnapshot = SnapshotEnvelope.create(snapshot);
+  if (validatedSnapshot.type === "err") return validatedSnapshot;
+  if (validatedEvent.value.seqNr !== validatedSnapshot.value.seqNr) {
+    return Result.err(
+      EventStoreError.contractViolation({
+        rule: "W-9",
+        seqNr: validatedEvent.value.seqNr,
+        snapshotSeqNr: validatedSnapshot.value.seqNr,
+      }),
+    );
+  }
+  return Result.ok(
+    Object.freeze({
+      event: validatedEvent.value,
+      snapshot: validatedSnapshot.value,
+    }),
+  );
+}
+
 export function createValidatedEventStore<PE, PS>(
   target: EventStore<PE, PS>,
 ): EventStore<PE, PS> {
@@ -50,26 +78,11 @@ export function createValidatedEventStore<PE, PS>(
     },
 
     async persistEventAndSnapshot(event, snapshot) {
-      const validatedEvent = validateEvent(event);
-      if (validatedEvent.type === "err") {
-        return validatedEvent;
-      }
-      const validatedSnapshot = SnapshotEnvelope.create(snapshot);
-      if (validatedSnapshot.type === "err") {
-        return validatedSnapshot;
-      }
-      if (validatedEvent.value.seqNr !== validatedSnapshot.value.seqNr) {
-        return Result.err(
-          EventStoreError.contractViolation({
-            rule: "W-9",
-            seqNr: validatedEvent.value.seqNr,
-            snapshotSeqNr: validatedSnapshot.value.seqNr,
-          }),
-        );
-      }
+      const validated = validateEventAndSnapshot(event, snapshot);
+      if (validated.type === "err") return validated;
       return target.persistEventAndSnapshot(
-        validatedEvent.value,
-        validatedSnapshot.value,
+        validated.value.event,
+        validated.value.snapshot,
       );
     },
 

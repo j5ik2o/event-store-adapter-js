@@ -155,48 +155,65 @@ describe("MemoryStorage atomic records", () => {
       new Map([
         [
           "Order-1",
-          { head: storedEvent, events: [storedEvent], snapshot: undefined },
+          {
+            head: storedEvent,
+            events: [storedEvent],
+            snapshot: undefined,
+            history: [],
+          },
         ],
       ]),
     );
   });
 
-  test("commits snapshots with the event and preserves them on event-only updates", async () => {
-    const storage = unwrap(MemoryStorage.create());
-    unwrap(await commitMemoryStorageRecords(storage, event(1), snapshot(1)));
-    const first = unwrap(
-      await inspectMemoryStorageRecords(storage),
-    ).records.get("Order-1");
-    expect(first).toMatchObject({
-      head: { seqNr: 1, payload: Uint8Array.of(1) },
-      events: [{ seqNr: 1, payload: Uint8Array.of(1) }],
-      snapshot: snapshot(1),
-    });
+  test.each([undefined, 1])(
+    "commits snapshots and preserves current snapshot and history on event-only updates (retention count=%p)",
+    async (count) => {
+      const storage = unwrap(
+        MemoryStorage.create(
+          count === undefined ? undefined : { retention: { count } },
+        ),
+      );
+      unwrap(await commitMemoryStorageRecords(storage, event(1), snapshot(1)));
+      const first = unwrap(
+        await inspectMemoryStorageRecords(storage),
+      ).records.get("Order-1");
+      expect(first).toMatchObject({
+        head: { seqNr: 1, payload: Uint8Array.of(1) },
+        events: [{ seqNr: 1, payload: Uint8Array.of(1) }],
+        snapshot: snapshot(1),
+        history: count === undefined ? [] : [snapshot(1)],
+      });
 
-    unwrap(await commitMemoryStorageRecords(storage, event(2)));
-    const second = unwrap(
-      await inspectMemoryStorageRecords(storage),
-    ).records.get("Order-1");
-    expect(second).toMatchObject({
-      head: { seqNr: 2, payload: Uint8Array.of(2) },
-      events: [{ seqNr: 1 }, { seqNr: 2 }],
-      snapshot: snapshot(1),
-    });
+      unwrap(await commitMemoryStorageRecords(storage, event(2)));
+      const second = unwrap(
+        await inspectMemoryStorageRecords(storage),
+      ).records.get("Order-1");
+      expect(second).toMatchObject({
+        head: { seqNr: 2, payload: Uint8Array.of(2) },
+        events: [{ seqNr: 1 }, { seqNr: 2 }],
+        snapshot: snapshot(1),
+        history: count === undefined ? [] : [snapshot(1)],
+      });
 
-    unwrap(await commitMemoryStorageRecords(storage, event(3), snapshot(3)));
-    expect(
-      unwrap(await inspectMemoryStorageRecords(storage)).records.get("Order-1"),
-    ).toMatchObject({
-      head: { seqNr: 3, payload: Uint8Array.of(3) },
-      events: [{ seqNr: 1 }, { seqNr: 2 }, { seqNr: 3 }],
-      snapshot: snapshot(3),
-    });
-  });
+      unwrap(await commitMemoryStorageRecords(storage, event(3), snapshot(3)));
+      expect(
+        unwrap(await inspectMemoryStorageRecords(storage)).records.get(
+          "Order-1",
+        ),
+      ).toMatchObject({
+        head: { seqNr: 3, payload: Uint8Array.of(3) },
+        events: [{ seqNr: 1 }, { seqNr: 2 }, { seqNr: 3 }],
+        snapshot: snapshot(3),
+        history: count === undefined ? [] : [snapshot(1), snapshot(3)],
+      });
+    },
+  );
 
   test.each(["event", "snapshot"])(
     "%s byte preparation failure leaves every record unchanged",
     async (target) => {
-      const storage = unwrap(MemoryStorage.create());
+      const storage = unwrap(MemoryStorage.create({ retention: { count: 1 } }));
       unwrap(await commitMemoryStorageRecords(storage, event(1), snapshot(1)));
       const before = unwrap(await inspectMemoryStorageRecords(storage));
       const detached = Uint8Array.of(2);
@@ -229,14 +246,18 @@ describe("MemoryStorage atomic records", () => {
         unwrap(await inspectMemoryStorageRecords(storage)).records.get(
           "Order-1",
         ),
-      ).toMatchObject({ head: { seqNr: 2 }, snapshot: snapshot(2) });
+      ).toMatchObject({
+        head: { seqNr: 2 },
+        snapshot: snapshot(2),
+        history: [snapshot(1), snapshot(2)],
+      });
     },
   );
 
   test.each([false, true])(
     "failure immediately before publication preserves records (existing=%p) and releases the queue",
     async (existing) => {
-      const storage = unwrap(MemoryStorage.create());
+      const storage = unwrap(MemoryStorage.create({ retention: { count: 1 } }));
       if (existing) {
         unwrap(
           await commitMemoryStorageRecords(storage, event(1), snapshot(1)),
@@ -273,7 +294,11 @@ describe("MemoryStorage atomic records", () => {
         unwrap(await inspectMemoryStorageRecords(storage)).records.get(
           "Order-1",
         ),
-      ).toMatchObject({ head: { seqNr }, snapshot: snapshot(seqNr) });
+      ).toMatchObject({
+        head: { seqNr },
+        snapshot: snapshot(seqNr),
+        history: existing ? [snapshot(1), snapshot(2)] : [snapshot(1)],
+      });
     },
   );
 
@@ -332,6 +357,7 @@ describe("MemoryStorage atomic records", () => {
       expect(records).toMatchObject({
         head: { seqNr, payload: Uint8Array.of(seqNr) },
         snapshot: snapshot(seqNr),
+        history: [snapshot(seqNr)],
       });
       expect(records?.events.map((saved) => saved.seqNr)).toEqual(
         existing ? [1, 2] : [1],
@@ -377,6 +403,7 @@ describe("MemoryStorage atomic records", () => {
       expect(second.records.get("Order-1")).toMatchObject({
         head: { payload: Uint8Array.of(99) },
         snapshot: snapshot(1),
+        history: [snapshot(1)],
       });
     } finally {
       release.resolve();
@@ -389,6 +416,7 @@ describe("MemoryStorage atomic records", () => {
     expect(firstRecords.records.get("Order-1")).toMatchObject({
       head: { payload: Uint8Array.of(1) },
       snapshot: undefined,
+      history: [],
     });
   });
 });
@@ -430,7 +458,7 @@ describe("MemoryStorage related boundaries", () => {
   ])(
     "head=%p event=%p snapshot=%p rejects as %s without changing records",
     async (headSeqNr, seqNr, snapshotSeqNr, type, rule) => {
-      const storage = unwrap(MemoryStorage.create());
+      const storage = unwrap(MemoryStorage.create({ retention: { count: 2 } }));
       for (let n = 1; n <= headSeqNr; n += 1) {
         unwrap(
           await commitMemoryStorageRecords(storage, event(n), snapshot(n)),
@@ -504,13 +532,13 @@ describe("MemoryStorage related boundaries", () => {
   });
 
   test("copies bytes and metadata before waiting and protects saved values from observation changes", async () => {
-    const storage = unwrap(MemoryStorage.create());
+    const storage = unwrap(MemoryStorage.create({ retention: { count: 1 } }));
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const first = commitMemoryStorageRecords(
       storage,
       event(1),
-      undefined,
+      snapshot(1),
       () => {
         entered.resolve();
         return release.promise;
@@ -563,9 +591,18 @@ describe("MemoryStorage related boundaries", () => {
       manifest: "original-snapshot",
       aggregate: Uint8Array.of(4, 5),
     });
+    expect(record.history).toEqual([
+      snapshot(1),
+      {
+        seqNr: 2,
+        manifest: "original-snapshot",
+        aggregate: Uint8Array.of(4, 5),
+      },
+    ]);
     record.head.payload.fill(88);
     for (const saved of record.events) saved.payload.fill(88);
     record.snapshot.aggregate.fill(88);
+    for (const saved of record.history) saved.aggregate.fill(88);
     expect(Reflect.set(record.head, "seqNr", 99)).toBe(false);
     expect(Reflect.set(record.snapshot, "manifest", "changed")).toBe(false);
     (observed.records as Map<string, unknown>).clear();

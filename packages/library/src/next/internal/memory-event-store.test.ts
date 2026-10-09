@@ -6,6 +6,7 @@ import { EventStoreError } from "../event-store-error";
 import * as memoryStorageModule from "../memory-storage";
 import { MemoryStorage } from "../memory-storage";
 import { PayloadSerializer } from "../payload-serializer";
+import type { SnapshotEnvelope } from "../snapshot-envelope";
 import { createMemoryEventStoreInternal } from "./memory-event-store";
 import * as memoryStorageRecords from "./memory-storage-records";
 import {
@@ -27,6 +28,11 @@ const eventOf = (seqNr = 1): EventEnvelope => ({
   manifest: "event/v1",
   payload: { item: "book", seqNr },
 });
+const snapshotOf = (seqNr = 1): SnapshotEnvelope => ({
+  seqNr,
+  manifest: "snapshot/v1",
+  aggregate: { items: ["book"], seqNr },
+});
 
 async function recordsOf(storage: MemoryStorage) {
   return unwrap(await inspectMemoryStorageRecords(storage)).records;
@@ -45,14 +51,34 @@ function expectViolation<T>(
 }
 
 describe("createMemoryEventStoreInternal", () => {
-  test("provides the two connected event operations", () => {
+  test("provides the three connected operations", () => {
     const store = unwrap(createMemoryEventStoreInternal());
 
     expect(Object.keys(store)).toEqual([
       "persistEvent",
+      "persistEventAndSnapshot",
       "getEventsByIdSinceSeqNr",
     ]);
   });
+
+  test.each([
+    null,
+    {},
+    { serialize: () => Uint8Array.of(1) },
+    { serialize: 1, deserialize: () => null },
+  ])(
+    "rejects invalid snapshotSerializer %p without defaulting",
+    (serializer) => {
+      expect(
+        createMemoryEventStoreInternal({
+          snapshotSerializer: serializer as never,
+        }),
+      ).toMatchObject({
+        type: "err",
+        error: { type: "configuration-error", fieldName: "snapshotSerializer" },
+      });
+    },
+  );
 
   test.each([null, false, 0, "settings", []])(
     "rejects invalid input %p as a configuration error",
@@ -731,6 +757,7 @@ describe("memory persistEvent real records", () => {
               head: expected[seqNr - 1],
               events: expected,
               snapshot: undefined,
+              history: [],
             },
           ],
         ]),
@@ -1252,4 +1279,776 @@ describe("memory persistEvent real records", () => {
     expect((await failedResult).type).toBe("err");
     expect((await recordsOf(storage)).get("Order-1")?.events).toHaveLength(1);
   });
+});
+
+describe("memory persistEventAndSnapshot real records", () => {
+  test.each([undefined, 1])(
+    "commits seq1 then seq2 with real event reads and all records (retention count=%p)",
+    async (count) => {
+      const storage = unwrap(
+        MemoryStorage.create(
+          count === undefined ? undefined : { retention: { count } },
+        ),
+      );
+      const json = PayloadSerializer.json();
+      const serializeEvent = jest.fn(json.serialize);
+      const serializeSnapshot = jest.fn(json.serialize);
+      const deserializeSnapshot = jest.fn(json.deserialize);
+      const store = unwrap(
+        createMemoryEventStoreInternal({
+          storage,
+          eventSerializer: {
+            serialize: serializeEvent,
+            deserialize: json.deserialize,
+          },
+          snapshotSerializer: {
+            serialize: serializeSnapshot,
+            deserialize: deserializeSnapshot,
+          },
+        }),
+      );
+
+      for (const seqNr of [1, 2]) {
+        unwrap(
+          await store.persistEventAndSnapshot(
+            eventOf(seqNr),
+            snapshotOf(seqNr),
+          ),
+        );
+        const events = Array.from({ length: seqNr }, (_, index) =>
+          eventOf(index + 1),
+        );
+        const savedEvents = events.map((event) => ({
+          aggregateId: "Order-1",
+          seqNr: event.seqNr,
+          occurredAt: millis,
+          manifest: event.manifest,
+          payload: new TextEncoder().encode(JSON.stringify(event.payload)),
+        }));
+        const snapshots = events.map((event) => ({
+          ...snapshotOf(event.seqNr),
+          aggregate: new TextEncoder().encode(
+            JSON.stringify(snapshotOf(event.seqNr).aggregate),
+          ),
+        }));
+
+        expect(
+          unwrap(await store.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+        ).toEqual(events);
+        expect(await recordsOf(storage)).toEqual(
+          new Map([
+            [
+              "Order-1",
+              {
+                head: savedEvents[seqNr - 1],
+                events: savedEvents,
+                snapshot: snapshots[seqNr - 1],
+                history: count === undefined ? [] : snapshots,
+              },
+            ],
+          ]),
+        );
+      }
+      expect(serializeEvent.mock.calls).toEqual([
+        [eventOf().payload],
+        [eventOf(2).payload],
+      ]);
+      expect(serializeSnapshot.mock.calls).toEqual([
+        [snapshotOf().aggregate],
+        [snapshotOf(2).aggregate],
+      ]);
+      expect(deserializeSnapshot).not.toHaveBeenCalled();
+      expect(
+        unwrap(await store.getEventsByIdSinceSeqNr(eventOf().aggregateId, 2)),
+      ).toEqual([eventOf(2)]);
+    },
+  );
+
+  test("normalizes omitted manifests and stores null payloads without changing either input", async () => {
+    const storage = unwrap(MemoryStorage.create());
+    const store = unwrap(createMemoryEventStoreInternal({ storage }));
+    const event = {
+      aggregateId: eventOf().aggregateId,
+      seqNr: 1,
+      occurredAt: new Date(millis),
+      payload: null,
+    };
+    const snapshot = { seqNr: 1, aggregate: null };
+
+    unwrap(
+      await store.persistEventAndSnapshot(
+        event as EventEnvelope,
+        snapshot as SnapshotEnvelope,
+      ),
+    );
+
+    expect(event).not.toHaveProperty("manifest");
+    expect(snapshot).not.toHaveProperty("manifest");
+    expect((await recordsOf(storage)).get("Order-1")).toMatchObject({
+      head: { manifest: "", payload: new TextEncoder().encode("null") },
+      snapshot: {
+        seqNr: 1,
+        manifest: "",
+        aggregate: new TextEncoder().encode("null"),
+      },
+      history: [],
+    });
+    expect(
+      unwrap(await store.getEventsByIdSinceSeqNr(event.aggregateId, 0)),
+    ).toEqual([{ ...event, manifest: "" }]);
+  });
+
+  test.each([
+    [undefined, snapshotOf(2), "T-2"],
+    [null, snapshotOf(2), "T-2"],
+    [eventOf(2), undefined, "T-10"],
+    [eventOf(2), null, "T-10"],
+    [eventOf(0), snapshotOf(0), "W-6"],
+    [{ ...eventOf(2), payload: undefined }, snapshotOf(2), "T-2"],
+    [{ ...eventOf(2), aggregateId: undefined }, snapshotOf(2), "T-2"],
+    [
+      { ...eventOf(2), aggregateId: { typeName: "Order-item", value: "1" } },
+      snapshotOf(2),
+      "T-11",
+    ],
+    [
+      {
+        ...eventOf(2),
+        aggregateId: { typeName: "Order", value: "x".repeat(1024) },
+      },
+      snapshotOf(2),
+      "T-12",
+    ],
+    [{ ...eventOf(2), seqNr: -1 }, snapshotOf(2), "T-9"],
+    [{ ...eventOf(2), occurredAt: new Date(NaN) }, snapshotOf(2), "T-13"],
+    [{ ...eventOf(2), manifest: null }, snapshotOf(2), "T-2"],
+    [eventOf(2), { ...snapshotOf(2), aggregate: undefined }, "T-10"],
+    [eventOf(2), { ...snapshotOf(2), seqNr: undefined }, "T-10"],
+    [eventOf(2), { ...snapshotOf(2), seqNr: -1 }, "T-9"],
+    [eventOf(2), { ...snapshotOf(2), manifest: null }, "T-10"],
+    [eventOf(2), snapshotOf(0), "W-9"],
+    [eventOf(2), snapshotOf(1), "W-9"],
+    [eventOf(2), snapshotOf(3), "W-9"],
+  ] as const)(
+    "rejects event=%p snapshot=%p with %s before serializers and commit",
+    async (event, snapshot, rule) => {
+      const storage = unwrap(MemoryStorage.create({ retention: { count: 1 } }));
+      const json = PayloadSerializer.json();
+      const serializeEvent = jest.fn(json.serialize);
+      const serializeSnapshot = jest.fn(json.serialize);
+      const store = unwrap(
+        createMemoryEventStoreInternal({
+          storage,
+          eventSerializer: {
+            serialize: serializeEvent,
+            deserialize: json.deserialize,
+          },
+          snapshotSerializer: {
+            serialize: serializeSnapshot,
+            deserialize: json.deserialize,
+          },
+        }),
+      );
+      unwrap(await store.persistEventAndSnapshot(eventOf(), snapshotOf()));
+      const before = await recordsOf(storage);
+      serializeEvent.mockClear();
+      serializeSnapshot.mockClear();
+      const commit = jest.spyOn(
+        memoryStorageRecords,
+        "commitMemoryStorageRecords",
+      );
+
+      try {
+        const result = await store.persistEventAndSnapshot(
+          event as EventEnvelope,
+          snapshot as SnapshotEnvelope,
+        );
+
+        expectViolation(result, rule);
+        if (rule === "W-9")
+          expect(result).toMatchObject({
+            error: { seqNr: 2, snapshotSeqNr: snapshot?.seqNr },
+          });
+        expect(serializeEvent).not.toHaveBeenCalled();
+        expect(serializeSnapshot).not.toHaveBeenCalled();
+        expect(commit).not.toHaveBeenCalled();
+        expect(await recordsOf(storage)).toEqual(before);
+      } finally {
+        commit.mockRestore();
+      }
+    },
+  );
+
+  test.each([
+    [0, 2, "contract-violation", "W-8"],
+    [1, 1, "optimistic-lock-conflict", undefined],
+    [2, 2, "optimistic-lock-conflict", undefined],
+    [2, 1, "optimistic-lock-conflict", undefined],
+    [1, 3, "contract-violation", "W-8"],
+  ] as const)(
+    "head=%s rejects seqNr=%s as %s before preparing publication",
+    async (headSeqNr, seqNr, type, rule) => {
+      const storage = unwrap(MemoryStorage.create({ retention: { count: 2 } }));
+      const store = unwrap(createMemoryEventStoreInternal({ storage }));
+      for (let n = 1; n <= headSeqNr; n += 1)
+        unwrap(await store.persistEventAndSnapshot(eventOf(n), snapshotOf(n)));
+      const before = await recordsOf(storage);
+      const beforeCommit = jest.fn();
+      const originalCommit = commitMemoryStorageRecords;
+      const commit = jest
+        .spyOn(memoryStorageRecords, "commitMemoryStorageRecords")
+        .mockImplementation((destination, event, snapshot) =>
+          originalCommit(destination, event, snapshot, beforeCommit),
+        );
+      try {
+        const result = await store.persistEventAndSnapshot(
+          eventOf(seqNr),
+          snapshotOf(seqNr),
+        );
+
+        expect(result).toMatchObject({
+          type: "err",
+          error: {
+            type,
+            seqNr,
+            ...(rule === undefined
+              ? { aggregateId: "Order-1", headSeqNr }
+              : { rule }),
+          },
+        });
+        expect(beforeCommit).not.toHaveBeenCalled();
+        expect(await recordsOf(storage)).toEqual(before);
+      } finally {
+        commit.mockRestore();
+      }
+    },
+  );
+
+  describe.each(["event", "snapshot"] as const)(
+    "%s serialization",
+    (target) => {
+      test.each(["throw", "non-bytes", "detached"] as const)(
+        "%s failure preserves all records and allows the same-number retry",
+        async (failure) => {
+          const storage = unwrap(
+            MemoryStorage.create({ retention: { count: 1 } }),
+          );
+          const json = PayloadSerializer.json();
+          const serializeEvent = jest.fn(json.serialize);
+          const serializeSnapshot = jest.fn(json.serialize);
+          const store = unwrap(
+            createMemoryEventStoreInternal({
+              storage,
+              eventSerializer: {
+                serialize: serializeEvent,
+                deserialize: json.deserialize,
+              },
+              snapshotSerializer: {
+                serialize: serializeSnapshot,
+                deserialize: json.deserialize,
+              },
+            }),
+          );
+          unwrap(await store.persistEventAndSnapshot(eventOf(), snapshotOf()));
+          const before = await recordsOf(storage);
+          serializeEvent.mockClear();
+          serializeSnapshot.mockClear();
+          const serialize =
+            target === "event" ? serializeEvent : serializeSnapshot;
+          const cause = new Error("controlled serializer failure");
+          if (failure === "throw")
+            serialize.mockImplementationOnce(() => {
+              throw cause;
+            });
+          else if (failure === "non-bytes")
+            serialize.mockReturnValueOnce(undefined as never);
+          else {
+            const detached = Uint8Array.of(2);
+            structuredClone(detached.buffer, { transfer: [detached.buffer] });
+            serialize.mockReturnValueOnce(detached);
+          }
+          const commit = jest.spyOn(
+            memoryStorageRecords,
+            "commitMemoryStorageRecords",
+          );
+          try {
+            const result = await store.persistEventAndSnapshot(
+              eventOf(2),
+              snapshotOf(2),
+            );
+
+            expect(result).toMatchObject({
+              type: "err",
+              error: { type: "serialization-error", operation: "serialize" },
+            });
+            if (result.type !== "err")
+              throw new Error("expected serialization error");
+            if (failure === "throw") expect(result.error.cause).toBe(cause);
+            else
+              expect(result.error.cause).toMatchObject({ name: "TypeError" });
+            expect(serializeEvent).toHaveBeenCalledTimes(1);
+            expect(serializeSnapshot).toHaveBeenCalledTimes(
+              target === "event" ? 0 : 1,
+            );
+            expect(commit).not.toHaveBeenCalled();
+            expect(await recordsOf(storage)).toEqual(before);
+            unwrap(
+              await store.persistEventAndSnapshot(eventOf(2), snapshotOf(2)),
+            );
+            const after = (await recordsOf(storage)).get("Order-1");
+            expect(after?.head.seqNr).toBe(2);
+            expect(after?.history.map((saved) => saved.seqNr)).toEqual([1, 2]);
+          } finally {
+            commit.mockRestore();
+          }
+        },
+      );
+    },
+  );
+
+  test.each([undefined, 1])(
+    "preparation failure keeps the previous commit and permits retry (retention count=%p)",
+    async (count) => {
+      const storage = unwrap(
+        MemoryStorage.create(
+          count === undefined ? undefined : { retention: { count } },
+        ),
+      );
+      const store = unwrap(createMemoryEventStoreInternal({ storage }));
+      unwrap(await store.persistEventAndSnapshot(eventOf(), snapshotOf()));
+      const before = await recordsOf(storage);
+      const cause = new Error("controlled preparation failure");
+      const originalCommit = commitMemoryStorageRecords;
+      const commit = jest
+        .spyOn(memoryStorageRecords, "commitMemoryStorageRecords")
+        .mockImplementation((destination, event, snapshot) =>
+          originalCommit(destination, event, snapshot, () => {
+            throw cause;
+          }),
+        );
+      try {
+        expect(
+          await store.persistEventAndSnapshot(eventOf(2), snapshotOf(2)),
+        ).toMatchObject({
+          type: "err",
+          error: { type: "storage-error", cause },
+        });
+        expect(await recordsOf(storage)).toEqual(before);
+        expect(
+          unwrap(await store.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+        ).toEqual([eventOf()]);
+      } finally {
+        commit.mockRestore();
+      }
+      unwrap(await store.persistEventAndSnapshot(eventOf(2), snapshotOf(2)));
+      const after = (await recordsOf(storage)).get("Order-1");
+      expect(after?.head.seqNr).toBe(2);
+      expect(after?.snapshot?.seqNr).toBe(2);
+      expect(after?.history.map((saved) => saved.seqNr)).toEqual(
+        count === undefined ? [] : [1, 2],
+      );
+    },
+  );
+
+  test("event readers and independent record inspection wait for the whole second commit", async () => {
+    const storage = unwrap(MemoryStorage.create({ retention: { count: 1 } }));
+    const store = unwrap(createMemoryEventStoreInternal({ storage }));
+    unwrap(await store.persistEventAndSnapshot(eventOf(), snapshotOf()));
+    const before = await recordsOf(storage);
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const originalCommit = commitMemoryStorageRecords;
+    const commit = jest
+      .spyOn(memoryStorageRecords, "commitMemoryStorageRecords")
+      .mockImplementation((destination, event, snapshot) =>
+        originalCommit(destination, event, snapshot, () => {
+          entered.resolve();
+          return release.promise;
+        }),
+      );
+    const writing = store.persistEventAndSnapshot(eventOf(2), snapshotOf(2));
+    const eventRead = jest.fn();
+    const recordRead = jest.fn();
+    const reading = store
+      .getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)
+      .then((result) => {
+        eventRead();
+        return result;
+      });
+    const inspecting = recordsOf(storage).then((records) => {
+      recordRead();
+      return records;
+    });
+    try {
+      await entered.promise;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(eventRead).not.toHaveBeenCalled();
+      expect(recordRead).not.toHaveBeenCalled();
+      expect(before.get("Order-1")?.head.seqNr).toBe(1);
+      expect(before.get("Order-1")?.snapshot?.seqNr).toBe(1);
+      expect(
+        before.get("Order-1")?.history.map((saved) => saved.seqNr),
+      ).toEqual([1]);
+      release.resolve();
+
+      unwrap(await writing);
+      expect(unwrap(await reading)).toEqual([eventOf(), eventOf(2)]);
+      const second = (await inspecting).get("Order-1");
+      expect(second).toEqual({
+        head: {
+          aggregateId: "Order-1",
+          seqNr: 2,
+          occurredAt: millis,
+          manifest: "event/v1",
+          payload: new TextEncoder().encode(JSON.stringify(eventOf(2).payload)),
+        },
+        events: [
+          ...(before.get("Order-1")?.events ?? []),
+          {
+            aggregateId: "Order-1",
+            seqNr: 2,
+            occurredAt: millis,
+            manifest: "event/v1",
+            payload: new TextEncoder().encode(
+              JSON.stringify(eventOf(2).payload),
+            ),
+          },
+        ],
+        snapshot: {
+          ...snapshotOf(2),
+          aggregate: new TextEncoder().encode(
+            JSON.stringify(snapshotOf(2).aggregate),
+          ),
+        },
+        history: [
+          ...(before.get("Order-1")?.history ?? []),
+          {
+            ...snapshotOf(2),
+            aggregate: new TextEncoder().encode(
+              JSON.stringify(snapshotOf(2).aggregate),
+            ),
+          },
+        ],
+      });
+    } finally {
+      release.resolve();
+      await Promise.allSettled([writing, reading, inspecting]);
+      commit.mockRestore();
+    }
+  });
+
+  test.each([false, true])(
+    "protects both results when serializers reuse scratch and callers mutate queued inputs, reads and observations (Buffer=%p)",
+    async (useBuffer) => {
+      const storage = unwrap(MemoryStorage.create({ retention: { count: 1 } }));
+      const scratch = useBuffer
+        ? Buffer.from([99, 0, 0, 99])
+        : Uint8Array.of(99, 0, 0, 99);
+      const bytes = scratch.subarray(1, 3);
+      const serializeEvent = jest.fn((payload: Uint8Array) => {
+        bytes.set(payload);
+        return bytes;
+      });
+      const serializeSnapshot = jest.fn((payload: Uint8Array) => {
+        bytes.set(payload);
+        return bytes;
+      });
+      const store = unwrap(
+        createMemoryEventStoreInternal<Uint8Array, Uint8Array>({
+          storage,
+          eventSerializer: {
+            serialize: serializeEvent,
+            deserialize: (input) => {
+              const value = new Uint8Array(input);
+              input.fill(0);
+              return value;
+            },
+          },
+          snapshotSerializer: {
+            serialize: serializeSnapshot,
+            deserialize: (input) => new Uint8Array(input),
+          },
+        }),
+      );
+      unwrap(
+        await store.persistEventAndSnapshot(
+          { ...eventOf(), payload: Uint8Array.of(1, 2) },
+          { ...snapshotOf(), aggregate: Uint8Array.of(1, 1) },
+        ),
+      );
+      const first = await recordsOf(storage);
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const blocking = commitMemoryStorageRecords(
+        storage,
+        {
+          ...eventOf(),
+          aggregateId: { typeName: "Blocker", value: "1" },
+          payload: Uint8Array.of(1),
+        },
+        undefined,
+        () => {
+          entered.resolve();
+          return release.promise;
+        },
+      );
+      await entered.promise;
+      const event = {
+        aggregateId: { typeName: "Order", value: "1" },
+        seqNr: 2,
+        occurredAt: new Date(millis),
+        manifest: "event/v2",
+        payload: Uint8Array.of(2, 3),
+      };
+      const snapshot = {
+        seqNr: 2,
+        manifest: "snapshot/v2",
+        aggregate: Uint8Array.of(4, 5),
+      };
+      serializeEvent.mockClear();
+      serializeSnapshot.mockClear();
+      const queued = store.persistEventAndSnapshot(event, snapshot);
+      try {
+        expect(serializeEvent).toHaveBeenCalledWith(event.payload);
+        expect(serializeSnapshot).toHaveBeenCalledWith(snapshot.aggregate);
+        expect(serializeEvent).toHaveBeenCalledTimes(1);
+        expect(serializeSnapshot).toHaveBeenCalledTimes(1);
+        event.aggregateId.typeName = "Changed";
+        event.aggregateId.value = "other";
+        event.seqNr = 99;
+        event.occurredAt.setTime(NaN);
+        event.manifest = "changed";
+        event.payload.fill(99);
+        snapshot.seqNr = 99;
+        snapshot.manifest = "changed";
+        snapshot.aggregate.fill(99);
+        scratch.fill(99);
+        release.resolve();
+        unwrap(await blocking);
+        unwrap(await queued);
+      } finally {
+        release.resolve();
+        await Promise.allSettled([blocking, queued]);
+      }
+      const before = await recordsOf(storage);
+      const observed = await recordsOf(storage);
+      const record = observed.get("Order-1");
+      if (record === undefined || record.snapshot === undefined)
+        throw new Error("expected snapshot commit");
+      expect(record.head).toEqual({
+        aggregateId: "Order-1",
+        seqNr: 2,
+        occurredAt: millis,
+        manifest: "event/v2",
+        payload: Uint8Array.of(2, 3),
+      });
+      expect(record.snapshot).toEqual({
+        seqNr: 2,
+        manifest: "snapshot/v2",
+        aggregate: Uint8Array.of(4, 5),
+      });
+      expect(record.events[0]).toEqual(first.get("Order-1")?.head);
+      expect(record.history).toEqual([
+        { seqNr: 1, manifest: "snapshot/v1", aggregate: Uint8Array.of(1, 1) },
+        { seqNr: 2, manifest: "snapshot/v2", aggregate: Uint8Array.of(4, 5) },
+      ]);
+      const expectedEvents = [
+        { ...eventOf(), payload: Uint8Array.of(1, 2) },
+        { ...eventOf(2), manifest: "event/v2", payload: Uint8Array.of(2, 3) },
+      ];
+      const returned = unwrap(
+        await store.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0),
+      );
+      expect(returned).toEqual(expectedEvents);
+      returned[0].occurredAt.setTime(NaN);
+      returned[0].payload.fill(88);
+      returned.splice(1);
+      record.head.payload.fill(88);
+      for (const saved of record.events) saved.payload.fill(88);
+      record.snapshot.aggregate.fill(88);
+      for (const saved of record.history) saved.aggregate.fill(88);
+      (observed as Map<string, unknown>).clear();
+      expect(await recordsOf(storage)).toEqual(before);
+      expect(
+        unwrap(await store.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+      ).toEqual(expectedEvents);
+    },
+  );
+
+  test("shared entries use their own event and snapshot serializers for alternating commits", async () => {
+    const storage = unwrap(MemoryStorage.create({ retention: { count: 1 } }));
+    const serializeFirstEvent = jest.fn(() => Uint8Array.of(11));
+    const serializeFirstSnapshot = jest.fn(() => Uint8Array.of(111));
+    const serializeSecondEvent = jest.fn(() => Uint8Array.of(22));
+    const serializeSecondSnapshot = jest.fn(() => Uint8Array.of(222));
+    const deserialize = (bytes: Uint8Array) => [...bytes];
+    const first = unwrap(
+      createMemoryEventStoreInternal<unknown, unknown>({
+        storage,
+        eventSerializer: { serialize: serializeFirstEvent, deserialize },
+        snapshotSerializer: { serialize: serializeFirstSnapshot, deserialize },
+      }),
+    );
+    const second = unwrap(
+      createMemoryEventStoreInternal<unknown, unknown>({
+        storage,
+        eventSerializer: { serialize: serializeSecondEvent, deserialize },
+        snapshotSerializer: { serialize: serializeSecondSnapshot, deserialize },
+      }),
+    );
+
+    unwrap(await first.persistEventAndSnapshot(eventOf(), snapshotOf()));
+    unwrap(await second.persistEventAndSnapshot(eventOf(2), snapshotOf(2)));
+    unwrap(await first.persistEventAndSnapshot(eventOf(3), snapshotOf(3)));
+
+    const record = (await recordsOf(storage)).get("Order-1");
+    expect(record?.events.map((event) => [...event.payload])).toEqual([
+      [11],
+      [22],
+      [11],
+    ]);
+    expect(record?.history.map((snapshot) => [...snapshot.aggregate])).toEqual([
+      [111],
+      [222],
+      [111],
+    ]);
+    expect(record?.snapshot?.aggregate).toEqual(Uint8Array.of(111));
+    expect(
+      unwrap(
+        await second.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0),
+      ).map((event) => event.payload),
+    ).toEqual([[11], [22], [11]]);
+    expect(serializeFirstEvent).toHaveBeenCalledTimes(2);
+    expect(serializeFirstSnapshot).toHaveBeenCalledTimes(2);
+    expect(serializeSecondEvent).toHaveBeenCalledTimes(1);
+    expect(serializeSecondSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  test("separate destinations keep records and queues independent for the same aid", async () => {
+    const firstStorage = unwrap(
+      MemoryStorage.create({ retention: { count: 1 } }),
+    );
+    const secondStorage = unwrap(MemoryStorage.create());
+    const first = unwrap(
+      createMemoryEventStoreInternal({ storage: firstStorage }),
+    );
+    const second = unwrap(
+      createMemoryEventStoreInternal({ storage: secondStorage }),
+    );
+    unwrap(await first.persistEventAndSnapshot(eventOf(), snapshotOf()));
+    expect((await recordsOf(secondStorage)).size).toBe(0);
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const originalCommit = commitMemoryStorageRecords;
+    const commit = jest
+      .spyOn(memoryStorageRecords, "commitMemoryStorageRecords")
+      .mockImplementation((storage, event, snapshot) =>
+        originalCommit(
+          storage,
+          event,
+          snapshot,
+          storage === firstStorage
+            ? () => {
+                entered.resolve();
+                return release.promise;
+              }
+            : undefined,
+        ),
+      );
+    const pending = first.persistEventAndSnapshot(eventOf(2), snapshotOf(2));
+    const otherEvent = { ...eventOf(), payload: "other event" };
+    const otherSnapshot = { ...snapshotOf(), aggregate: "other snapshot" };
+    try {
+      await entered.promise;
+      unwrap(await second.persistEventAndSnapshot(otherEvent, otherSnapshot));
+      expect(
+        unwrap(await second.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+      ).toEqual([otherEvent]);
+      expect((await recordsOf(secondStorage)).get("Order-1")).toMatchObject({
+        head: { seqNr: 1 },
+        snapshot: {
+          seqNr: 1,
+          aggregate: new TextEncoder().encode('"other snapshot"'),
+        },
+        history: [],
+      });
+    } finally {
+      release.resolve();
+      await Promise.allSettled([pending]);
+      commit.mockRestore();
+    }
+    unwrap(await pending);
+    expect(
+      (await recordsOf(firstStorage))
+        .get("Order-1")
+        ?.history.map((snapshot) => snapshot.seqNr),
+    ).toEqual([1, 2]);
+    expect(
+      unwrap(await second.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+    ).toEqual([otherEvent]);
+  });
+
+  test.each([false, true])(
+    "parallel shared entries commit one complete event and snapshot pair (existing=%p)",
+    async (existing) => {
+      const storage = unwrap(MemoryStorage.create({ retention: { count: 2 } }));
+      const first = unwrap(createMemoryEventStoreInternal({ storage }));
+      const second = unwrap(createMemoryEventStoreInternal({ storage }));
+      if (existing)
+        unwrap(await first.persistEventAndSnapshot(eventOf(), snapshotOf()));
+      const before = await recordsOf(storage);
+      const seqNr = existing ? 2 : 1;
+      const attempts = [
+        {
+          event: { ...eventOf(seqNr), payload: "first event" },
+          snapshot: { ...snapshotOf(seqNr), aggregate: "first snapshot" },
+        },
+        {
+          event: { ...eventOf(seqNr), payload: "second event" },
+          snapshot: { ...snapshotOf(seqNr), aggregate: "second snapshot" },
+        },
+      ];
+
+      const results = await Promise.all([
+        first.persistEventAndSnapshot(attempts[0].event, attempts[0].snapshot),
+        second.persistEventAndSnapshot(attempts[1].event, attempts[1].snapshot),
+      ]);
+
+      expect(results.filter((result) => result.type === "ok")).toHaveLength(1);
+      const errors = results.filter((result) => result.type === "err");
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        error: {
+          type: "optimistic-lock-conflict",
+          aggregateId: "Order-1",
+          seqNr,
+          headSeqNr: seqNr,
+        },
+      });
+      const winner =
+        attempts[results.findIndex((result) => result.type === "ok")];
+      const savedEvent = {
+        aggregateId: "Order-1",
+        seqNr,
+        occurredAt: millis,
+        manifest: winner.event.manifest,
+        payload: new TextEncoder().encode(JSON.stringify(winner.event.payload)),
+      };
+      const savedSnapshot = {
+        ...winner.snapshot,
+        aggregate: new TextEncoder().encode(
+          JSON.stringify(winner.snapshot.aggregate),
+        ),
+      };
+      expect((await recordsOf(storage)).get("Order-1")).toEqual({
+        head: savedEvent,
+        events: [...(before.get("Order-1")?.events ?? []), savedEvent],
+        snapshot: savedSnapshot,
+        history: [...(before.get("Order-1")?.history ?? []), savedSnapshot],
+      });
+      expect(
+        unwrap(await first.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0)),
+      ).toEqual(existing ? [eventOf(), winner.event] : [winner.event]);
+    },
+  );
 });
