@@ -2,6 +2,7 @@ import { Result } from "../../result";
 import type { AggregateId } from "../aggregate-id";
 import type { ContractRule } from "../contract-rule";
 import type { EventEnvelope } from "../event-envelope";
+import type { EventStore } from "../event-store";
 import { EventStoreError } from "../event-store-error";
 import * as memoryStorageModule from "../memory-storage";
 import { MemoryStorage } from "../memory-storage";
@@ -50,6 +51,236 @@ function expectViolation<T>(
   if (result.type !== "err") throw new Error("expected violation");
   expect(result.error.message).toContain(rule);
 }
+
+describe("memory aggregate ID access", () => {
+  const writes = ["persistEvent", "persistEventAndSnapshot"] as const;
+  const operations = [
+    ...writes,
+    "getLatestSnapshotById",
+    "getEventsByIdSinceSeqNr",
+  ] as const;
+
+  function callWithId(
+    store: EventStore,
+    operation: keyof EventStore,
+    aggregateId: AggregateId,
+  ): Promise<Result<unknown, EventStoreError>> {
+    switch (operation) {
+      case "persistEvent":
+        return store.persistEvent({ ...eventOf(2), aggregateId });
+      case "persistEventAndSnapshot":
+        return store.persistEventAndSnapshot(
+          { ...eventOf(2), aggregateId },
+          snapshotOf(2),
+        );
+      case "getLatestSnapshotById":
+        return store.getLatestSnapshotById(aggregateId);
+      case "getEventsByIdSinceSeqNr":
+        return store.getEventsByIdSinceSeqNr(aggregateId, 0);
+    }
+  }
+
+  describe.each(operations)("%s", (operation) => {
+    test.each([
+      ["getter", "typeName"],
+      ["getter", "value"],
+      ["Proxy", "typeName"],
+      ["Proxy", "value"],
+    ] as const)(
+      "returns T-2 with the original cause when %s %s access throws",
+      async (access, property) => {
+        const storage = unwrap(
+          MemoryStorage.create({ retention: { count: 1 } }),
+        );
+        const json = PayloadSerializer.json();
+        const serializeEvent = jest.fn(json.serialize);
+        const deserializeEvent = jest.fn(json.deserialize);
+        const serializeSnapshot = jest.fn(json.serialize);
+        const deserializeSnapshot = jest.fn(json.deserialize);
+        const store = unwrap(
+          createMemoryEventStoreInternal({
+            storage,
+            eventSerializer: {
+              serialize: serializeEvent,
+              deserialize: deserializeEvent,
+            },
+            snapshotSerializer: {
+              serialize: serializeSnapshot,
+              deserialize: deserializeSnapshot,
+            },
+          }),
+        );
+        unwrap(await store.persistEventAndSnapshot(eventOf(), snapshotOf()));
+        const before = await recordsOf(storage);
+        expect(before.get("Order-1")).toMatchObject({
+          head: { seqNr: 1 },
+          events: [{ seqNr: 1 }],
+          snapshot: { seqNr: 1 },
+          history: [{ seqNr: 1 }],
+        });
+        serializeEvent.mockClear();
+        serializeSnapshot.mockClear();
+
+        const cause = new Error("ID element access failed");
+        const typeNameAccess = jest.fn(() => {
+          if (property === "typeName") throw cause;
+          return "Order";
+        });
+        const valueAccess = jest.fn(() => {
+          if (property === "value") throw cause;
+          return "1";
+        });
+        const aggregateId =
+          access === "getter"
+            ? {
+                get typeName() {
+                  return typeNameAccess();
+                },
+                get value() {
+                  return valueAccess();
+                },
+              }
+            : new Proxy(
+                { typeName: "Order", value: "1" },
+                {
+                  get(target, key, receiver) {
+                    if (key === "typeName") return typeNameAccess();
+                    if (key === "value") return valueAccess();
+                    return Reflect.get(target, key, receiver);
+                  },
+                },
+              );
+        const readSnapshot = jest.spyOn(
+          memoryStorageRecords,
+          "readMemoryStorageLatestSnapshot",
+        );
+        const readEvents = jest.spyOn(
+          memoryStorageRecords,
+          "readMemoryStorageEvents",
+        );
+        const commit = jest.spyOn(
+          memoryStorageRecords,
+          "commitMemoryStorageRecords",
+        );
+
+        try {
+          const result = await callWithId(store, operation, aggregateId);
+
+          expectViolation(result, "T-2");
+          if (result.type !== "err") throw new Error("expected ID error");
+          expect(result.error.cause).toBe(cause);
+          expect(typeNameAccess).toHaveBeenCalledTimes(1);
+          expect(valueAccess).toHaveBeenCalledTimes(
+            property === "typeName" ? 0 : 1,
+          );
+          expect(serializeEvent).not.toHaveBeenCalled();
+          expect(deserializeEvent).not.toHaveBeenCalled();
+          expect(serializeSnapshot).not.toHaveBeenCalled();
+          expect(deserializeSnapshot).not.toHaveBeenCalled();
+          expect(readSnapshot).not.toHaveBeenCalled();
+          expect(readEvents).not.toHaveBeenCalled();
+          expect(commit).not.toHaveBeenCalled();
+          expect(await recordsOf(storage)).toEqual(before);
+        } finally {
+          readSnapshot.mockRestore();
+          readEvents.mockRestore();
+          commit.mockRestore();
+        }
+      },
+    );
+  });
+
+  describe.each(writes)("%s", (operation) => {
+    test("reads successful ID getters once and commits the checked values", async () => {
+      const storage = unwrap(MemoryStorage.create());
+      const store = unwrap(createMemoryEventStoreInternal({ storage }));
+      unwrap(await store.persistEvent(eventOf()));
+      const typeName = jest
+        .fn()
+        .mockReturnValueOnce("Order")
+        .mockReturnValue("Changed");
+      const value = jest.fn().mockReturnValueOnce("1").mockReturnValue("other");
+      const aggregateId = {
+        get typeName() {
+          return typeName();
+        },
+        get value() {
+          return value();
+        },
+      };
+
+      unwrap(await callWithId(store, operation, aggregateId));
+
+      expect(typeName).toHaveBeenCalledTimes(1);
+      expect(value).toHaveBeenCalledTimes(1);
+      const records = await recordsOf(storage);
+      expect([...records.keys()]).toEqual(["Order-1"]);
+      expect(records.get("Order-1")?.head).toEqual({
+        aggregateId: "Order-1",
+        seqNr: 2,
+        occurredAt: millis,
+        manifest: "event/v1",
+        payload: PayloadSerializer.json().serialize(eventOf(2).payload),
+      });
+    });
+
+    test.each([
+      [-1, "T-9"],
+      [0, "W-6"],
+    ] as const)(
+      "preserves seqNr=%s validation before throwing ID getters: %s",
+      async (seqNr, rule) => {
+        const store = unwrap(createMemoryEventStoreInternal());
+        const read = jest.fn(() => {
+          throw new Error("ID must not be read before event validation");
+        });
+        const event = {
+          ...eventOf(seqNr),
+          aggregateId: {
+            get typeName() {
+              return read();
+            },
+            get value() {
+              return read();
+            },
+          },
+        };
+
+        const result = await (operation === "persistEvent"
+          ? store.persistEvent(event)
+          : store.persistEventAndSnapshot(event, snapshotOf(seqNr)));
+
+        expectViolation(result, rule);
+        expect(read).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  test("getEventsByIdSinceSeqNr checks ID access before an invalid start", async () => {
+    const store = unwrap(createMemoryEventStoreInternal());
+    const cause = new Error("cannot read ID value");
+    const typeName = jest.fn(() => "Order");
+    const value = jest.fn(() => {
+      throw cause;
+    });
+    const aggregateId = {
+      get typeName() {
+        return typeName();
+      },
+      get value() {
+        return value();
+      },
+    };
+
+    const result = await store.getEventsByIdSinceSeqNr(aggregateId, -1);
+
+    expectViolation(result, "T-2");
+    if (result.type !== "err") throw new Error("expected ID error");
+    expect(result.error.cause).toBe(cause);
+    expect(typeName).toHaveBeenCalledTimes(1);
+    expect(value).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("createMemoryEventStoreInternal", () => {
   test("provides the four connected operations", () => {
