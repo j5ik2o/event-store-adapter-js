@@ -71,6 +71,34 @@ async function consumeMemory() {
     assert.deepEqual(id, input);
     assert.equal(unwrap(AggregateId.asString(id)), `${input.typeName}-${input.value}`);
   }
+  const reads = { typeName: 0, value: 0 };
+  const changingId = new Proxy({ typeName: "Order", value: "1" }, {
+    get(target, key, receiver) {
+      if (key === "typeName") return ++reads.typeName === 1 ? "Order" : "invalid-type";
+      if (key === "value") return ++reads.value === 1 ? "1" : "x".repeat(1025);
+      return Reflect.get(target, key, receiver);
+    },
+  });
+  assert.equal(unwrap(AggregateId.asString(changingId)), "Order-1");
+  assert.deepEqual(reads, { typeName: 1, value: 1 });
+  const accessCause = new Error("ID access failed");
+  const unreadableId = AggregateId.asString({ get typeName() { throw accessCause; }, value: "1" });
+  assert.equal(unreadableId.type, "err");
+  assert.equal(unreadableId.error.type, "contract-violation");
+  assert.equal(unreadableId.error.rule, "T-2");
+  assert.equal(unreadableId.error.cause, accessCause);
+  const configurationCause = new Error("configuration access failed");
+  for (const [fieldName, create] of [
+    ["eventSerializer", () => EventStore.createMemory({ get eventSerializer() { throw configurationCause; } })],
+    ["storage", () => EventStore.createMemory({ get storage() { throw configurationCause; } })],
+    ["retention", () => MemoryStorage.create({ get retention() { throw configurationCause; } })],
+  ]) {
+    const rejected = create();
+    assert.equal(rejected.type, "err");
+    assert.equal(rejected.error.type, "configuration-error");
+    assert.equal(rejected.error.fieldName, fieldName);
+    assert.equal(rejected.error.cause, configurationCause);
+  }
   const storage = unwrap(MemoryStorage.create());
   const store = unwrap(EventStore.createMemory({ storage, ...serializers() }));
   const id = await consumeFourOperations(store);
@@ -92,6 +120,12 @@ async function consumeMemory() {
 
 async function consumeDynamoDB(layout) {
   const { DynamoDBClient } = createRequire(require.resolve("event-store-adapter-js"))("@aws-sdk/client-dynamodb");
+  const cause = new Error("client access failed");
+  const rejected = await EventStore.createDynamoDB({ get client() { throw cause; }, tables: layout.tables, snapshotAidIndexName: layout.snapshotAidIndexName });
+  assert.equal(rejected.type, "err");
+  assert.equal(rejected.error.type, "configuration-error");
+  assert.equal(rejected.error.fieldName, "client");
+  assert.equal(rejected.error.cause, cause);
   const client = new DynamoDBClient({ region: "us-west-1", endpoint: layout.endpoint, credentials: { accessKeyId: "dynamodblocal", secretAccessKey: "test-only" }, maxAttempts: 1 });
   try {
     const store = unwrap(await EventStore.createDynamoDB({ client, tables: layout.tables, snapshotAidIndexName: layout.snapshotAidIndexName, ...serializers() }));
@@ -107,6 +141,6 @@ if (require.main === module) {
   (async () => {
     await consumeMemory();
     await consumeDynamoDB(JSON.parse(process.env.ESWA_DYNAMODB_LAYOUT));
-    console.log("External package: Unicode IDs, four operations, domain serializers, Result/cause, Memory sharing and isolation passed");
+    console.log("External package: Unicode IDs, ID access, creation Result/cause, four operations, domain serializers, Result/cause, Memory sharing and isolation passed");
   })().catch((error) => { console.error(error); process.exitCode = 1; });
 }

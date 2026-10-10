@@ -47,10 +47,21 @@ export namespace AggregateId {
   }
 
   export function asString(id: AggregateId): Result<string, EventStoreError> {
-    const violation = check(id.typeName, id.value);
-    return violation === undefined
-      ? Result.ok(`${id.typeName}-${id.value}`)
-      : Result.err(violation);
+    try {
+      const { typeName, value } = id;
+      const violation = check(typeName, value);
+      return violation === undefined
+        ? Result.ok(`${typeName}-${value}`)
+        : Result.err(violation);
+    } catch (cause) {
+      return Result.err(
+        EventStoreError.contractViolation({
+          rule: "T-2",
+          detail: "aggregate id elements could not be read",
+          cause,
+        }),
+      );
+    }
   }
 }
 

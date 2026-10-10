@@ -21,16 +21,26 @@ export function validateSerializer<P>(
       EventStoreError.configuration(fieldName, "serializer must have methods"),
     );
   }
-  const { serialize, deserialize } = serializer;
-  if (typeof serialize !== "function" || typeof deserialize !== "function") {
+  try {
+    const { serialize, deserialize } = serializer;
+    if (typeof serialize !== "function" || typeof deserialize !== "function") {
+      return Result.err(
+        EventStoreError.configuration(
+          fieldName,
+          "serializer.serialize and serializer.deserialize must be functions",
+        ),
+      );
+    }
+    return Result.ok(serializer);
+  } catch (cause) {
     return Result.err(
       EventStoreError.configuration(
         fieldName,
-        "serializer.serialize and serializer.deserialize must be functions",
+        "serializer methods could not be read",
+        cause,
       ),
     );
   }
-  return Result.ok(serializer);
 }
 
 export function validateEventStoreInput<PE, PS>(
@@ -44,69 +54,83 @@ export function validateEventStoreInput<PE, PS>(
   >,
   EventStoreError
 > {
-  if (
-    input === null ||
-    (input !== undefined && (typeof input !== "object" || Array.isArray(input)))
-  ) {
-    return Result.err(
-      EventStoreError.configuration("input", "input must be an object"),
+  let fieldName = "input";
+  try {
+    if (
+      input === null ||
+      (input !== undefined &&
+        (typeof input !== "object" || Array.isArray(input)))
+    ) {
+      return Result.err(
+        EventStoreError.configuration("input", "input must be an object"),
+      );
+    }
+    fieldName = "eventSerializer";
+    const inputEventSerializer = input?.eventSerializer;
+    fieldName = "snapshotSerializer";
+    const inputSnapshotSerializer = input?.snapshotSerializer;
+    fieldName = "onRetentionFailure";
+    const onRetentionFailure = input?.onRetentionFailure;
+    fieldName = "logger";
+    const logger = input?.logger;
+    const eventSerializer = validateSerializer(
+      inputEventSerializer,
+      "eventSerializer",
     );
-  }
-  const {
-    eventSerializer: inputEventSerializer,
-    snapshotSerializer: inputSnapshotSerializer,
-    onRetentionFailure,
-    logger,
-  } = input ?? {};
-  const eventSerializer = validateSerializer(
-    inputEventSerializer,
-    "eventSerializer",
-  );
-  if (eventSerializer.type === "err") return eventSerializer;
-  const snapshotSerializer = validateSerializer(
-    inputSnapshotSerializer,
-    "snapshotSerializer",
-  );
-  if (snapshotSerializer.type === "err") return snapshotSerializer;
-  if (
-    onRetentionFailure !== undefined &&
-    typeof onRetentionFailure !== "function"
-  ) {
+    if (eventSerializer.type === "err") return eventSerializer;
+    const snapshotSerializer = validateSerializer(
+      inputSnapshotSerializer,
+      "snapshotSerializer",
+    );
+    if (snapshotSerializer.type === "err") return snapshotSerializer;
+    if (
+      onRetentionFailure !== undefined &&
+      typeof onRetentionFailure !== "function"
+    ) {
+      return Result.err(
+        EventStoreError.configuration(
+          "onRetentionFailure",
+          "onRetentionFailure must be a function",
+        ),
+      );
+    }
+    if (logger !== undefined) {
+      if (
+        logger === null ||
+        (typeof logger !== "object" && typeof logger !== "function")
+      ) {
+        return Result.err(
+          EventStoreError.configuration("logger", "logger must have methods"),
+        );
+      }
+      const { trace, debug, info, warn, error } = logger;
+      if (
+        (trace !== undefined && typeof trace !== "function") ||
+        typeof debug !== "function" ||
+        typeof info !== "function" ||
+        typeof warn !== "function" ||
+        typeof error !== "function"
+      ) {
+        return Result.err(
+          EventStoreError.configuration("logger", "logger methods are invalid"),
+        );
+      }
+    }
+    return Result.ok(
+      Object.freeze({
+        eventSerializer: eventSerializer.value,
+        snapshotSerializer: snapshotSerializer.value,
+        ...(onRetentionFailure !== undefined ? { onRetentionFailure } : {}),
+        ...(logger !== undefined ? { logger } : {}),
+      }),
+    );
+  } catch (cause) {
     return Result.err(
       EventStoreError.configuration(
-        "onRetentionFailure",
-        "onRetentionFailure must be a function",
+        fieldName,
+        "event store settings could not be read",
+        cause,
       ),
     );
   }
-  if (logger !== undefined) {
-    if (
-      logger === null ||
-      (typeof logger !== "object" && typeof logger !== "function")
-    ) {
-      return Result.err(
-        EventStoreError.configuration("logger", "logger must have methods"),
-      );
-    }
-    const { trace, debug, info, warn, error } = logger;
-    if (
-      (trace !== undefined && typeof trace !== "function") ||
-      typeof debug !== "function" ||
-      typeof info !== "function" ||
-      typeof warn !== "function" ||
-      typeof error !== "function"
-    ) {
-      return Result.err(
-        EventStoreError.configuration("logger", "logger methods are invalid"),
-      );
-    }
-  }
-  return Result.ok(
-    Object.freeze({
-      eventSerializer: eventSerializer.value,
-      snapshotSerializer: snapshotSerializer.value,
-      ...(onRetentionFailure !== undefined ? { onRetentionFailure } : {}),
-      ...(logger !== undefined ? { logger } : {}),
-    }),
-  );
 }

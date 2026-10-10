@@ -27,6 +27,79 @@ describe("AggregateId", () => {
     expect(unwrap(AggregateId.asString(tampered))).toBe("Order-123");
   });
 
+  describe.each(["getter", "Proxy"] as const)(
+    "asString with %s access",
+    (access) => {
+      test("checks and renders the same values, reading each element once", () => {
+        const typeName = jest
+          .fn()
+          .mockReturnValueOnce("Order")
+          .mockReturnValue("invalid-type");
+        const value = jest
+          .fn()
+          .mockReturnValueOnce("1")
+          .mockReturnValue("x".repeat(1025));
+        const id =
+          access === "getter"
+            ? {
+                get typeName() {
+                  return typeName();
+                },
+                get value() {
+                  return value();
+                },
+              }
+            : new Proxy(
+                { typeName: "Order", value: "1" },
+                {
+                  get(target, key, receiver) {
+                    if (key === "typeName") return typeName();
+                    if (key === "value") return value();
+                    return Reflect.get(target, key, receiver);
+                  },
+                },
+              );
+
+        expect(AggregateId.asString(id)).toEqual({
+          type: "ok",
+          value: "Order-1",
+        });
+        expect(typeName).toHaveBeenCalledTimes(1);
+        expect(value).toHaveBeenCalledTimes(1);
+      });
+
+      test.each(["typeName", "value"] as const)(
+        "returns T-2 with the original cause when %s access throws",
+        (field) => {
+          const cause = new Error("ID access failed");
+          const read = jest.fn(() => {
+            throw cause;
+          });
+          const target = { typeName: "Order", value: "1" };
+          const id =
+            access === "getter"
+              ? Object.defineProperty(target, field, { get: read })
+              : new Proxy(target, {
+                  get(object, key, receiver) {
+                    return key === field
+                      ? read()
+                      : Reflect.get(object, key, receiver);
+                  },
+                });
+
+          const error = errorOf(AggregateId.asString(id));
+
+          expect(error).toMatchObject({
+            type: "contract-violation",
+            rule: "T-2",
+          });
+          expect(error.cause).toBe(cause);
+          expect(read).toHaveBeenCalledTimes(1);
+        },
+      );
+    },
+  );
+
   test.each([
     ["order", "item-1", "order-item-1"],
     ["", "v", "-v"],

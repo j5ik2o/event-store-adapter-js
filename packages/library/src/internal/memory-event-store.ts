@@ -30,7 +30,18 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
     logger,
     onRetentionFailure,
   } = settings.value;
-  const inputStorage = input?.storage;
+  let inputStorage: MemoryStorage | undefined;
+  try {
+    inputStorage = input?.storage;
+  } catch (cause) {
+    return Result.err(
+      EventStoreError.configuration(
+        "storage",
+        "storage could not be read",
+        cause,
+      ),
+    );
+  }
   const storage =
     inputStorage === undefined
       ? MemoryStorage.create()
