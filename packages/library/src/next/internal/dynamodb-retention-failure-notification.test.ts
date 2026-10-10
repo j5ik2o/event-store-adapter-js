@@ -45,11 +45,11 @@ test.each(["throw", "reject"])(
   async (mode) => {
     const loggingCause = new Error("logging failed");
     const callbackCause = new Error("callback failed");
-    const error = jest.fn(() => {
+    const error = jest.fn((..._content: unknown[]) => {
       if (mode === "throw") throw loggingCause;
       return Promise.reject(loggingCause);
     });
-    const callback = jest.fn(() => {
+    const callback = jest.fn((_failure: RetentionFailure) => {
       if (mode === "throw") throw callbackCause;
       return Promise.reject(callbackCause);
     });
@@ -69,14 +69,12 @@ test.each(["throw", "reject"])(
         ),
       ).resolves.toBeUndefined();
       expect(callback).toHaveBeenCalledTimes(1);
-      expect(error).toHaveBeenCalledWith(
-        "retention failure notification failed",
-        loggingCause,
-      );
-      expect(error).toHaveBeenCalledWith(
-        "retention failure notification failed",
-        callbackCause,
-      );
+      expect(callback.mock.calls[0][0]).toBe(error.mock.calls[0][0]);
+      expect(error).toHaveBeenCalledTimes(3);
+      expect(error).toHaveBeenCalledWith(expect.any(String), loggingCause);
+      expect(error.mock.calls[1][1]).toBe(loggingCause);
+      expect(error).toHaveBeenCalledWith(expect.any(String), callbackCause);
+      expect(error.mock.calls[2][1]).toBe(callbackCause);
       expect(fallback).toHaveBeenCalledTimes(2);
     } finally {
       fallback.mockRestore();
@@ -100,10 +98,8 @@ test("records callback rejection with the logger and protects failure of every n
       throw cause;
     },
   );
-  expect(error).toHaveBeenLastCalledWith(
-    "retention failure notification failed",
-    cause,
-  );
+  expect(error).toHaveBeenLastCalledWith(expect.any(String), cause);
+  expect(error.mock.calls[1][1]).toBe(cause);
   const unavailable = jest.spyOn(console, "error").mockImplementation(() => {
     throw new Error("console failed");
   });

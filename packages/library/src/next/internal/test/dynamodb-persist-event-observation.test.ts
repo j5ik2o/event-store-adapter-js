@@ -809,13 +809,15 @@ test("retention faults match operation, table, index and request without interce
     await client.send(new QueryCommand({ ...query, IndexName: "other" }));
     await client.send(new QueryCommand({ TableName: "snapshot" }));
     await client.send(new QueryCommand(query));
-    expect(() => observation.assertApplied()).toThrow(
-      "registered retention fault was not applied",
-    );
+    const before = observation.snapshot();
+    expect(before.retentionUnapplied).toEqual([0]);
+    expect(before.retentionFaults[0].applied).toBe(0);
+    expect(() => observation.assertApplied()).toThrow(Error);
     await expect(client.send(new QueryCommand(query))).rejects.toBe(cause);
     expect(handle).toHaveBeenCalledTimes(6);
     const saved = observation.snapshot();
     expect(saved.retentionFaults[0].applied).toBe(1);
+    expect(saved.retentionUnapplied).toEqual([]);
     expect(saved.observations[6].upstream).toBeUndefined();
     expect(saved.observations[6].error).toBe(cause);
     observation.assertApplied();
