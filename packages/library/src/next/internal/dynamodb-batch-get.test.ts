@@ -28,25 +28,28 @@ afterAll(() => {
   client.destroy();
 });
 
-test("empty unprocessed entries do not retry and empty responses remain absent", async () => {
-  send.mockResolvedValueOnce({
-    $metadata: {},
-    Responses: { head: [] },
-    UnprocessedKeys: { head: { Keys: [] }, snapshot: { Keys: [] } },
-  });
-  const sleep = jest.fn();
+test.each([{ Keys: [] }, { Keys: undefined }])(
+  "empty or omitted unprocessed keys do not retry and empty responses remain absent %#",
+  async (pending) => {
+    send.mockResolvedValueOnce({
+      $metadata: {},
+      Responses: { head: [] },
+      UnprocessedKeys: { head: pending, snapshot: pending },
+    });
+    const sleep = jest.fn();
 
-  const result = await readDynamoDBBatch(
-    { client, retryLimit: 0 },
-    request,
-    "latest snapshot read",
-    sleep,
-  );
+    const result = await readDynamoDBBatch(
+      { client, retryLimit: 0 },
+      request,
+      "latest snapshot read",
+      sleep,
+    );
 
-  expect(result).toEqual({ type: "ok", value: new Map() });
-  expect(send).toHaveBeenCalledTimes(1);
-  expect(sleep).not.toHaveBeenCalled();
-});
+    expect(result).toEqual({ type: "ok", value: new Map() });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+  },
+);
 
 test("a wait failure preserves its cause without publishing accumulated items", async () => {
   send.mockResolvedValueOnce({
