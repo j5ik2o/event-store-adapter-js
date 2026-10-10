@@ -1,4 +1,7 @@
 import {
+  BatchGetItemCommand,
+  type BatchGetItemCommandInput,
+  type BatchGetItemCommandOutput,
   DynamoDBClient,
   GetItemCommand,
   QueryCommand,
@@ -608,6 +611,176 @@ test("applies the existing response fault once after byte correction and records
     expect(observation.snapshot().queryFaults[0].applied).toBe(1);
     expect(observation.snapshot().queryUnapplied).toEqual([]);
     expect(handle).toHaveBeenCalledTimes(2);
+    observation.assertApplied();
+  } finally {
+    client.destroy();
+  }
+});
+
+const snapshotBatch = {
+  RequestItems: {
+    head: { Keys: [{ aid: { S: "Order-1" } }], ConsistentRead: true },
+    snapshot: {
+      Keys: [{ aid: { S: "Order-1" }, skey: { N: "0" } }],
+      ConsistentRead: true,
+    },
+  },
+};
+
+test("snapshot faults match operation, requested table and request number while ignoring configuration", async () => {
+  const { client, handle } = fixtureClient();
+  const observation = new DynamoDBPersistEventObservation(client);
+  const cause = new Error("second snapshot request blocked");
+  observation.failReadSnapshot({
+    operation: 2,
+    table: "snapshot",
+    request: 2,
+    cause,
+  });
+  try {
+    await client.send(new BatchGetItemCommand(snapshotBatch));
+    observation.beginReadSnapshot({ head: "head", snapshot: "snapshot" }, 1);
+    await client.send(new BatchGetItemCommand(snapshotBatch));
+    observation.beginReadSnapshot({ head: "head", snapshot: "snapshot" }, 2);
+    const ignored: NonNullable<BatchGetItemCommandInput["RequestItems"]>[] = [
+      { head: { Keys: [{ aid: { S: "__config__" } }] } },
+      { other: { Keys: [{ aid: { S: "Order-1" } }] } },
+      { head: { Keys: [] } },
+      {},
+    ];
+    for (const RequestItems of ignored)
+      await client.send(new BatchGetItemCommand({ RequestItems }));
+    await client.send(
+      new BatchGetItemCommand({
+        RequestItems: { head: snapshotBatch.RequestItems.head },
+      }),
+    );
+    expect(() => observation.assertApplied()).toThrow(
+      "registered read-snapshot fault was not applied",
+    );
+    await expect(
+      client.send(
+        new BatchGetItemCommand({
+          RequestItems: { snapshot: snapshotBatch.RequestItems.snapshot },
+        }),
+      ),
+    ).rejects.toBe(cause);
+    expect(handle).toHaveBeenCalledTimes(7);
+    const saved = observation.snapshot();
+    expect(saved.snapshotFaults[0]).toMatchObject({
+      applied: 1,
+      injection: "replace-request",
+    });
+    expect(saved.observations[7]).toMatchObject({
+      readSnapshot: { operation: 2, request: 2 },
+      error: cause,
+    });
+    expect(saved.observations[7].upstream).toBeUndefined();
+    expect(saved.observations[0].readSnapshot).toBeUndefined();
+    observation.assertApplied();
+  } finally {
+    client.destroy();
+  }
+});
+
+test("snapshot response replacements retain separate upstream, actual request and application snapshots", async () => {
+  const raw = {
+    Responses: { head: [{ aid: { S: "Order-1" }, seq_nr: { N: "1" } }] },
+  };
+  const { client, handle } = fixtureClient(false, raw);
+  const observation = new DynamoDBPersistEventObservation(client);
+  const gate = jest.fn().mockResolvedValue(undefined);
+  observation.beginReadSnapshot(
+    { head: "head", snapshot: "snapshot" },
+    1,
+    gate,
+  );
+  const replace = jest.fn(
+    (output: BatchGetItemCommandOutput, input: BatchGetItemCommandInput) => {
+      expect(input).toEqual(snapshotBatch);
+      expect(observation.snapshot().snapshotFaults[0].applied).toBe(1);
+      return { ...output, Responses: {} };
+    },
+  );
+  observation.replaceReadSnapshot({
+    operation: 1,
+    table: "head",
+    request: 1,
+    replace,
+  });
+  const before = observation.snapshot();
+  try {
+    const delivered = await client.send(new BatchGetItemCommand(snapshotBatch));
+    expect(delivered.Responses).toEqual({});
+    expect(observation.snapshot().observations[0].upstream).toMatchObject(raw);
+    expect(observation.snapshot().observations[0].returned).toEqual(delivered);
+    expect(before.snapshotFaults[0].applied).toBe(0);
+    const after = observation.snapshot();
+    after.snapshotFaults[0].applied = 99;
+    expect(observation.snapshot().snapshotFaults[0].applied).toBe(1);
+    expect(gate).toHaveBeenCalledTimes(1);
+    observation.beginReadSnapshot({ head: "head", snapshot: "snapshot" }, 2);
+    expect(
+      await client.send(new BatchGetItemCommand(snapshotBatch)),
+    ).toMatchObject(raw);
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(handle).toHaveBeenCalledTimes(2);
+    observation.assertApplied();
+  } finally {
+    client.destroy();
+  }
+});
+
+test("a real SDK failure leaves a selected snapshot response fault unapplied", async () => {
+  const { client } = fixtureClient(true);
+  const observation = new DynamoDBPersistEventObservation(client);
+  observation.beginReadSnapshot({ head: "head", snapshot: "snapshot" }, 1);
+  const replace = jest.fn((output: BatchGetItemCommandOutput) => output);
+  observation.replaceReadSnapshot({
+    operation: 1,
+    table: "head",
+    request: 1,
+    replace,
+  });
+  try {
+    const cause = await client
+      .send(new BatchGetItemCommand(snapshotBatch))
+      .catch((error: unknown) => error);
+    expect(cause).toBeInstanceOf(ResourceNotFoundException);
+    expect(observation.snapshot().observations[0].error).toBe(cause);
+    expect(observation.snapshot().observations[0].upstream).toBeUndefined();
+    expect(observation.snapshot().snapshotFaults[0].applied).toBe(0);
+    expect(observation.snapshot().snapshotUnapplied).toEqual([0]);
+    expect(replace).not.toHaveBeenCalled();
+    expect(() => observation.assertApplied()).toThrow(
+      "registered read-snapshot fault was not applied",
+    );
+  } finally {
+    client.destroy();
+  }
+});
+
+test("snapshot replacement exceptions preserve upstream and the applied fault count", async () => {
+  const { client } = fixtureClient();
+  const observation = new DynamoDBPersistEventObservation(client);
+  observation.beginReadSnapshot({ head: "head", snapshot: "snapshot" }, 1);
+  const cause = new Error("snapshot response replacement failed");
+  observation.replaceReadSnapshot({
+    operation: 1,
+    table: "head",
+    request: 1,
+    replace() {
+      throw cause;
+    },
+  });
+  try {
+    await expect(
+      client.send(new BatchGetItemCommand(snapshotBatch)),
+    ).rejects.toBe(cause);
+    const saved = observation.snapshot();
+    expect(saved.observations[0].upstream).toBeDefined();
+    expect(saved.observations[0].error).toBe(cause);
+    expect(saved.snapshotFaults[0].applied).toBe(1);
     observation.assertApplied();
   } finally {
     client.destroy();

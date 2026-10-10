@@ -425,6 +425,7 @@ describe("initializeDynamoDBEventStoreInternal with DynamoDB Local 3.3.1", () =>
     expect(Object.keys(result.value).sort()).toEqual([
       "configuration",
       "getEventsByIdSinceSeqNr",
+      "getLatestSnapshotById",
       "persistEvent",
       "persistEventAndSnapshot",
       "settings",
@@ -432,6 +433,7 @@ describe("initializeDynamoDBEventStoreInternal with DynamoDB Local 3.3.1", () =>
     expect(typeof result.value.persistEvent).toBe("function");
     expect(typeof result.value.persistEventAndSnapshot).toBe("function");
     expect(typeof result.value.getEventsByIdSinceSeqNr).toBe("function");
+    expect(typeof result.value.getLatestSnapshotById).toBe("function");
     expect(Object.isFrozen(result.value)).toBe(true);
     expect(Object.isFrozen(result.value.configuration)).toBe(true);
     expect(plan.snapshot().observations).toHaveLength(1);

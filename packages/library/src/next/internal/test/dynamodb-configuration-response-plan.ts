@@ -5,6 +5,7 @@ import type {
   ServiceInputTypes,
   ServiceOutputTypes,
 } from "@aws-sdk/client-dynamodb";
+import { deferDynamoDBRequestedKeys } from "./dynamodb-unprocessed-keys";
 
 type ReadPlan = Readonly<{
   tables: readonly string[];
@@ -89,31 +90,12 @@ export class DynamoDBConfigurationResponsePlan {
     const index = this.plans.findIndex((plan) => plan.applied < plan.times);
     if (index < 0) return upstream;
     const plan = this.plans[index];
-    const deferred = Object.entries(input.RequestItems ?? {}).filter(
-      ([tableName, request]) =>
-        plan.tables.includes(tableName) && (request.Keys?.length ?? 0) > 0,
-    );
-    if (deferred.length === 0) return upstream;
+    const returned = deferDynamoDBRequestedKeys(input, upstream, plan.tables);
+    if (returned === upstream) return upstream;
     this.plans = this.plans.map((entry, position) =>
       position === index ? { ...entry, applied: entry.applied + 1 } : entry,
     );
-    return {
-      ...upstream,
-      Responses: Object.fromEntries(
-        Object.entries(upstream.Responses ?? {}).filter(
-          ([tableName]) => !deferred.some(([name]) => name === tableName),
-        ),
-      ),
-      UnprocessedKeys: {
-        ...upstream.UnprocessedKeys,
-        ...Object.fromEntries(
-          deferred.map(([tableName, request]) => [
-            tableName,
-            { Keys: structuredClone(request.Keys) },
-          ]),
-        ),
-      },
-    };
+    return returned;
   }
 
   snapshot() {
