@@ -1,7 +1,11 @@
-## Cloud Spanner schema used by EventStore
+## Cloud Spanner schema from a previous release
 
-The Spanner adapter uses two GoogleSQL tables: `journal` and `snapshot`.
-The caller owns the `Database` lifecycle and passes it to `EventStore.createSpanner(...)`.
+This document describes the Spanner adapter from a previous release. The current
+package does not provide a Spanner adapter or `EventStore.createSpanner(...)`.
+For the supported APIs, see the [current README](../README.md).
+The schema below is retained as historical reference, not as a setup guide for
+the current package. The previous adapter used two GoogleSQL tables: `journal`
+and `snapshot`.
 
 ```sql
 CREATE TABLE journal (

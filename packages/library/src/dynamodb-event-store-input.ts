@@ -1,36 +1,17 @@
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import type {
-  Aggregate,
-  AggregateId,
-  Event,
-  EventSerializer,
-  Logger,
-  ShardSelector,
-  SnapshotSerializer,
-} from "./types";
+import type { Logger } from "./logger";
+import type { PayloadSerializer } from "./payload-serializer";
+import type { RetentionFailure } from "./retention-failure";
+import type { SnapshotRetention } from "./snapshot-retention";
 
-type DynamoDBEventStoreInput<
-  AID extends AggregateId,
-  A extends Aggregate<A, AID>,
-  E extends Event<AID>,
-> = {
+export type DynamoDBEventStoreInput<PE, PS> = Readonly<{
   client: DynamoDBClient;
-  journalTableName: string;
-  snapshotTableName: string;
-  journalAidIndexName: string;
+  tables: Readonly<{ journal: string; snapshot: string; head: string }>;
   snapshotAidIndexName: string;
-  snapshotActiveTtlIndexName: string;
-  shardCount: number;
-  /** Converts the deserialized event JSON payload from unknown into an event. */
-  eventConverter: (json: unknown) => E;
-  /** Converts the deserialized snapshot JSON payload from unknown into an aggregate. */
-  snapshotConverter: (json: unknown) => A;
-  keepSnapshotCount?: number;
-  deleteTtlMillis?: number;
-  shardSelector?: ShardSelector<AID>;
-  eventSerializer?: EventSerializer<AID, E>;
-  snapshotSerializer?: SnapshotSerializer<AID, A>;
+  eventSerializer?: PayloadSerializer<PE>;
+  snapshotSerializer?: PayloadSerializer<PS>;
+  retention?: SnapshotRetention;
+  onRetentionFailure?: (failure: RetentionFailure) => void;
   logger?: Logger;
-};
-
-export type { DynamoDBEventStoreInput };
+  retryLimit?: number;
+}>;

@@ -1,52 +1,49 @@
-## EventStoreが利用するDynamoDBのテーブル構成
+# DynamoDBのテーブル構成
 
-- Journal
-- Snapshot
+同一リージョンに独立した3表を作成します。表作成は呼び出し側が行い、`EventStore.createDynamoDB` が共通設定項目を照合します。表名と履歴index名は入力で指定します。
 
-いずれのテーブルも、選択された shard id によって書き込みを分散させます。デフォルトでは集約 ID から shard id を選択し、呼び出し側は独自の `ShardSelector` も指定できます。
+| 表 | パーティションキー | ソートキー | Index / Streams |
+| --- | --- | --- | --- |
+| journal | `aid` S | `seq_nr` N | GSI・Streamsなし |
+| snapshot | `aid` S | `skey` N | 指定した履歴GSI: `aid` S + `active_history_seq_nr` N、KEYS_ONLY |
+| head | `aid` S | なし | Streams有効、NEW_IMAGE |
 
-### Journalテーブル
+TTL方式の保持を使う場合だけsnapshot表の `ttl` を有効化します。journalとheadにはTTLを設定しません。
 
-集約で起きたイベントを保存するためのテーブル。原則的に、このイベントを使って集約状態を再生(リプレイ)します。
+## 設定項目
 
-| キー名         | 説明                                    | 具体的な値                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 備考 |
-|:------------|:--------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:---|
-| pkey        | パーティションキー(`${aggregate.typeName}-${shardId}`) | user-account-1                                                                                                                                                                                                                                                                                                                                                                                                                                                       |    |
-| skey        | ソートキー(集約種別名-集約IDの値部分-シーケンス番号)         | user-account-01H42K4ABWQ5V2XQEP3A48VE0Z-12345                                                                                                                                                                                                                                                                                                                                                                                                                        |    |
-| aid         | 集約ID                                  | user-account-01H42K4ABWQ5V2XQEP3A48VE0Z                                                                                                                                                                                                                                                                                                                                                                                                                              |    |
-| seq_nr      | シーケンス番号(開始番号は1)                       | 12345                                                                                                                                                                                                                                                                                                                                                                                                                                                              |    |
-| payload     | シリアライズされたイベント payload                  | {"type":"UserAccountCreated","data":{"typeName":"UserAccountCreated","isCreated":true,"id":"01H42KBHCW1BZG504J4ZXKA2F2","aggregateId":{"typeName":"user-account","value":"01H42K4ABWQ5V2XQEP3A48VE0Z"},"name":"Alice","sequenceNumber":1,"occurredAt":"2026-05-24T00:00:00.000Z"}} | デフォルト JSON serializer の例 |
-| occurred_at | `event.occurredAt` の UTC millisecond component | 0                                                                                                                                                                                                                                                                                                                                                                                                                                        | DynamoDB number として保存 |
+3表とも `aid = "__config__"` とし、journalは `seq_nr = 0`、snapshotは `skey = 0` を加えます。各設定項目に `store_id` Sと `layout_version` N（`1`）を保存します。3項目のstore IDは同一の空でない値でなければなりません。全項目がなければ1つの条件付きトランザクションで作成します。部分存在、不一致、未対応の版では生成に失敗します。設定項目は集約の項目とは別です。
 
-aidとseq_nrはGSIが適用されており、リプレイ時はこのインデックスを利用されます。
+## Journal項目
 
-### Snapshotテーブル
+| 属性 | 型 | 内容 |
+| --- | --- | --- |
+| aid | S | `typeName-value` |
+| seq_nr | N | 1から始まる連続イベント番号 |
+| occurred_at | N | JavaScriptの完全なエポックミリ秒値×1,000,000によるエポックナノ秒 |
+| manifest | S | Serializerのスキーマ識別子。既定は空文字 |
+| payload | B | ドメインイベントのpayloadだけを直列化したbytes |
 
-集約の状態を保存するためのテーブルであり、集約のリプレイを高速化するためのテーブルです。スナップショット保存後にもイベントは保存されるため、最新の集約状態を表さない場合あります。
+journal本体を強整合でQueryします。`seq_nr >= start` は開始番号を含み、すべてのLastEvaluatedKeyをたどり、昇順に返します。
 
-| キー名     | 説明                                                               | 具体的な値                                                                                                                                                                                                                                                                                                                                                                                      | 備考 |
-|:--------|:-----------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:---|
-| pkey    | パーティションキー(`${aggregate.typeName}-${shardId}`)                            | user-account-1                                                                                                                                                                                                                                                                                                                                                                               |    |
-| skey    | ソートキー(集約種別名-集約IDの値部分-シーケンス番号), 最新のスナップショットはシーケンス番号=0として読み書きされます。 | user-account-01H42K4ABWQ5V2XQEP3A48VE0Z-12345                                                                                                                                                                                                                                                                                                                                                |    |
-| payload | シリアライズされた集約 snapshot                                      | {"type":"UserAccount","data":{"typeName":"UserAccount","id":{"typeName":"user-account","value":"01H42K4ABWQ5V2XQEP3A48VE0Z"},"name":"Alice","sequenceNumber":1,"version":1}} | デフォルト JSON serializer の例 |
-| aid     | 集約ID                                                             | user-account-01H42K4ABWQ5V2XQEP3A48VE0Z                                                                                                                                                                                                                                                                                                                                                      |    |
-| seq_nr  | シーケンス番号(開始番号は1)                                                  | 12345                                                                                                                                                                                                                                                                                                                                                                                      |    |
-| active_ttl_seq_nr | TTL削除対象としてマークされていない間だけ射影されるシーケンス番号                  | 12345                                                                                                                                                                                                                                                                                                                                                                                      |    |
-| ttl     | 削除のためのTTL(秒)                                                     | 1624980000                                                                                                                                                                                                                                                                                                                                                                                 |    |
-| version | バージョン(楽観的ロック用)(開始番号は1)                                           | 1                                                                                                                                                                                                                                                                                                                                                                                          |    |
-| last_updated_at | `event.occurredAt` の UTC millisecond component                 | 0                                                                                                                                                                                                                                                                                                                                                                                          | DynamoDB number として保存 |
+## Head項目
 
-- retained snapshot が無効な場合は seq_nr=0 に最新スナップショットだけを保存します。`keepSnapshotCount` を設定した場合は、seq_nr=0 に加えて seq_nr=event.sequenceNumber の retained snapshot を保存します。上限を超えた場合は古い retained snapshot から削除されます。デフォルトではクライアント主導で削除されますが、`deleteTtlMillis` を使って DynamoDB TTL 削除対象としてマークすることもできます。
-- aidとseq_nrはGSIが適用されており、リプレイ時とハードデリート方式の保持処理でこのインデックスを利用されます。
-- aidとactive_ttl_seq_nrにはスパースGSIが適用されており、TTL方式の保持処理で、まだTTL削除対象としてマークされていないスナップショットだけを読み取るために利用されます。TTLが設定されると、active_ttl_seq_nrはアイテムから削除されます。
+headには `aid` S、`type_name` S、`seq_nr` N、`events` Lがあります。リストは確定した1イベントのMを持ち、その属性は `seq_nr` N、`occurred_at` N、`manifest` S、`payload` Bです。headのStreamsはNEW_IMAGEを提供します。このAPIには変更フィード操作はありません。
 
-### イベント及びスナップショットの書き込み
+初回イベントでheadを条件付き作成します。以後は既存head番号が `seqNr - 1` と一致する必要があります。head更新とjournal書き込みは原子的に確定します。旧versionに代わりシーケンス番号で楽観ロックを行います。
 
-1. 集約にてコマンドが受理されると、最新のseq_nrが付与されたイベントが生成されます。
-2. 生成されたイベントはjournalテーブルに書き込まれます。ただし、この書き込みは必ずsnapshotテーブルと同じトランザクションで行われ、versionが一致する条件下で実施されます。初回のイベント以外は、snapshotのpayloadを更新することはオプションです。
+## 現在と履歴のSnapshot項目
 
-### イベント及びスナップショットを使って集約をリプレイする
+現在snapshotは `skey = 0` です。属性は `aid` S、`skey` N、`seq_nr` N、`last_updated_at` N、`manifest` S、`payload` Bです。snapshot番号はソートキーではなく `seq_nr` にあります。`last_updated_at` は書き込みイベントの完全なエポックミリ秒です。現在snapshotにTTLや履歴markerはありません。
 
-1. 集約のIDを指定して、スナップショットを取得します。
-2. 取得した集約のIDとスナップショットのシーケンス番号以降のイベントをjournalテーブルから読み込みます。
-3. 読み込んだイベントをスナップショットに適用することで、最新の集約状態を取得します。
+保持設定がある場合は同じトランザクションで履歴も作り、`skey = seq_nr`、`active_history_seq_nr = seq_nr` とします。保持設定なしでは履歴を作りません。event-only書き込みは現在snapshotを変えず、保持要求も送りません。
+
+現在snapshotとは別に、最新の有効履歴を指定件数保持します。削除方式は古い履歴を削除します。TTL方式は `ttl` N（印付け時のエポック秒＋`graceSeconds`）を追加し、`active_history_seq_nr` を原子的に除去します。印付き項目の既存期限は変えず、疎なGSIにも含めません。`payload` に保存するのはドメイン集約だけです。
+
+headとsnapshotを含む各実項目の上限は409600バイトです。トランザクションはjournal、head、指定された現在・履歴snapshotを含み、項目が超過した場合はcommit送信前に失敗します。
+
+## 復元と移行
+
+最新snapshotはheadと現在snapshotを強整合のBatchGetItemで読みます。この読取は原子的ではなく、`headSeqNr` と独立して読んだsnapshotを返します。復元は `snapshot.seqNr + 1`、snapshotなしなら1から始めます。
+
+旧2表・shard配置は新しい表への書き直しが必要です。[移行ガイド](MIGRATION_GUIDE.ja.md) を参照してください。新版のreaderは旧項目を変換しません。

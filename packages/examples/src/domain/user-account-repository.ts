@@ -1,46 +1,33 @@
-import type { EventStore, EventStoreError, Result } from "event-store-adapter-js";
+import { type EventEnvelope, type EventStore, type EventStoreError, Result, SnapshotEnvelope } from "event-store-adapter-js";
 import { UserAccount } from "./user-account";
 import type { UserAccountEvent } from "./user-account-event";
 import type { UserAccountId } from "./user-account-id";
 
 export type UserAccountRepository = Readonly<{
-  saveWithSnapshot(
-    event: UserAccountEvent,
-    userAccount: UserAccount,
-  ): Promise<Result<void, EventStoreError>>;
-  save(
-    event: UserAccountEvent,
-    expectedVersion: number,
-  ): Promise<Result<void, EventStoreError>>;
-  findById(id: UserAccountId): Promise<UserAccount | undefined>;
+  saveWithSnapshot(event: EventEnvelope<UserAccountEvent>, account: UserAccount): Promise<Result<void, EventStoreError>>;
+  save(event: EventEnvelope<UserAccountEvent>): Promise<Result<void, EventStoreError>>;
+  findById(id: UserAccountId): Promise<Result<UserAccount | undefined, EventStoreError>>;
 }>;
 
 export namespace UserAccountRepository {
-  export function create(
-    eventStore: EventStore<UserAccountId, UserAccount, UserAccountEvent>,
-  ): UserAccountRepository {
+  export function create(store: EventStore<UserAccountEvent, UserAccount>): UserAccountRepository {
     return Object.freeze({
-      saveWithSnapshot: (event, userAccount) =>
-        eventStore.persistEventAndSnapshot(event, userAccount),
-      save: (event, expectedVersion) =>
-        eventStore.persistEvent(event, expectedVersion),
-      async findById(id: UserAccountId): Promise<UserAccount | undefined> {
-        const snapshot = await eventStore.getLatestSnapshotById(id);
-        if (snapshot === undefined) {
-          const events = await eventStore.getEventsByIdSinceSequenceNumber(
-            id,
-            1,
-          );
-          return UserAccount.replayFromEvents(events);
-        }
-        const events = await eventStore.getEventsByIdSinceSequenceNumber(
-          id,
-          snapshot.sequenceNumber + 1,
-        );
-        return UserAccount.replay(events, snapshot);
+      async saveWithSnapshot(event, account) {
+        const snapshot = SnapshotEnvelope.create({ seqNr: event.seqNr, aggregate: account, manifest: "UserAccount.v1" });
+        if (snapshot.type === "err") return snapshot;
+        return store.persistEventAndSnapshot(event, snapshot.value);
+      },
+      save: (event) => store.persistEvent(event),
+      async findById(id) {
+        const latest = await store.getLatestSnapshotById(id);
+        if (latest.type === "err") return latest;
+        const snapshot = latest.value?.snapshot;
+        const events = await store.getEventsByIdSinceSeqNr(id, snapshot === undefined ? 1 : snapshot.seqNr + 1);
+        if (events.type === "err") return events;
+        const payloads = events.value.map((event) => event.payload);
+        return Result.ok(snapshot === undefined ? UserAccount.replayFromEvents(id, payloads) : UserAccount.replay(payloads, snapshot.aggregate));
       },
     });
   }
 }
-
 Object.freeze(UserAccountRepository);

@@ -4,7 +4,6 @@ import path from "node:path";
 const distPath = path.resolve("dist");
 const tsconfigPath = path.resolve("tsconfig.json");
 const testSupportPath = path.join(distPath, "internal", "test");
-const nextTestSupportPath = path.join(distPath, "next", "internal", "test");
 
 await access(distPath).catch((error) => {
   throw new Error(`Build output directory not found: ${distPath}: ${error.message}`);
@@ -38,7 +37,6 @@ const removeFiles = async (files) => {
 
 await removeFiles(await collectTestArtifacts(distPath));
 await rm(testSupportPath, { force: true, recursive: true });
-await rm(nextTestSupportPath, { force: true, recursive: true });
 
 const remainingArtifacts = await collectTestArtifacts(distPath);
 if (remainingArtifacts.length > 0) {

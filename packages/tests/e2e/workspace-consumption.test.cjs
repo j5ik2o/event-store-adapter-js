@@ -1,11 +1,8 @@
-const assert = require("node:assert/strict");
 const test = require("node:test");
-const { EventStore } = require("event-store-adapter-js");
+const { consumeMemory, consumeDynamoDB } = require("../fixtures/consume.cjs");
+const { withDynamoDB } = require("./dynamodb.cjs");
 
-test("tests package can consume the built workspace library", () => {
-  const eventStore = EventStore.createMemory();
-
-  assert.equal(typeof eventStore.persistEvent, "function");
-  assert.equal(typeof eventStore.getEventsByIdSinceSequenceNumber, "function");
-  assert.equal(typeof eventStore.getLatestSnapshotById, "function");
+test("built package uses four Memory operations, domain serializers, sharing, isolation and original cause", consumeMemory);
+test("built package uses four real DynamoDB operations and domain restoration", { timeout: 120000 }, async () => {
+  await withDynamoDB(consumeDynamoDB);
 });
