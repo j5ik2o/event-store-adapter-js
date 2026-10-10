@@ -19,6 +19,13 @@ function check(typeName: unknown, value: unknown): EventStoreError | undefined {
       detail: "typeName must not contain '-'",
     });
   }
+  if (!typeName.isWellFormed() || !value.isWellFormed()) {
+    return EventStoreError.contractViolation({
+      rule: "T-12",
+      detail:
+        "typeName and value must be well-formed UTF-16 for UTF-8 encoding",
+    });
+  }
   if (Buffer.byteLength(`${typeName}-${value}`, "utf8") > MAX_UTF8_BYTES) {
     return EventStoreError.contractViolation({
       rule: "T-12",

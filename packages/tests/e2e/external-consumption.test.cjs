@@ -25,6 +25,25 @@ test("packed package type-checks and executes from an independent external proje
     assert.ok(files.includes("package/dist/index.js"));
     assert.ok(!files.some((file) => /\/internal\/test\/|\.test\.(js|d\.ts)$/.test(file)));
     assert.ok(!files.some((file) => /\/next\/|spanner|shard-|default-serializer|\/dist\/(aggregate|event|types|event-serializer|snapshot-serializer)\.(js|d\.ts)$/.test(file)));
+    for (const [file, unavailable, readme] of [
+      ["package/docs/SPANNER_DATABASE_SCHEMA.md", /does not provide a Spanner adapter or `EventStore\.createSpanner/, "package/README.md"],
+      ["package/docs/SPANNER_DATABASE_SCHEMA.ja.md", /Spanner adapter と `EventStore\.createSpanner\(\.\.\.\)` を提供していません/, "package/README.ja.md"],
+      ["package/docs/GCP_EVENT_INTEGRATION.ja.md", /Spanner adapter と `EventStore\.createSpanner\(\.\.\.\)` を提供していません/, "package/README.ja.md"],
+    ]) {
+      assert.ok(files.includes(file));
+      const document = run("tar", ["-xOzf", archive, file], directory);
+      assert.match(document, unavailable);
+      assert.doesNotMatch(document, /現在[^\n]*実装済み/);
+      const links = [...document.matchAll(/\[[^\]]+\]\((\.\.\/README(?:\.ja)?\.md)\)/g)];
+      assert.ok(links.length > 0, `${file} must link to the current README`);
+      for (const [, target] of links) {
+        assert.equal(path.posix.normalize(path.posix.join(path.posix.dirname(file), target)), readme);
+        assert.ok(files.includes(readme));
+        const currentReadme = run("tar", ["-xOzf", archive, readme], directory);
+        assert.match(currentReadme, /Spanner/);
+        assert.match(currentReadme, /outside this entry point|この公開入口に含みません/);
+      }
+    }
     const nodeVersion = require("@types/node/package.json").version;
     const sdkVersion = require("@aws-sdk/client-dynamodb/package.json").version;
     fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({

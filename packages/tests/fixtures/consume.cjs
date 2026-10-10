@@ -49,6 +49,28 @@ async function consumeFourOperations(store) {
 }
 
 async function consumeMemory() {
+  for (const id of [
+    { typeName: "\uD800", value: "1" },
+    { typeName: "\uDC00", value: "1" },
+    { typeName: "Order", value: "\uD800" },
+    { typeName: "Order", value: "\uD801" },
+    { typeName: "Order", value: "\uDC00" },
+  ]) {
+    for (const result of [AggregateId.of(id.typeName, id.value), AggregateId.asString(id)]) {
+      assert.equal(result.type, "err");
+      assert.equal(result.error.type, "contract-violation");
+      assert.equal(result.error.rule, "T-12");
+    }
+  }
+  for (const input of [
+    { typeName: "\uD83D\uDE80", value: "\uD83D\uDE03" },
+    { typeName: "", value: "" },
+    { typeName: "型", value: `${"あ".repeat(339)}abc` },
+  ]) {
+    const id = unwrap(AggregateId.of(input.typeName, input.value));
+    assert.deepEqual(id, input);
+    assert.equal(unwrap(AggregateId.asString(id)), `${input.typeName}-${input.value}`);
+  }
   const storage = unwrap(MemoryStorage.create());
   const store = unwrap(EventStore.createMemory({ storage, ...serializers() }));
   const id = await consumeFourOperations(store);
@@ -85,6 +107,6 @@ if (require.main === module) {
   (async () => {
     await consumeMemory();
     await consumeDynamoDB(JSON.parse(process.env.ESWA_DYNAMODB_LAYOUT));
-    console.log("External package: four operations, domain serializers, Result/cause, Memory sharing and isolation passed");
+    console.log("External package: Unicode IDs, four operations, domain serializers, Result/cause, Memory sharing and isolation passed");
   })().catch((error) => { console.error(error); process.exitCode = 1; });
 }

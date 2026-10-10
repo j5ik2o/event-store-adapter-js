@@ -1,7 +1,173 @@
 import { DynamoDBClient, QueryCommand } from "@aws-sdk/client-dynamodb";
+import type { AggregateId } from "./aggregate-id";
 import { EventStore } from "./event-store";
+import type { EventStoreError } from "./event-store-error";
+import * as memoryStorageRecords from "./internal/memory-storage-records";
 import { DynamoDBLocal } from "./internal/test/dynamodb-local";
 import { DynamoDBPersistEventObservation } from "./internal/test/dynamodb-persist-event-observation";
+import { MemoryStorage } from "./memory-storage";
+import { PayloadSerializer } from "./payload-serializer";
+import type { Result } from "./result";
+
+const operations = [
+  "persistEvent",
+  "persistEventAndSnapshot",
+  "getLatestSnapshotById",
+  "getEventsByIdSinceSeqNr",
+] as const;
+const malformedIds = [
+  { typeName: "\uD800", value: "1" },
+  { typeName: "\uD801", value: "1" },
+  { typeName: "\uDC00", value: "1" },
+  { typeName: "Order", value: "\uD800" },
+  { typeName: "Order", value: "\uD801" },
+  { typeName: "Order", value: "\uDC00" },
+];
+
+function callWithId(
+  store: EventStore,
+  operation: keyof EventStore,
+  aggregateId: AggregateId,
+  seqNr = 1,
+): Promise<Result<unknown, EventStoreError>> {
+  const event = {
+    aggregateId,
+    seqNr,
+    occurredAt: new Date(0),
+    manifest: "event/v1",
+    payload: { count: seqNr },
+  };
+  switch (operation) {
+    case "persistEvent":
+      return store.persistEvent(event);
+    case "persistEventAndSnapshot":
+      return store.persistEventAndSnapshot(event, {
+        seqNr,
+        manifest: "snapshot/v1",
+        aggregate: { total: seqNr },
+      });
+    case "getLatestSnapshotById":
+      return store.getLatestSnapshotById(aggregateId);
+    case "getEventsByIdSinceSeqNr":
+      return store.getEventsByIdSinceSeqNr(aggregateId, seqNr);
+  }
+}
+
+function observedSerializer() {
+  const json = PayloadSerializer.json();
+  return {
+    serialize: jest.fn(json.serialize),
+    deserialize: jest.fn(json.deserialize),
+  };
+}
+
+describe("public createMemory Unicode validation", () => {
+  describe.each(operations)("%s", (operation) => {
+    test.each(malformedIds)(
+      "rejects %p before serializer or storage calls",
+      async (aggregateId) => {
+        const storage = MemoryStorage.create();
+        if (storage.type !== "ok") throw new Error("storage creation failed");
+        const eventSerializer = observedSerializer();
+        const snapshotSerializer = observedSerializer();
+        const opened = EventStore.createMemory({
+          storage: storage.value,
+          eventSerializer,
+          snapshotSerializer,
+        });
+        if (opened.type !== "ok") throw new Error("open failed");
+        const commit = jest.spyOn(
+          memoryStorageRecords,
+          "commitMemoryStorageRecords",
+        );
+        const readSnapshot = jest.spyOn(
+          memoryStorageRecords,
+          "readMemoryStorageLatestSnapshot",
+        );
+        const readEvents = jest.spyOn(
+          memoryStorageRecords,
+          "readMemoryStorageEvents",
+        );
+        try {
+          const result = await callWithId(opened.value, operation, aggregateId);
+
+          expect(result).toMatchObject({
+            type: "err",
+            error: { type: "contract-violation", rule: "T-12" },
+          });
+          expect(eventSerializer.serialize).not.toHaveBeenCalled();
+          expect(eventSerializer.deserialize).not.toHaveBeenCalled();
+          expect(snapshotSerializer.serialize).not.toHaveBeenCalled();
+          expect(snapshotSerializer.deserialize).not.toHaveBeenCalled();
+          expect(commit).not.toHaveBeenCalled();
+          expect(readSnapshot).not.toHaveBeenCalled();
+          expect(readEvents).not.toHaveBeenCalled();
+        } finally {
+          commit.mockRestore();
+          readSnapshot.mockRestore();
+          readEvents.mockRestore();
+        }
+      },
+    );
+  });
+
+  describe.each(["persistEvent", "persistEventAndSnapshot"] as const)(
+    "%s",
+    (operation) => {
+      test.each([
+        [-1, "T-9"],
+        [0, "W-6"],
+      ] as const)(
+        "preserves seqNr=%s priority over malformed UTF-16: %s",
+        async (seqNr, rule) => {
+          const serializer = observedSerializer();
+          const opened = EventStore.createMemory({
+            eventSerializer: serializer,
+            snapshotSerializer: serializer,
+          });
+          if (opened.type !== "ok") throw new Error("open failed");
+
+          expect(
+            await callWithId(opened.value, operation, malformedIds[0], seqNr),
+          ).toMatchObject({
+            type: "err",
+            error: { type: "contract-violation", rule },
+          });
+          expect(serializer.serialize).not.toHaveBeenCalled();
+          expect(serializer.deserialize).not.toHaveBeenCalled();
+        },
+      );
+    },
+  );
+
+  test("preserves a surrogate pair in all four operations", async () => {
+    const opened = EventStore.createMemory();
+    if (opened.type !== "ok") throw new Error("open failed");
+    const aggregateId = { typeName: "\uD83D\uDE80", value: "\uD83D\uDE03" };
+
+    expect(
+      await callWithId(opened.value, "persistEvent", aggregateId),
+    ).toMatchObject({ type: "ok" });
+    expect(
+      await callWithId(opened.value, "persistEventAndSnapshot", aggregateId, 2),
+    ).toMatchObject({ type: "ok" });
+    expect(
+      await callWithId(opened.value, "getLatestSnapshotById", aggregateId),
+    ).toMatchObject({
+      type: "ok",
+      value: { headSeqNr: 2, snapshot: { seqNr: 2, aggregate: { total: 2 } } },
+    });
+    expect(
+      await callWithId(opened.value, "getEventsByIdSinceSeqNr", aggregateId),
+    ).toMatchObject({
+      type: "ok",
+      value: [
+        { aggregateId, seqNr: 1 },
+        { aggregateId, seqNr: 2 },
+      ],
+    });
+  });
+});
 
 test("returns input validation failure without SDK IO", async () => {
   const client = new DynamoDBClient({ region: "us-west-1" });
@@ -32,6 +198,113 @@ describe("public createDynamoDB with DynamoDB Local 3.3.1", () => {
   afterAll(async () => {
     if (local !== undefined) await local.stop();
   }, 120_000);
+
+  describe.each(operations)("%s Unicode validation", (operation) => {
+    test.each(malformedIds)(
+      "rejects %p before serializer or operation SDK calls",
+      async (aggregateId) => {
+        const layout = await local.createTables();
+        const client = local.createClient();
+        const eventSerializer = observedSerializer();
+        const snapshotSerializer = observedSerializer();
+        const opened = await EventStore.createDynamoDB({
+          ...layout,
+          client,
+          eventSerializer,
+          snapshotSerializer,
+        });
+        if (opened.type !== "ok") throw new Error("open failed");
+        const send = jest.spyOn(client, "send");
+        try {
+          const result = await callWithId(opened.value, operation, aggregateId);
+
+          expect(result).toMatchObject({
+            type: "err",
+            error: { type: "contract-violation", rule: "T-12" },
+          });
+          expect(eventSerializer.serialize).not.toHaveBeenCalled();
+          expect(eventSerializer.deserialize).not.toHaveBeenCalled();
+          expect(snapshotSerializer.serialize).not.toHaveBeenCalled();
+          expect(snapshotSerializer.deserialize).not.toHaveBeenCalled();
+          expect(send).not.toHaveBeenCalled();
+        } finally {
+          send.mockRestore();
+        }
+      },
+      30_000,
+    );
+  });
+
+  describe.each(["persistEvent", "persistEventAndSnapshot"] as const)(
+    "%s",
+    (operation) => {
+      test.each([
+        [-1, "T-9"],
+        [0, "W-6"],
+      ] as const)(
+        "preserves seqNr=%s priority over malformed UTF-16: %s",
+        async (seqNr, rule) => {
+          const layout = await local.createTables();
+          const client = local.createClient();
+          const serializer = observedSerializer();
+          const opened = await EventStore.createDynamoDB({
+            ...layout,
+            client,
+            eventSerializer: serializer,
+            snapshotSerializer: serializer,
+          });
+          if (opened.type !== "ok") throw new Error("open failed");
+          const send = jest.spyOn(client, "send");
+          try {
+            expect(
+              await callWithId(opened.value, operation, malformedIds[0], seqNr),
+            ).toMatchObject({
+              type: "err",
+              error: { type: "contract-violation", rule },
+            });
+            expect(serializer.serialize).not.toHaveBeenCalled();
+            expect(serializer.deserialize).not.toHaveBeenCalled();
+            expect(send).not.toHaveBeenCalled();
+          } finally {
+            send.mockRestore();
+          }
+        },
+        30_000,
+      );
+    },
+  );
+
+  test("preserves a surrogate pair in all four operations", async () => {
+    const layout = await local.createTables();
+    const opened = await EventStore.createDynamoDB({
+      ...layout,
+      client: local.createClient(),
+    });
+    if (opened.type !== "ok") throw new Error("open failed");
+    const aggregateId = { typeName: "\uD83D\uDE80", value: "\uD83D\uDE03" };
+
+    expect(
+      await callWithId(opened.value, "persistEvent", aggregateId),
+    ).toMatchObject({ type: "ok" });
+    expect(
+      await callWithId(opened.value, "persistEventAndSnapshot", aggregateId, 2),
+    ).toMatchObject({ type: "ok" });
+    expect(
+      await callWithId(opened.value, "getLatestSnapshotById", aggregateId),
+    ).toMatchObject({
+      type: "ok",
+      value: { headSeqNr: 2, snapshot: { seqNr: 2, aggregate: { total: 2 } } },
+    });
+    expect(
+      await callWithId(opened.value, "getEventsByIdSinceSeqNr", aggregateId),
+    ).toMatchObject({
+      type: "ok",
+      value: [
+        { aggregateId, seqNr: 1 },
+        { aggregateId, seqNr: 2 },
+      ],
+    });
+  }, 30_000);
 
   test("connects all four operations with no history when retention is absent", async () => {
     const layout = await local.createTables();

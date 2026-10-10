@@ -32,6 +32,7 @@ describe("AggregateId", () => {
     ["", "v", "-v"],
     ["t", "", "t-"],
     ["", "", "-"],
+    ["\uD83D\uDE80", "\uD83D\uDE03", "\uD83D\uDE80-\uD83D\uDE03"],
   ])("accepts (%j, %j) and renders %j", (typeName, value, expected) => {
     const id = unwrap(AggregateId.of(typeName, value));
 
@@ -108,4 +109,59 @@ describe("AggregateId", () => {
   test("of returns a frozen value", () => {
     expect(Object.isFrozen(unwrap(AggregateId.of("a", "b")))).toBe(true);
   });
+
+  test("rejects distinct IDs whose lone surrogates would encode to the same UTF-8 bytes", () => {
+    const first = "\uD800";
+    const second = "\uD801";
+
+    expect(first).not.toBe(second);
+    expect(Buffer.from(`Order-${first}`, "utf8")).toEqual(
+      Buffer.from(`Order-${second}`, "utf8"),
+    );
+    for (const value of [first, second]) {
+      expect(errorOf(AggregateId.of("Order", value))).toMatchObject({
+        type: "contract-violation",
+        rule: "T-12",
+      });
+    }
+  });
+
+  describe.each(["of", "asString"] as const)(
+    "%s Unicode validation",
+    (operation) => {
+      test.each([
+        { typeName: "\uD800", value: "1" },
+        { typeName: "\uD801", value: "1" },
+        { typeName: "\uDC00", value: "1" },
+        { typeName: "Order", value: "\uD800" },
+        { typeName: "Order", value: "\uD801" },
+        { typeName: "Order", value: "\uDC00" },
+        { typeName: "Order", value: "\uDC00\uD800" },
+        { typeName: "Order", value: "\uD800x\uDC00" },
+      ])("rejects malformed UTF-16 in %p", (id) => {
+        const result =
+          operation === "of"
+            ? AggregateId.of(id.typeName, id.value)
+            : AggregateId.asString(id);
+
+        expect(errorOf<unknown>(result)).toMatchObject({
+          type: "contract-violation",
+          rule: "T-12",
+        });
+      });
+
+      test("preserves T-11 priority when a hyphen and malformed UTF-16 coexist", () => {
+        const id = { typeName: "Order-\uD800", value: "\uDC00" };
+        const result =
+          operation === "of"
+            ? AggregateId.of(id.typeName, id.value)
+            : AggregateId.asString(id);
+
+        expect(errorOf<unknown>(result)).toMatchObject({
+          type: "contract-violation",
+          rule: "T-11",
+        });
+      });
+    },
+  );
 });
