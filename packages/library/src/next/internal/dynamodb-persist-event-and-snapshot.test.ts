@@ -209,12 +209,36 @@ describe("persistEventAndSnapshot from the configured internal entry with Dynamo
     const recorded = input.observation
       .snapshot()
       .observations.slice(input.initializationRequests);
-    expect(
-      recorded.every(
-        ({ commandName }) => commandName === "TransactWriteItemsCommand",
-      ),
-    ).toBe(true);
-    return recorded;
+    let retentionAllowed = false;
+    for (const record of recorded) {
+      if (record.commandName === "TransactWriteItemsCommand") {
+        retentionAllowed =
+          record.upstream !== undefined &&
+          (record.input as TransactWriteItemsCommandInput).TransactItems
+            ?.length === 4;
+      } else {
+        expect(retentionAllowed).toBe(true);
+        const request = record.input as {
+          TableName?: string;
+          IndexName?: string;
+          RequestItems?: object;
+        };
+        if (record.commandName === "QueryCommand") {
+          expect(request.TableName).toBe(input.tables.snapshot);
+          expect(request.IndexName).toBe(input.snapshotAidIndexName);
+        } else if (record.commandName === "BatchWriteItemCommand") {
+          expect(Object.keys(request.RequestItems ?? {})).toEqual([
+            input.tables.snapshot,
+          ]);
+        } else {
+          expect(record.commandName).toBe("UpdateItemCommand");
+          expect(request.TableName).toBe(input.tables.snapshot);
+        }
+      }
+    }
+    return recorded.filter(
+      ({ commandName }) => commandName === "TransactWriteItemsCommand",
+    );
   }
 
   test.each([
@@ -318,10 +342,18 @@ describe("persistEventAndSnapshot from the configured internal entry with Dynamo
         },
         snapshots: [
           secondSnapshot,
+          ...(retention?.mode?.type === "ttl"
+            ? [
+                {
+                  ...firstSnapshot,
+                  skey: { N: "1" },
+                  ttl: { N: expect.any(String) },
+                },
+              ]
+            : []),
           ...(retention === undefined
             ? []
             : [
-                afterFirst.snapshots[1],
                 {
                   ...secondSnapshot,
                   skey: { N: "2" },
@@ -418,7 +450,6 @@ describe("persistEventAndSnapshot from the configured internal entry with Dynamo
     expect(after.snapshots).toEqual(afterSecondPair.snapshots);
     expect(after.snapshots.map((item) => item.skey)).toEqual([
       { N: "0" },
-      { N: "1" },
       { N: "3" },
     ]);
     expect(after.head?.seq_nr).toEqual({ N: "4" });
@@ -1044,9 +1075,11 @@ describe("persistEventAndSnapshot from the configured internal entry with Dynamo
       });
       if (loser.type !== "err") throw new Error("expected loser");
       const firstRequests = commits(input);
-      const secondRequests = secondObservation
-        .snapshot()
-        .observations.slice(secondOffset);
+      const secondRequests = commits({
+        ...input,
+        observation: secondObservation,
+        initializationRequests: secondOffset,
+      });
       expect(firstRequests).toHaveLength(seqNr);
       expect(secondRequests).toHaveLength(1);
       const cause =
@@ -1058,14 +1091,13 @@ describe("persistEventAndSnapshot from the configured internal entry with Dynamo
       expect(after.journal[seqNr - 1].payload).toEqual(bytes);
       expect(after.head?.seq_nr).toEqual({ N: seqNr.toString() });
       expect(after.head?.events?.L?.[0].M?.payload).toEqual(bytes);
-      expect(after.snapshots).toHaveLength(seqNr + 1);
-      for (const item of [after.snapshots[0], after.snapshots[seqNr]]) {
+      expect(after.snapshots).toHaveLength(2);
+      for (const item of after.snapshots) {
         expect(item.seq_nr).toEqual({ N: seqNr.toString() });
         expect(item.payload).toEqual(bytes);
       }
       if (seqNr === 2) {
         expect(after.journal[0]).toEqual(before.journal[0]);
-        expect(after.snapshots[1]).toEqual(before.snapshots[1]);
       }
       input.observation.assertApplied();
       secondObservation.assertApplied();
