@@ -33,7 +33,8 @@ export function createDynamoDBGetEvents<PE, PS>(
       ScanIndexForward: true,
     };
 
-    let items: Record<string, AttributeValue>[] = [];
+    // 蓄積配列は呼出し内だけで更新し、全頁・全復元の成功後に公開する。
+    const items: Record<string, AttributeValue>[] = [];
     let cursor: Record<string, AttributeValue> | undefined;
     try {
       do {
@@ -43,7 +44,7 @@ export function createDynamoDBGetEvents<PE, PS>(
             ...(cursor === undefined ? {} : { ExclusiveStartKey: cursor }),
           }),
         );
-        items = [...items, ...(response.Items ?? [])];
+        for (const item of response.Items ?? []) items.push(item);
         cursor = response.LastEvaluatedKey;
       } while (cursor !== undefined && Object.keys(cursor).length !== 0);
     } catch (cause) {
@@ -52,7 +53,7 @@ export function createDynamoDBGetEvents<PE, PS>(
       );
     }
 
-    let events: EventEnvelope<PE>[] = [];
+    const events: EventEnvelope<PE>[] = [];
     for (const item of items) {
       const restored = restoreDynamoDBEventEnvelope(
         item,
@@ -60,7 +61,7 @@ export function createDynamoDBGetEvents<PE, PS>(
         settings.eventSerializer,
       );
       if (restored.type === "err") return restored;
-      events = [...events, restored.value];
+      events.push(restored.value);
     }
     return Result.ok(events);
   };

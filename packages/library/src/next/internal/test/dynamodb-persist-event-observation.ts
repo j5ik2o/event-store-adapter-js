@@ -103,7 +103,7 @@ export class DynamoDBPersistEventObservation {
           if (beforeSend !== undefined) await beforeSend();
         }
         const query = args.input as QueryCommandInput;
-        let queryFault: QueryFault | undefined;
+        let queryFault: { index: number; fault: QueryFault } | undefined;
         if (
           context.commandName === "QueryCommand" &&
           query.IndexName === undefined &&
@@ -124,12 +124,13 @@ export class DynamoDBPersistEventObservation {
               fault.page === page,
           );
           if (index !== -1) {
-            queryFault = this.queryFaults[index];
-            queryFault.applied += 1;
+            const fault = this.queryFaults[index];
+            queryFault = { index, fault };
             observation.fault = index;
-            if (queryFault.injection === "replace-request") {
-              observation.error = queryFault.cause;
-              throw queryFault.cause;
+            if (fault.injection === "replace-request") {
+              this.markQueryFaultApplied(index);
+              observation.error = fault.cause;
+              throw fault.cause;
             }
           }
         }
@@ -140,8 +141,9 @@ export class DynamoDBPersistEventObservation {
             observation.readEvents === undefined
               ? result.output
               : correctReadEventsPage(result.output as QueryCommandOutput);
-          if (queryFault?.injection === "replace-response") {
-            output = queryFault.replace(output as QueryCommandOutput);
+          if (queryFault?.fault.injection === "replace-response") {
+            this.markQueryFaultApplied(queryFault.index);
+            output = queryFault.fault.replace(output as QueryCommandOutput);
           }
           if (observation.readEvents !== undefined) {
             observation.returned = structuredClone(output);
@@ -154,6 +156,12 @@ export class DynamoDBPersistEventObservation {
         }
       },
       { step: "build", name: "persistEventObservation", priority: "high" },
+    );
+  }
+
+  private markQueryFaultApplied(index: number): void {
+    this.queryFaults = this.queryFaults.map((fault, position) =>
+      position === index ? { ...fault, applied: fault.applied + 1 } : fault,
     );
   }
 

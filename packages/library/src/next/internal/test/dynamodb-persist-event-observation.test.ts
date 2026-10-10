@@ -257,7 +257,151 @@ test("records the original SDK response separately from a delivered replacement"
   }
 });
 
-test("a replacement failure preserves the upstream response and its cause", async () => {
+test("an SDK failure leaves the selected response fault unapplied and preserves its cause", async () => {
+  const { client, handle } = fixtureClient(true);
+  const observation = new DynamoDBPersistEventObservation(client);
+  const replace = jest.fn((output: QueryCommandOutput) => output);
+  observation.beginReadEvents("journal", 1);
+  observation.replaceReadEvents({
+    operation: 1,
+    table: "journal",
+    page: 1,
+    replace,
+  });
+  try {
+    const cause = await client
+      .send(new QueryCommand({ TableName: "journal" }))
+      .catch((error: unknown) => error);
+    expect(cause).toBeInstanceOf(ResourceNotFoundException);
+    expect(handle).toHaveBeenCalledTimes(1);
+    expect(replace).not.toHaveBeenCalled();
+    const saved = observation.snapshot();
+    expect(saved.observations[0].error).toBe(cause);
+    expect(saved.observations[0].upstream).toBeUndefined();
+    expect(saved.observations[0].returned).toBeUndefined();
+    expect(saved.queryFaults[0].applied).toBe(0);
+    expect(saved.queryUnapplied).toEqual([0]);
+    expect(() => observation.assertApplied()).toThrow(
+      "registered read-events fault was not applied",
+    );
+  } finally {
+    client.destroy();
+  }
+});
+
+test.each(["replace-request", "replace-response"] as const)(
+  "%s copies the registered fault at application and preserves snapshot separation",
+  async (injection) => {
+    const { client, handle } = fixtureClient(false, { Items: [], Count: 0 });
+    const observation = new DynamoDBPersistEventObservation(client);
+    const cause = new Error("request blocked");
+    const replace = jest.fn((output: QueryCommandOutput) => {
+      expect(observation.snapshot().queryFaults[0].applied).toBe(1);
+      return { ...output, Count: 7 };
+    });
+    observation.beginReadEvents("journal", 1);
+    if (injection === "replace-request") {
+      observation.failReadEvents({
+        operation: 1,
+        table: "journal",
+        page: 1,
+        cause,
+      });
+    } else {
+      observation.replaceReadEvents({
+        operation: 1,
+        table: "journal",
+        page: 1,
+        replace,
+      });
+    }
+    const registered = observation["queryFaults"][0];
+    const before = observation.snapshot();
+    try {
+      if (injection === "replace-request") {
+        await expect(
+          client.send(new QueryCommand({ TableName: "journal" })),
+        ).rejects.toBe(cause);
+        expect(handle).not.toHaveBeenCalled();
+        expect(replace).not.toHaveBeenCalled();
+        expect(observation.snapshot().observations[0].error).toBe(cause);
+      } else {
+        const returned = await client.send(
+          new QueryCommand({ TableName: "journal" }),
+        );
+        expect(returned.Count).toBe(7);
+        expect(handle).toHaveBeenCalledTimes(1);
+        expect(replace).toHaveBeenCalledTimes(1);
+      }
+      expect(registered.applied).toBe(0);
+      expect(before.queryFaults[0].applied).toBe(0);
+      const applied = observation.snapshot();
+      expect(applied.queryFaults[0].applied).toBe(1);
+      expect(applied.queryUnapplied).toEqual([]);
+      applied.queryFaults[0].applied = 99;
+      expect(observation.snapshot().queryFaults[0].applied).toBe(1);
+      const next = await client.send(
+        new QueryCommand({ TableName: "journal" }),
+      );
+      expect(next.Count).toBe(0);
+      expect(handle).toHaveBeenCalledTimes(
+        injection === "replace-request" ? 1 : 2,
+      );
+      expect(replace).toHaveBeenCalledTimes(
+        injection === "replace-request" ? 0 : 1,
+      );
+      expect(observation.snapshot().queryFaults[0].applied).toBe(1);
+      observation.assertApplied();
+    } finally {
+      client.destroy();
+    }
+  },
+);
+
+test("application updates only the selected fault while another operation remains unapplied", async () => {
+  const { client, handle } = fixtureClient();
+  const observation = new DynamoDBPersistEventObservation(client);
+  const cause = new Error("first operation blocked");
+  const replace = jest.fn((output: QueryCommandOutput) => output);
+  observation.replaceReadEvents({
+    operation: 2,
+    table: "journal",
+    page: 1,
+    replace,
+  });
+  observation.failReadEvents({
+    operation: 1,
+    table: "journal",
+    page: 1,
+    cause,
+  });
+  try {
+    observation.beginReadEvents("journal", 1);
+    await expect(
+      client.send(new QueryCommand({ TableName: "journal" })),
+    ).rejects.toBe(cause);
+    expect(handle).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+    expect(
+      observation.snapshot().queryFaults.map((fault) => fault.applied),
+    ).toEqual([0, 1]);
+    expect(observation.snapshot().queryUnapplied).toEqual([0]);
+    expect(() => observation.assertApplied()).toThrow("not applied");
+    observation.beginReadEvents("journal", 2);
+    await client.send(new QueryCommand({ TableName: "journal" }));
+    expect(handle).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(
+      observation.snapshot().queryFaults.map((fault) => fault.applied),
+    ).toEqual([1, 1]);
+    expect(observation.snapshot().queryUnapplied).toEqual([]);
+    observation.assertApplied();
+  } finally {
+    client.destroy();
+  }
+});
+
+test("a replacement failure preserves the upstream response, applied count and its cause", async () => {
   const { client } = fixtureClient();
   const observation = new DynamoDBPersistEventObservation(client);
   const cause = new Error("replacement failed");
@@ -267,6 +411,7 @@ test("a replacement failure preserves the upstream response and its cause", asyn
     table: "journal",
     page: 1,
     replace() {
+      expect(observation.snapshot().queryFaults[0].applied).toBe(1);
       throw cause;
     },
   });
@@ -276,6 +421,8 @@ test("a replacement failure preserves the upstream response and its cause", asyn
     ).rejects.toBe(cause);
     expect(observation.snapshot().observations[0].upstream).toBeDefined();
     expect(observation.snapshot().observations[0].error).toBe(cause);
+    expect(observation.snapshot().queryFaults[0].applied).toBe(1);
+    expect(observation.snapshot().queryUnapplied).toEqual([]);
     observation.assertApplied();
   } finally {
     client.destroy();
