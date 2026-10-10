@@ -1,5 +1,7 @@
 import type {
   AttributeValue,
+  BatchGetItemCommandInput,
+  BatchGetItemCommandOutput,
   DynamoDBClient,
   QueryCommandInput,
   QueryCommandOutput,
@@ -46,6 +48,11 @@ type Observation = {
   upstream?: unknown;
   returned?: unknown;
   readEvents?: { operation: number; page: number; table: string };
+  readSnapshot?: {
+    operation: number;
+    request: number;
+    tables: readonly string[];
+  };
   error?: unknown;
   fault?: number;
 };
@@ -62,6 +69,21 @@ type QueryFault = {
       replace: (output: QueryCommandOutput) => QueryCommandOutput;
     }
 );
+type SnapshotFault = {
+  operation: number;
+  table: string;
+  request: number;
+  applied: number;
+} & (
+  | { injection: "replace-request"; cause: unknown }
+  | {
+      injection: "replace-response";
+      replace: (
+        output: BatchGetItemCommandOutput,
+        input: BatchGetItemCommandInput,
+      ) => BatchGetItemCommandOutput;
+    }
+);
 
 /** 試験専用。実SDKへ委譲した結果と、明示したreplace-requestの適用を別に記録する。 */
 export class DynamoDBPersistEventObservation {
@@ -69,6 +91,13 @@ export class DynamoDBPersistEventObservation {
   private faults: Fault[] = [];
   private queryFaults: QueryFault[] = [];
   private readEvents?: { operation: number; table: string; page: number };
+  private snapshotFaults: SnapshotFault[] = [];
+  private readSnapshot?: {
+    operation: number;
+    tables: readonly string[];
+    request: number;
+    beforeSend?: () => Promise<void>;
+  };
 
   constructor(client: DynamoDBClient, beforeSend?: () => Promise<void>) {
     client.middlewareStack.add(
@@ -134,6 +163,56 @@ export class DynamoDBPersistEventObservation {
             }
           }
         }
+        const batch = args.input as BatchGetItemCommandInput;
+        let snapshotFault: { index: number; fault: SnapshotFault } | undefined;
+        const requested = Object.entries(batch.RequestItems ?? {});
+        const snapshotRead = this.readSnapshot;
+        if (
+          context.commandName === "BatchGetItemCommand" &&
+          snapshotRead !== undefined &&
+          requested.length > 0 &&
+          requested.every(
+            ([table, request]) =>
+              snapshotRead.tables.includes(table) &&
+              request.Keys !== undefined &&
+              request.Keys.length > 0 &&
+              request.Keys.every((key) => key.aid?.S !== "__config__"),
+          )
+        ) {
+          this.readSnapshot = {
+            ...snapshotRead,
+            request: snapshotRead.request + 1,
+          };
+          const {
+            operation,
+            request,
+            tables,
+            beforeSend: gate,
+          } = this.readSnapshot;
+          observation.readSnapshot = {
+            operation,
+            request,
+            tables: [...tables],
+          };
+          const index = this.snapshotFaults.findIndex(
+            (fault) =>
+              fault.applied === 0 &&
+              fault.operation === operation &&
+              fault.request === request &&
+              requested.some(([table]) => table === fault.table),
+          );
+          if (index !== -1) {
+            const fault = this.snapshotFaults[index];
+            snapshotFault = { index, fault };
+            observation.fault = index;
+            if (fault.injection === "replace-request") {
+              this.markSnapshotFaultApplied(index);
+              observation.error = fault.cause;
+              throw fault.cause;
+            }
+          }
+          if (gate !== undefined) await gate();
+        }
         try {
           const result = await next(args);
           observation.upstream = structuredClone(result.output);
@@ -145,7 +224,17 @@ export class DynamoDBPersistEventObservation {
             this.markQueryFaultApplied(queryFault.index);
             output = queryFault.fault.replace(output as QueryCommandOutput);
           }
-          if (observation.readEvents !== undefined) {
+          if (snapshotFault?.fault.injection === "replace-response") {
+            this.markSnapshotFaultApplied(snapshotFault.index);
+            output = snapshotFault.fault.replace(
+              output as BatchGetItemCommandOutput,
+              batch,
+            );
+          }
+          if (
+            observation.readEvents !== undefined ||
+            observation.readSnapshot !== undefined
+          ) {
             observation.returned = structuredClone(output);
             return { ...result, output };
           }
@@ -161,6 +250,12 @@ export class DynamoDBPersistEventObservation {
 
   private markQueryFaultApplied(index: number): void {
     this.queryFaults = this.queryFaults.map((fault, position) =>
+      position === index ? { ...fault, applied: fault.applied + 1 } : fault,
+    );
+  }
+
+  private markSnapshotFaultApplied(index: number): void {
+    this.snapshotFaults = this.snapshotFaults.map((fault, position) =>
       position === index ? { ...fault, applied: fault.applied + 1 } : fault,
     );
   }
@@ -201,6 +296,50 @@ export class DynamoDBPersistEventObservation {
     ];
   }
 
+  beginReadSnapshot(
+    tables: Readonly<{ head: string; snapshot: string }>,
+    operation: number,
+    beforeSend?: () => Promise<void>,
+  ): void {
+    this.readSnapshot = {
+      tables: [tables.head, tables.snapshot],
+      operation,
+      request: 0,
+      beforeSend,
+    };
+  }
+
+  failReadSnapshot(
+    input: Readonly<{
+      operation: number;
+      table: string;
+      request: number;
+      cause: unknown;
+    }>,
+  ): void {
+    this.snapshotFaults = [
+      ...this.snapshotFaults,
+      { ...input, injection: "replace-request", applied: 0 },
+    ];
+  }
+
+  replaceReadSnapshot(
+    input: Readonly<{
+      operation: number;
+      table: string;
+      request: number;
+      replace: (
+        output: BatchGetItemCommandOutput,
+        input: BatchGetItemCommandInput,
+      ) => BatchGetItemCommandOutput;
+    }>,
+  ): void {
+    this.snapshotFaults = [
+      ...this.snapshotFaults,
+      { ...input, injection: "replace-response", applied: 0 },
+    ];
+  }
+
   snapshot() {
     return {
       observations: this.observations.map((observation) => ({
@@ -208,10 +347,14 @@ export class DynamoDBPersistEventObservation {
       })),
       faults: this.faults.map((fault) => ({ ...fault })),
       queryFaults: this.queryFaults.map((fault) => ({ ...fault })),
+      snapshotFaults: this.snapshotFaults.map((fault) => ({ ...fault })),
       unapplied: this.faults.flatMap(({ applied }, index) =>
         applied === 0 ? [index] : [],
       ),
       queryUnapplied: this.queryFaults.flatMap(({ applied }, index) =>
+        applied === 0 ? [index] : [],
+      ),
+      snapshotUnapplied: this.snapshotFaults.flatMap(({ applied }, index) =>
         applied === 0 ? [index] : [],
       ),
     };
@@ -222,5 +365,7 @@ export class DynamoDBPersistEventObservation {
       throw new Error("registered commit fault was not applied");
     if (this.snapshot().queryUnapplied.length !== 0)
       throw new Error("registered read-events fault was not applied");
+    if (this.snapshot().snapshotUnapplied.length !== 0)
+      throw new Error("registered read-snapshot fault was not applied");
   }
 }

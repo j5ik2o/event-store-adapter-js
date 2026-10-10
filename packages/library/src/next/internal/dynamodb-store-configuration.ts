@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
   type AttributeValue,
-  BatchGetItemCommand,
-  type BatchGetItemCommandInput,
   ConditionalCheckFailedException,
   TransactionCanceledException,
   TransactWriteItemsCommand,
@@ -10,6 +8,7 @@ import {
 import { Result } from "../../result";
 import type { DynamoDBEventStoreInput } from "../dynamodb-event-store-input";
 import { EventStoreError } from "../event-store-error";
+import { readDynamoDBBatch } from "./dynamodb-batch-get";
 
 export type DynamoDBStoreConfiguration = Readonly<{
   storeId: string;
@@ -45,58 +44,23 @@ function configurationKeys(
 async function readConfiguration(
   input: ConfigurationInput,
   keys: ConfigurationKey[],
-  sleep: (ms: number) => Promise<void>,
+  sleep?: (ms: number) => Promise<void>,
 ): Promise<
   Result<(Record<string, AttributeValue> | undefined)[], EventStoreError>
 > {
-  let requestItems: NonNullable<BatchGetItemCommandInput["RequestItems"]> =
+  const read = await readDynamoDBBatch(
+    input,
     Object.fromEntries(
       keys.map(({ tableName, key }) => [
         tableName,
         { Keys: [key], ConsistentRead: true },
       ]),
-    );
-  let items = new Map<string, Record<string, AttributeValue>>();
-  const retryLimit = BigInt(input.retryLimit);
-  let retries = BigInt(0);
-  try {
-    while (true) {
-      const response = await input.client.send(
-        new BatchGetItemCommand({ RequestItems: requestItems }),
-      );
-      // 各表に予約キーを1件だけ要求するため、返る項目もそのキーの1件だけ。
-      for (const [tableName, [item]] of Object.entries(
-        response.Responses ?? {},
-      )) {
-        if (item !== undefined) items = new Map([...items, [tableName, item]]);
-      }
-      requestItems = Object.fromEntries(
-        Object.entries(response.UnprocessedKeys ?? {}).map(
-          ([tableName, pending]) => [
-            tableName,
-            { ...pending, ConsistentRead: true },
-          ],
-        ),
-      );
-      if (Object.keys(requestItems).length === 0) {
-        return Result.ok(keys.map(({ tableName }) => items.get(tableName)));
-      }
-      if (retries >= retryLimit) {
-        return Result.err(
-          EventStoreError.storage(
-            "configuration read retry limit reached",
-            response,
-          ),
-        );
-      }
-      await sleep(Math.min(50 * 2 ** Number(retries), 1000));
-      retries += BigInt(1);
-    }
-  } catch (cause) {
-    return Result.err(
-      EventStoreError.storage("configuration read failed", cause),
-    );
-  }
+    ),
+    "configuration read",
+    sleep,
+  );
+  if (read.type === "err") return read;
+  return Result.ok(keys.map(({ tableName }) => read.value.get(tableName)));
 }
 
 function reconcileConfiguration(
@@ -140,8 +104,7 @@ function reconcileConfiguration(
 /** 3表の設定だけを確定する。表作成・製品4操作は行わない。 */
 export async function ensureDynamoDBStoreConfiguration(
   input: ConfigurationInput,
-  sleep: (ms: number) => Promise<void> = (ms) =>
-    new Promise((resolve) => setTimeout(resolve, ms)),
+  sleep?: (ms: number) => Promise<void>,
 ): Promise<Result<DynamoDBStoreConfiguration, EventStoreError>> {
   const keys = configurationKeys(input.tables);
   const read = await readConfiguration(input, keys, sleep);

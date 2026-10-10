@@ -4,6 +4,7 @@ import type { EventStore } from "../event-store";
 import type { EventStoreError } from "../event-store-error";
 import { validateDynamoDBEventStoreInput } from "./dynamodb-event-store-input-validation";
 import { createDynamoDBGetEvents } from "./dynamodb-get-events";
+import { createDynamoDBGetLatestSnapshot } from "./dynamodb-get-latest-snapshot";
 import {
   createDynamoDBPersistEvent,
   createDynamoDBPersistEventAndSnapshot,
@@ -13,7 +14,7 @@ import {
   ensureDynamoDBStoreConfiguration,
 } from "./dynamodb-store-configuration";
 
-/** 設定確定後の両追記とイベント読取を返す内部入口。最新snapshotの接続は後続。 */
+/** 設定確定後の4操作を返す内部入口。保持と公開factoryの接続は後続。 */
 export async function initializeDynamoDBEventStoreInternal<
   PE = unknown,
   PS = unknown,
@@ -31,6 +32,7 @@ export async function initializeDynamoDBEventStoreInternal<
       persistEvent: EventStore<PE, PS>["persistEvent"];
       persistEventAndSnapshot: EventStore<PE, PS>["persistEventAndSnapshot"];
       getEventsByIdSinceSeqNr: EventStore<PE, PS>["getEventsByIdSinceSeqNr"];
+      getLatestSnapshotById: EventStore<PE, PS>["getLatestSnapshotById"];
     }>,
     EventStoreError
   >
@@ -51,6 +53,10 @@ export async function initializeDynamoDBEventStoreInternal<
         settings.value,
       ),
       getEventsByIdSinceSeqNr: createDynamoDBGetEvents(settings.value),
+      getLatestSnapshotById: createDynamoDBGetLatestSnapshot(
+        settings.value,
+        hooks?.sleep,
+      ),
     }),
   );
 }
