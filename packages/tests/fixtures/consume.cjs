@@ -116,6 +116,36 @@ async function consumeMemory() {
   assert.equal(result.error.type, "serialization-error");
   assert.equal(result.error.cause, cause);
   assert.equal(unwrap(await broken.getLatestSnapshotById(id)), undefined);
+  for (const operation of ["persistEvent", "persistEventAndSnapshot"]) {
+    for (const kind of ["detached", "proxy"]) {
+      let bytes = Uint8Array.of(1);
+      const copyCause = new TypeError("bytes iteration failed");
+      if (kind === "detached") structuredClone(bytes.buffer, { transfer: [bytes.buffer] });
+      else bytes = new Proxy(bytes, { get(target, key, receiver) {
+        if (key === Symbol.iterator) throw copyCause;
+        return Reflect.get(target, key, receiver);
+      } });
+      const unreadable = unwrap(EventStore.createMemory({ eventSerializer: { ...PayloadSerializer.json(), serialize: () => bytes } }));
+      const failed = operation === "persistEvent"
+        ? await unreadable.persistEvent(event)
+        : await unreadable.persistEventAndSnapshot(event, { seqNr: 1, manifest: "snapshot", aggregate: {} });
+      assert.equal(failed.type, "err");
+      assert.equal(failed.error.type, "serialization-error");
+      assert.equal(failed.error.operation, "serialize");
+      assert.ok(failed.error.cause instanceof TypeError);
+      if (kind === "proxy") assert.equal(failed.error.cause, copyCause);
+      assert.equal(unwrap(await unreadable.getLatestSnapshotById(id)), undefined);
+      assert.deepEqual(unwrap(await unreadable.getEventsByIdSinceSeqNr(id, 1)), []);
+    }
+  }
+  const scratch = Buffer.from('{"count":1}');
+  const copied = unwrap(EventStore.createMemory({ eventSerializer: { ...PayloadSerializer.json(), serialize: () => scratch } }));
+  const pending = copied.persistEvent(event);
+  scratch.fill(0);
+  unwrap(await pending);
+  assert.deepEqual(unwrap(await copied.getEventsByIdSinceSeqNr(id, 1))[0].payload, { count: 1 });
+  scratch.fill(99);
+  assert.deepEqual(unwrap(await copied.getEventsByIdSinceSeqNr(id, 1))[0].payload, { count: 1 });
 }
 
 async function consumeDynamoDB(layout) {
@@ -141,6 +171,6 @@ if (require.main === module) {
   (async () => {
     await consumeMemory();
     await consumeDynamoDB(JSON.parse(process.env.ESWA_DYNAMODB_LAYOUT));
-    console.log("External package: Unicode IDs, ID access, creation Result/cause, four operations, domain serializers, Result/cause, Memory sharing and isolation passed");
+    console.log("External package: Unicode IDs, ID access, creation Result/cause, byte copy classification and isolation, four operations, domain serializers, Result/cause, Memory sharing and isolation passed");
   })().catch((error) => { console.error(error); process.exitCode = 1; });
 }

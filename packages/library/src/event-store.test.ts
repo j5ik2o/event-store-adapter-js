@@ -1,3 +1,4 @@
+import { types } from "node:util";
 import { DynamoDBClient, QueryCommand } from "@aws-sdk/client-dynamodb";
 import type { AggregateId } from "./aggregate-id";
 import { EventStore } from "./event-store";
@@ -60,6 +61,90 @@ function observedSerializer() {
     deserialize: jest.fn(json.deserialize),
   };
 }
+
+function unreadableSerializedBytes(kind: "detached" | "proxy") {
+  const bytes = Uint8Array.of(1);
+  if (kind === "detached") {
+    structuredClone(bytes.buffer, { transfer: [bytes.buffer] });
+    return { bytes, cause: undefined };
+  }
+  const cause = new TypeError("bytes iteration failed");
+  return {
+    bytes: new Proxy(bytes, {
+      get(target, key, receiver) {
+        if (key === Symbol.iterator) throw cause;
+        return Reflect.get(target, key, receiver);
+      },
+    }),
+    cause,
+  };
+}
+
+describe.each(["persistEvent", "persistEventAndSnapshot"] as const)(
+  "public createMemory %s byte copies",
+  (operation) => {
+    test.each(["detached", "proxy"] as const)(
+      "classifies %s copy failure before commit",
+      async (kind) => {
+        const { bytes, cause } = unreadableSerializedBytes(kind);
+        const serialize = jest.fn(() => bytes);
+        const snapshotSerializer = observedSerializer();
+        const opened = EventStore.createMemory({
+          eventSerializer: { ...PayloadSerializer.json(), serialize },
+          snapshotSerializer,
+        });
+        if (opened.type !== "ok") throw new Error("open failed");
+        const commit = jest.spyOn(
+          memoryStorageRecords,
+          "commitMemoryStorageRecords",
+        );
+        const aggregateId = { typeName: "Order", value: "copy" };
+        try {
+          const result = await callWithId(opened.value, operation, aggregateId);
+
+          expect(result).toMatchObject({
+            type: "err",
+            error: { type: "serialization-error", operation: "serialize" },
+          });
+          if (result.type !== "err") throw new Error("serialization succeeded");
+          expect(types.isNativeError(result.error.cause)).toBe(true);
+          expect(result.error.cause).toMatchObject({ name: "TypeError" });
+          if (cause !== undefined) expect(result.error.cause).toBe(cause);
+          expect(serialize).toHaveBeenCalledTimes(1);
+          expect(snapshotSerializer.serialize).not.toHaveBeenCalled();
+          expect(commit).not.toHaveBeenCalled();
+          expect(await opened.value.getLatestSnapshotById(aggregateId)).toEqual(
+            { type: "ok", value: undefined },
+          );
+          expect(
+            await opened.value.getEventsByIdSinceSeqNr(aggregateId, 1),
+          ).toEqual({ type: "ok", value: [] });
+        } finally {
+          commit.mockRestore();
+        }
+      },
+    );
+  },
+);
+
+test("public createMemory isolates serializer bytes while pending and after commit", async () => {
+  const bytes = Buffer.from('{"count":1}');
+  const opened = EventStore.createMemory({
+    eventSerializer: { ...PayloadSerializer.json(), serialize: () => bytes },
+  });
+  if (opened.type !== "ok") throw new Error("open failed");
+  const aggregateId = { typeName: "Order", value: "copy" };
+  const pending = callWithId(opened.value, "persistEvent", aggregateId);
+  bytes.fill(0);
+  expect(await pending).toEqual({ type: "ok", value: undefined });
+  expect(
+    await opened.value.getEventsByIdSinceSeqNr(aggregateId, 1),
+  ).toMatchObject({ type: "ok", value: [{ payload: { count: 1 } }] });
+  bytes.fill(99);
+  expect(
+    await opened.value.getEventsByIdSinceSeqNr(aggregateId, 1),
+  ).toMatchObject({ type: "ok", value: [{ payload: { count: 1 } }] });
+});
 
 describe("public createMemory Unicode validation", () => {
   describe.each(operations)("%s", (operation) => {
@@ -198,6 +283,52 @@ describe("public createDynamoDB with DynamoDB Local 3.3.1", () => {
   afterAll(async () => {
     if (local !== undefined) await local.stop();
   }, 120_000);
+
+  describe.each(["persistEvent", "persistEventAndSnapshot"] as const)(
+    "%s byte copies",
+    (operation) => {
+      test.each(["detached", "proxy"] as const)(
+        "classifies %s copy failure before operation SDK calls",
+        async (kind) => {
+          const layout = await local.createTables();
+          const client = local.createClient();
+          const { bytes, cause } = unreadableSerializedBytes(kind);
+          const serialize = jest.fn(() => bytes);
+          const snapshotSerializer = observedSerializer();
+          const opened = await EventStore.createDynamoDB({
+            ...layout,
+            client,
+            eventSerializer: { ...PayloadSerializer.json(), serialize },
+            snapshotSerializer,
+          });
+          if (opened.type !== "ok") throw new Error("open failed");
+          const send = jest.spyOn(client, "send");
+          try {
+            const result = await callWithId(opened.value, operation, {
+              typeName: "Order",
+              value: "copy",
+            });
+
+            expect(result).toMatchObject({
+              type: "err",
+              error: { type: "serialization-error", operation: "serialize" },
+            });
+            if (result.type !== "err")
+              throw new Error("serialization succeeded");
+            expect(types.isNativeError(result.error.cause)).toBe(true);
+            expect(result.error.cause).toMatchObject({ name: "TypeError" });
+            if (cause !== undefined) expect(result.error.cause).toBe(cause);
+            expect(serialize).toHaveBeenCalledTimes(1);
+            expect(snapshotSerializer.serialize).not.toHaveBeenCalled();
+            expect(send).not.toHaveBeenCalled();
+          } finally {
+            send.mockRestore();
+          }
+        },
+        30_000,
+      );
+    },
+  );
 
   describe.each(operations)("%s Unicode validation", (operation) => {
     test.each(malformedIds)(

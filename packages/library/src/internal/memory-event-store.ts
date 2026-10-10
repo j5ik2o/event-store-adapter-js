@@ -61,6 +61,7 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
           if (!(bytes instanceof Uint8Array)) {
             throw new TypeError("serializer.serialize must return Uint8Array");
           }
+          bytes = new Uint8Array(bytes);
         } catch (cause) {
           return Result.err(
             EventStoreError.serialization(
