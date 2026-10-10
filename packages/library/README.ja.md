@@ -2,202 +2,116 @@
 
 [![CI](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/event-store-adapter-js.svg)](https://badge.fury.io/js/event-store-adapter-js)
-[![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen.svg)](https://renovatebot.com)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![](https://tokei.rs/b1/github/j5ik2o/event-store-adapter-js)](https://github.com/XAMPPRocky/tokei)
 
-このライブラリは、DynamoDBをCQRS/Event Sourcing用のEvent Storeにするためのものです。
+共通v4契約に従うMemoryとDynamoDBのイベントストアです。共通契約の版とnpmパッケージの版は別です。
 
 [English](./README.md)
 
-# 導入方法
+## 導入
+
+Node.js 24以降を使用してください。
 
 ```shell
 npm install event-store-adapter-js
 ```
 
-公開エントリーポイントが実行時に Spanner を読み込むため、Memory や DynamoDB を含むすべてのバックエンドで、`@google-cloud/spanner`（`^8.7.1` または `^9.0.0`）が必須です。
+## 使い方
 
-## 4.0.0 への移行
-
-4.0.0 では、`@google-cloud/spanner` を通常の依存から必須の peer 依存に変更します。3.x から更新する際は、利用するパッケージマネージャーに応じて対応してください。
-
-- **npm 7 以降または pnpm 8 以降:** デフォルトで必須の peer 依存を自動インストールします。
-- **Yarn（Classic・v2 以降）、npm 6 以前、pnpm 7 以前など、peer 依存を自動インストールしないパッケージマネージャー:** 利用者側の `dependencies` に `@google-cloud/spanner` を追加してください。Yarn では、v8 を使う場合は `yarn add @google-cloud/spanner@^8.7.1`、v9 を使う場合は `yarn add @google-cloud/spanner@^9.0.0` を実行します。未インストールの場合、`event-store-adapter-js` の読み込み時にエラーになります。
-
-Spanner の `Database` を `EventStore.createSpanner` に渡す場合、利用者側でインストールした Spanner の版がそのまま使われます。上記の対応範囲内で、v8 を使い続けることも、v9 に更新することもできます。
-
-# 使い方
-
-EventStoreを使えば、Event Sourcing対応リポジトリを簡単に実装できます。
+メタデータは封筒に置き、payloadにはserializerが扱える任意のドメイン型を使います。シーケンス番号は安全な整数で、書き込みは1から連続します。集約IDは `typeName-value` で構築します。`typeName` に `-` は使えず、集約ID全体のUTF-8サイズは1024バイト以内です。
 
 ```typescript
-const UserAccountRepository = Object.freeze({
-    create(eventStore: EventStore<UserAccountId, UserAccount, UserAccountEvent>) {
-        return Object.freeze({
-            storeEvent: (event: UserAccountEvent, version: number) =>
-                eventStore.persistEvent(event, version),
-            storeEventAndSnapshot: (event: UserAccountEvent, snapshot: UserAccount) =>
-                eventStore.persistEventAndSnapshot(event, snapshot),
-            async findById(id: UserAccountId): Promise<UserAccount | undefined> {
-                const snapshot = await eventStore.getLatestSnapshotById(id);
-                if (snapshot === undefined) {
-                    return undefined;
-                }
-                const events = await eventStore.getEventsByIdSinceSequenceNumber(
-                    id,
-                    snapshot.sequenceNumber + 1,
-                );
-                return UserAccount.replay(events, snapshot);
-            },
-        });
-    },
+import {
+  AggregateId, EventEnvelope, EventStore, SnapshotEnvelope,
+  type EventStoreError, type Result,
+} from "event-store-adapter-js";
+
+function unwrap<T>(result: Result<T, EventStoreError>): T {
+  if (result.type === "err") {
+    throw new Error(result.error.message, { cause: result.error });
+  }
+  return result.value;
+}
+
+const store = unwrap(EventStore.createMemory<{ added: number }, { total: number }>());
+const id = unwrap(AggregateId.of("Order", "1"));
+const event = unwrap(EventEnvelope.create({
+  aggregateId: id, seqNr: 1, occurredAt: new Date(),
+  manifest: "OrderEvent.v1", payload: { added: 2 },
+}));
+const snapshot = unwrap(SnapshotEnvelope.create({
+  seqNr: 1, manifest: "Order.v1", aggregate: { total: 2 },
+}));
+unwrap(await store.persistEventAndSnapshot(event, snapshot));
+unwrap(await store.persistEvent(unwrap(EventEnvelope.create({
+  aggregateId: id, seqNr: 2, occurredAt: new Date(),
+  payload: { added: 3 },
+}))));
+
+const latest = unwrap(await store.getLatestSnapshotById(id));
+const saved = latest?.snapshot;
+const events = unwrap(await store.getEventsByIdSinceSeqNr(
+  id, saved === undefined ? 1 : saved.seqNr + 1,
+));
+const total = events.reduce((value, next) => value + next.payload.added, saved?.aggregate.total ?? 0);
+// total === 5、latest.headSeqNr === 2、saved.seqNr === 1。
+```
+
+headがなければ `getLatestSnapshotById` は `undefined` を返します。headがあれば `{ headSeqNr, snapshot }` を返し、snapshotは省略される場合があります。復元はsnapshot番号＋1、snapshotなしなら1から始めます。head番号は最新の確定イベントを表します。
+
+両factoryと4操作はすべて `Result` を返します。DynamoDB生成は非同期です。エラーは `contract-violation`（`rule` 付き）、`optimistic-lock-conflict`、`serialization-error`、`configuration-error`、`storage-error` の5分類で、元の `cause` がある場合は保持します。
+
+## DynamoDB
+
+[DATABASE_SCHEMA.ja.md](docs/DATABASE_SCHEMA.ja.md) に従い、3表と履歴GSIを作成してからストアを生成します。ライブラリは3表の共通設定項目を作成・照合します。
+
+```typescript
+const opened = await EventStore.createDynamoDB({
+  client: dynamodbClient,
+  tables: { journal: "journal", snapshot: "snapshot", head: "head" },
+  snapshotAidIndexName: "snapshot-history",
+  retention: { count: 3, mode: { type: "delete" } },
+  onRetentionFailure: (failure) => console.error(failure.kind, failure.cause),
 });
+const store = unwrap(opened);
 ```
 
-以下はリポジトリの使用例です。
+AWSクライアントは呼び出し側で管理します。snapshot書き込み成功後に保持処理を行い、DynamoDBのevent-only書き込みでは保持要求を送りません。保持失敗でも確定済み書き込みは成功し、loggerと `onRetentionFailure` へ通知します。TTL方式は `mode: { type: "ttl", graceSeconds: 3600 }` とし、snapshot表の `ttl` を有効化してください。
+
+## SerializerとMemoryの共有
+
+既定の `PayloadSerializer.json()` はJSON値だけを扱います。任意の同期 `PayloadSerializer<P>` は `serialize(payload): Uint8Array` と `deserialize(bytes, manifest): P` を実装します。payloadだけを直列化し、クラスやbrandは `deserialize` で復元してください。実例の [domain serializer](../examples/src/domain/user-account-serializers.ts) を参照できます。
+
+storageを省略したMemory生成は独立します。共有する場合は `MemoryStorage.create()` の同じ値を複数のfactoryへ渡し、保持設定もstorageに指定します。
 
 ```typescript
-const eventStore = EventStore.createDynamoDB<
-    UserAccountId,
-    UserAccount,
-    UserAccountEvent
->({
-    client: dynamodbClient,
-    journalTableName: JOURNAL_TABLE_NAME,
-    snapshotTableName: SNAPSHOT_TABLE_NAME,
-    journalAidIndexName: JOURNAL_AID_INDEX_NAME,
-    snapshotAidIndexName: SNAPSHOT_AID_INDEX_NAME,
-    snapshotActiveTtlIndexName: SNAPSHOT_ACTIVE_TTL_INDEX_NAME,
-    shardCount: 32,
-    eventConverter: convertJSONToUserAccountEvent,
-    snapshotConverter: convertJSONToUserAccount,
-});
-// if you want to use in-memory event store, use the following code.
-// const eventStore = EventStore.createMemory<UserAccountId, UserAccount, UserAccountEvent>({});
-// Cloud Spannerを使う場合は、呼び出し側で管理するDatabaseを渡します。
-// const eventStore = EventStore.createSpanner<UserAccountId, UserAccount, UserAccountEvent>({
-//     database: spannerDatabase,
-//     journalTableName: "journal",
-//     snapshotTableName: "snapshot",
-//     shardCount: 32,
-//     eventConverter: convertJSONToUserAccountEvent,
-//     snapshotConverter: convertJSONToUserAccount,
-// });
-
-const userAccountRepository = UserAccountRepository.create(eventStore);
-
-const id = UserAccountId.create(ulid());
-const name = "Alice";
-const [userAccount1, created] = UserAccount.create(id, name);
-
-const createdResult = await userAccountRepository.storeEventAndSnapshot(created, userAccount1);
-if (createdResult.type === "err") {
-    throw new Error(createdResult.error.message);
-}
-
-const [userAccount2, renamed] = userAccount1.rename("Bob");
-
-const renamedResult = await userAccountRepository.storeEvent(renamed, userAccount2.version);
-if (renamedResult.type === "err") {
-    throw new Error(renamedResult.error.message);
-}
-
-const userAccount3 = await userAccountRepository.findById(id);
-if (userAccount3 === undefined) {
-    throw new Error("userAccount3 is undefined");
-}
-
-expect(userAccount3.id).toEqual(id);
-expect(userAccount3.name).toEqual("Bob");
-expect(userAccount3.sequenceNumber).toEqual(2);
-expect(userAccount3.version).toEqual(2);
+const storage = unwrap(MemoryStorage.create({ retention: { count: 3 } }));
+const first = unwrap(EventStore.createMemory({ storage }));
+const second = unwrap(EventStore.createMemory({ storage }));
 ```
 
-## runtime brand と JSON 変換
+Memoryは削除方式の保持に対応し、保持失敗で残った履歴は後のevent-only書き込みでも処理します。TTLには対応しません。JavaScriptの時刻はミリ秒精度の `Date` です。DynamoDBのイベント時刻は完全なエポックミリ秒値からナノ秒へ変換して保存します。ミリ秒未満の精度はこのAPIで表現できません。
 
-サンプルのドメイン値は module-private な `unique symbol` brand を使い、
-プロセス内で factory が生成した値と plain object を区別します。`typeName`
-は JSON 境界の discriminant として残し、symbol brand は serialize されない
-ため factory で復元します。
+## 移行と開発
 
-```typescript
-const USER_ACCOUNT_ID_BRAND: unique symbol = Symbol("UserAccountId");
+既存データを新しい表へ移す際は [JavaScript移行ガイド](docs/MIGRATION_GUIDE.ja.md) を参照してください。Spannerと旧shard・version・converter・serializer APIはこの公開入口に含みません。
 
-type UserAccountId = AggregateId & {
-    typeName: "user-account";
-    readonly [USER_ACCOUNT_ID_BRAND]: true;
-};
-
-namespace UserAccountId {
-    export function create(value: string): UserAccountId {
-        return Object.freeze({
-            [USER_ACCOUNT_ID_BRAND]: true,
-            typeName: "user-account",
-            value,
-            asString: () => `user-account-${value}`,
-        });
-    }
-
-    export function is(value: unknown): value is UserAccountId {
-        return (
-            typeof value === "object" &&
-            value !== null &&
-            (value as Partial<UserAccountId>)[USER_ACCOUNT_ID_BRAND] === true
-        );
-    }
-
-    export function toJSON(value: UserAccountId) {
-        return { typeName: value.typeName, value: value.value };
-    }
-
-    export function fromJSON(json: { typeName: "user-account"; value: string }) {
-        return create(json.value);
-    }
-}
-```
-
-`JSON.stringify(...)` 後は symbol brand が消えます。EventStore の converter
-ではドメイン側の `fromJSON(...)` を呼び、deserialize した event / snapshot
-を再び branded value にしてください。`EventSerializer` と
-`SnapshotSerializer` の API は変更せず、`deserialize(bytes, converter)` の
-契約どおり converter にドメイン復元を委ねます。
-
-## 開発
-
-このリポジトリは pnpm workspace を使います。ライブラリパッケージは
-`packages/library` に配置しています。実行可能な example は `packages/examples` にあり、
-`packages/tests` は今後の e2e test package の追加先として予約しています。
+リポジトリのrootで実行します。
 
 ```shell
 pnpm install
-pnpm run lint
 pnpm run build
-pnpm run test
-pnpm run coverage
+pnpm run lint
+pnpm run test:packages
+pnpm run test:examples
+pnpm run coverage --runInBand
 pnpm run example:memory
 pnpm run example:dynamodb
-pnpm run example:spanner
 ```
 
-## テーブル仕様
-
-[docs/DATABASE_SCHEMA.ja.md](docs/DATABASE_SCHEMA.ja.md)を参照してください。
-
-Cloud Spannerについては[docs/SPANNER_DATABASE_SCHEMA.ja.md](docs/SPANNER_DATABASE_SCHEMA.ja.md)を参照してください。
+DynamoDB試験と実例はTestcontainersからDynamoDB Local 3.3.1を起動するためDockerが必要です。package試験はpack成果物を独立した外部プロジェクトへ導入し、型検査と実行も行います。全適合の結果はlibraryの `coverage/conformance` へ保存します。`CONFORMANCE_REPORT_DIR` で保存先を指定できます。
 
 ## ライセンス
 
-MIT と Apache-2.0 のデュアルライセンスです。詳細は
-[LICENSE-MIT](LICENSE-MIT) と [LICENSE-APACHE](LICENSE-APACHE) を参照してください。
+MITとApache-2.0のデュアルライセンスです。[LICENSE-MIT](LICENSE-MIT) と [LICENSE-APACHE](LICENSE-APACHE) を参照してください。
 
-## 他の言語のための実装
-
-- [for Java](https://github.com/j5ik2o/event-store-adapter-java)
-- [for Scala](https://github.com/j5ik2o/event-store-adapter-scala)
-- [for Kotlin](https://github.com/j5ik2o/event-store-adapter-kotlin)
-- [for Rust](https://github.com/j5ik2o/event-store-adapter-rs)
-- [for Go](https://github.com/j5ik2o/event-store-adapter-go)
-- [for JavaScript/TypeScript](https://github.com/j5ik2o/event-store-adapter-js)
-- [for .NET](https://github.com/j5ik2o/event-store-adapter-dotnet)
-- [for PHP](https://github.com/j5ik2o/event-store-adapter-php)
+[共通文書](https://github.com/j5ik2o/event-store-adapter)

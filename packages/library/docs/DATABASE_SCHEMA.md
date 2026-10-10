@@ -1,52 +1,49 @@
-## DynamoDB table schema used by EventStore
+# DynamoDB schema
 
-- Journal
-- Snapshot
+Use three distinct tables in one region. The caller creates them; `EventStore.createDynamoDB` verifies shared configuration records. Table names and the history index name come from its input.
 
-The key design assumption for both tables is that writes are distributed by the selected shard id. By default, shard ids are selected from the aggregate id, and callers may provide a custom `ShardSelector`.
+| Table | Partition key | Sort key | Index / Streams |
+| --- | --- | --- | --- |
+| journal | `aid` S | `seq_nr` N | No GSI or Streams |
+| snapshot | `aid` S | `skey` N | Configured history GSI: `aid` S + `active_history_seq_nr` N, KEYS_ONLY |
+| head | `aid` S | None | Streams enabled, NEW_IMAGE |
 
-### Journal table
+TTL is enabled on snapshot's `ttl` attribute only when using TTL retention. Journal and head have no TTL.
 
-The table used to store events that have occurred in an aggregate. In principle, this event is used to replay (replay) the aggregate state.
+## Configuration records
 
-| key name    | description                                                          | example                                                                                                                                                                                                                                                                                                                                                                                                                                                            | remarks |
-|:------------|:---------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:--------|
-| pkey        | Partition key(`${aggregate.typeName}-${shardId}`)                     | user-account-1                                                                                                                                                                                                                                                                                                                                                                                                                                                       |         |
-| skey        | Sort Key(${aggregate type name}-${aid.value}-${seq_nr})              | user-account-01H42K4ABWQ5V2XQEP3A48VE0Z-12345                                                                                                                                                                                                                                                                                                                                                                                                                        |         |
-| aid         | Aggregate ID                                                         | user-account-01H42K4ABWQ5V2XQEP3A48VE0Z                                                                                                                                                                                                                                                                                                                                                                                                                              |         |
-| seq_nr      | Sequence Number(origin=1)                                            | 12345                                                                                                                                                                                                                                                                                                                                                                                                                                                              |         |
-| payload     | Serialized event payload bytes                                       | {"type":"UserAccountCreated","data":{"typeName":"UserAccountCreated","isCreated":true,"id":"01H42KBHCW1BZG504J4ZXKA2F2","aggregateId":{"typeName":"user-account","value":"01H42K4ABWQ5V2XQEP3A48VE0Z"},"name":"Alice","sequenceNumber":1,"occurredAt":"2026-05-24T00:00:00.000Z"}} | Default JSON serializer example |
-| occurred_at | UTC millisecond component from `event.occurredAt`                    | 0                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Stored as a DynamoDB number |
+Each table has `aid = "__config__"`; journal adds `seq_nr = 0`, snapshot adds `skey = 0`. Every configuration item contains `store_id` S and `layout_version` N (`1`). The same nonempty store ID is required in all three records. All absent records are created in one conditional transaction. Partial, mismatched or unsupported configurations fail creation. Configuration records are separate from aggregate records.
 
-GSI is applied to aid and seq_nr, and this index is used during replay.
+## Journal records
 
-### Snapshot table
+| Attribute | Type | Meaning |
+| --- | --- | --- |
+| aid | S | `typeName-value` |
+| seq_nr | N | Contiguous event number, starting at 1 |
+| occurred_at | N | Complete epoch nanoseconds, derived from JavaScript epoch milliseconds × 1,000,000 |
+| manifest | S | Serializer schema identifier; empty string by default |
+| payload | B | Serialized domain event payload only |
 
-This table is used to store aggregate state and to speed up replay of aggregates. It may not represent the latest aggregation state because events are saved even after the snapshot is saved.
+Reads query the journal table directly with strong consistency and an inclusive `seq_nr >= start` condition, follow every LastEvaluatedKey and return ascending events.
 
-| column name | description                                                                                               | example                                                                                                                                                                                                                                                                                                                                                                                    | remarks |
-|:------------|:----------------------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:--------|
-| pkey        | Partition key(`${aggregate.typeName}-${shardId}`)                                                        | user-account-1                                                                                                                                                                                                                                                                                                                                                                               |         |
-| skey        | Sort Key(${aggregate type name}-${aid.value}-${seq_nr}), The latest snapshot is read/written as seq_nr=0. | user-account-01H42K4ABWQ5V2XQEP3A48VE0Z-12345                                                                                                                                                                                                                                                                                                                                                |         |
-| payload     | Serialized aggregate snapshot bytes                                                                       | {"type":"UserAccount","data":{"typeName":"UserAccount","id":{"typeName":"user-account","value":"01H42K4ABWQ5V2XQEP3A48VE0Z"},"name":"Alice","sequenceNumber":1,"version":1}} | Default JSON serializer example |
-| aid         | Aggregate ID                                                                                              | user-account-01H42K4ABWQ5V2XQEP3A48VE0Z                                                                                                                                                                                                                                                                                                                                                      |         |
-| seq_nr      | Sequence Number(origin=1)                                                                                 | 12345                                                                                                                                                                                                                                                                                                                                                                                      |         |
-| active_ttl_seq_nr | Sequence number projected only while the snapshot is not marked for TTL deletion                  | 12345                                                                                                                                                                                                                                                                                                                                                                                      |         |
-| ttl         | TTL for deletion(seconds)                                                                                 | 1624980000                                                                                                                                                                                                                                                                                                                                                                                 |         |
-| version     | Version for optimistic lock(origin=1)                                                                     | 1                                                                                                                                                                                                                                                                                                                                                                                          |         |
-| last_updated_at | UTC millisecond component from `event.occurredAt`                                                    | 0                                                                                                                                                                                                                                                                                                                                                                                          | Stored as a DynamoDB number |
+## Head records
 
-- When retained snapshots are disabled, only a snapshot is stored at seq_nr=0. When `keepSnapshotCount` is set, retained snapshots are stored at seq_nr=event.sequenceNumber in addition to seq_nr=0. If the upper limit is exceeded, older retained snapshots are deleted first. By default, deletion is client-initiated; `deleteTtlMillis` can also be used to mark older retained snapshots for DynamoDB TTL deletion.
-- GSI is applied to aid and seq_nr, and this index is used during replay and hard-delete retention.
-- A sparse GSI is applied to aid and active_ttl_seq_nr. This index is used by TTL-based retention to read only snapshots that have not already been marked for TTL deletion. When TTL is set, active_ttl_seq_nr is removed from the item.
+A head item has `aid` S, `type_name` S, `seq_nr` N and `events` L. The list contains exactly one M for the committed event, with `seq_nr` N, `occurred_at` N, `manifest` S and `payload` B. Head Streams provide NEW_IMAGE records; this API has no change-feed operation.
 
-### Writing events and snapshots
+The first event conditionally creates the head. Later events require the previous head number to equal `seqNr - 1`. The head transition and journal write commit atomically; sequence numbers replace the old version-based lock.
 
-1. When the command is accepted by aggregate, an event with the latest seq_nr is generated. 
-2. The generated events are written to the journal table. However, this write is always done in the same transaction as the snapshot table and under version matching conditions. Except for the first event, updating the payload of snapshot is optional.
+## Current and history snapshots
 
-### Replaying an aggregate with events and snapshots
+Current snapshots use `skey = 0`. Their exact attributes are `aid` S, `skey` N, `seq_nr` N, `last_updated_at` N, `manifest` S and `payload` B. The actual snapshot number is `seq_nr`, not its sort key. `last_updated_at` is the writing event's complete epoch milliseconds. Neither TTL nor history marker belongs to the current snapshot.
 
-1. Specify the ID of the aggregate and take a snapshot.
-2. Read the events from the journal table after the ID of the retrieved aggregate and the sequence number of the snapshot.
-3. Apply the read events to the snapshot to obtain the latest aggregate state.
+With retention configured, the same transaction also creates history with `skey = seq_nr` and `active_history_seq_nr = seq_nr`. Without retention, no history item is created. Event-only writes leave the current snapshot unchanged and perform no retention requests.
+
+Retention keeps the newest configured number of active history snapshots; the current snapshot is separate. Delete mode removes older history. TTL mode atomically adds `ttl` N (mark time in epoch seconds + `graceSeconds`) and removes `active_history_seq_nr`. Already marked records keep their original expiry, and the sparse GSI excludes them. Snapshot payload `payload` contains only the domain aggregate.
+
+Each physical item, including head and snapshots, must fit 409600 bytes. The transaction includes journal, head and any supplied current/history snapshots; an oversized item fails before sending the commit.
+
+## Restoration and migration
+
+Latest snapshot reads strongly read head and current snapshot through BatchGetItem. These reads are not an atomic transaction; the result includes `headSeqNr` and the independently read snapshot. Start replay at `snapshot.seqNr + 1`, or 1 when no snapshot is present.
+
+Existing two-table shard layouts require a rewrite into new tables. Follow the [migration guide](MIGRATION_GUIDE.md); the new reader does not convert old records.

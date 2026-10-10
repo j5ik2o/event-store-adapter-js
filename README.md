@@ -6,7 +6,7 @@ This repository uses pnpm workspaces.
 
 - `packages/library`: published library package (`event-store-adapter-js`)
 - `packages/examples`: runnable example package
-- `packages/tests`: future test packages, including e2e tests
+- `packages/tests`: built and packed package consumption tests
 
 ## Development
 
@@ -18,7 +18,10 @@ pnpm run test
 pnpm run coverage
 pnpm run example:memory
 pnpm run example:dynamodb
-pnpm run example:spanner
+pnpm run test:packages
+pnpm run test:examples
 ```
 
 Library documentation lives in [packages/library/README.md](packages/library/README.md).
+
+The public entry point provides Memory and DynamoDB factories and four envelope-based operations. See the [migration guide](packages/library/docs/MIGRATION_GUIDE.md) for rewriting existing records into the three-table layout.

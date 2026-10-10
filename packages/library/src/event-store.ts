@@ -1,60 +1,60 @@
+import type { AggregateId } from "./aggregate-id";
 import type { DynamoDBEventStoreInput } from "./dynamodb-event-store-input";
-import { createDynamoDBEventStore } from "./internal/dynamodb-event-store";
-import { createMemoryEventStore } from "./internal/memory-event-store";
-import { createSpannerEventStore } from "./internal/spanner-event-store";
+import type { EventEnvelope } from "./event-envelope";
+import type { EventStoreError } from "./event-store-error";
+import { initializeDynamoDBEventStoreInternal } from "./internal/dynamodb-event-store";
+import { createMemoryEventStoreInternal } from "./internal/memory-event-store";
+import type { LatestSnapshot } from "./latest-snapshot";
 import type { MemoryEventStoreInput } from "./memory-event-store-input";
-import type { SpannerEventStoreInput } from "./spanner-event-store-input";
-import type {
-  Aggregate,
-  AggregateId,
-  Event,
-  EventStoreError,
-  Result,
-} from "./types";
+import { Result } from "./result";
+import type { SnapshotEnvelope } from "./snapshot-envelope";
 
-export type EventStore<
-  AID extends AggregateId,
-  A extends Aggregate<A, AID>,
-  E extends Event<AID>,
-> = {
+export type EventStore<PE = unknown, PS = unknown> = {
   persistEvent(
-    event: E,
-    expectedVersion: number,
+    event: EventEnvelope<PE>,
   ): Promise<Result<void, EventStoreError>>;
+
   persistEventAndSnapshot(
-    event: E,
-    aggregate: A,
+    event: EventEnvelope<PE>,
+    snapshot: SnapshotEnvelope<PS>,
   ): Promise<Result<void, EventStoreError>>;
-  getEventsByIdSinceSequenceNumber(
-    id: AID,
-    sequenceNumber: number,
-  ): Promise<E[]>;
-  getLatestSnapshotById(id: AID): Promise<A | undefined>;
+
+  getLatestSnapshotById(
+    aggregateId: AggregateId,
+  ): Promise<Result<LatestSnapshot<PS> | undefined, EventStoreError>>;
+
+  getEventsByIdSinceSeqNr(
+    aggregateId: AggregateId,
+    seqNr: number,
+  ): Promise<Result<EventEnvelope<PE>[], EventStoreError>>;
 };
 
 export namespace EventStore {
-  export function createDynamoDB<
-    AID extends AggregateId,
-    A extends Aggregate<A, AID>,
-    E extends Event<AID>,
-  >(input: DynamoDBEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
-    return createDynamoDBEventStore<AID, A, E>(input);
+  export function createMemory<PE = unknown, PS = unknown>(
+    input?: MemoryEventStoreInput<PE, PS>,
+  ): Result<EventStore<PE, PS>, EventStoreError> {
+    return createMemoryEventStoreInternal(input);
   }
 
-  export function createMemory<
-    AID extends AggregateId,
-    A extends Aggregate<A, AID>,
-    E extends Event<AID>,
-  >(input?: MemoryEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
-    return createMemoryEventStore(input ?? {});
-  }
-
-  export function createSpanner<
-    AID extends AggregateId,
-    A extends Aggregate<A, AID>,
-    E extends Event<AID>,
-  >(input: SpannerEventStoreInput<AID, A, E>): EventStore<AID, A, E> {
-    return createSpannerEventStore<AID, A, E>(input);
+  export async function createDynamoDB<PE = unknown, PS = unknown>(
+    input: DynamoDBEventStoreInput<PE, PS>,
+  ): Promise<Result<EventStore<PE, PS>, EventStoreError>> {
+    const opened = await initializeDynamoDBEventStoreInternal(input);
+    if (opened.type === "err") return opened;
+    const {
+      persistEvent,
+      persistEventAndSnapshot,
+      getLatestSnapshotById,
+      getEventsByIdSinceSeqNr,
+    } = opened.value;
+    return Result.ok(
+      Object.freeze({
+        persistEvent,
+        persistEventAndSnapshot,
+        getLatestSnapshotById,
+        getEventsByIdSinceSeqNr,
+      }),
+    );
   }
 }
 

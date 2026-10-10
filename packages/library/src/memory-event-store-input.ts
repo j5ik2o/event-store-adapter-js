@@ -1,12 +1,12 @@
-import type { Aggregate, AggregateId, Event } from "./types";
+import type { Logger } from "./logger";
+import type { MemoryStorage } from "./memory-storage";
+import type { PayloadSerializer } from "./payload-serializer";
+import type { RetentionFailure } from "./retention-failure";
 
-type MemoryEventStoreInput<
-  AID extends AggregateId,
-  A extends Aggregate<A, AID>,
-  E extends Event<AID>,
-> = {
-  events?: Map<AID, E[]>;
-  snapshots?: Map<AID, A>;
-};
-
-export type { MemoryEventStoreInput };
+export type MemoryEventStoreInput<PE, PS> = Readonly<{
+  storage?: MemoryStorage;
+  eventSerializer?: PayloadSerializer<PE>;
+  snapshotSerializer?: PayloadSerializer<PS>;
+  onRetentionFailure?: (failure: RetentionFailure) => void;
+  logger?: Logger;
+}>;

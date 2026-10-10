@@ -7,16 +7,14 @@
     "build:library": "pnpm --filter event-store-adapter-js run build",
     "memory": "pnpm run build:library && node -r ts-node/register src/memory-basic.ts",
     "dynamodb": "pnpm run build:library && node -r ts-node/register src/dynamodb-basic.ts",
-    "spanner": "pnpm run build:library && node -r ts-node/register src/spanner-basic.ts",
     "memory:run": "node -r ts-node/register src/memory-basic.ts",
     "dynamodb:run": "node -r ts-node/register src/dynamodb-basic.ts",
-    "spanner:run": "node -r ts-node/register src/spanner-basic.ts",
-    "test": "pnpm run typecheck && pnpm run build:library && pnpm run memory:run && pnpm run dynamodb:run && pnpm run spanner:run",
+    "test": "pnpm run typecheck && pnpm run build:library && pnpm run test:domain && pnpm run memory:run && pnpm run dynamodb:run",
+    "test:domain": "node --test -r ts-node/register src/domain/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.413.0",
-    "@google-cloud/spanner": "^9.0.0",
     "event-store-adapter-js": "workspace:*",
     "testcontainers": "^12.0.0",
     "ulid": "^3.0.0"

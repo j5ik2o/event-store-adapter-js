@@ -2,200 +2,116 @@
 
 [![CI](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/event-store-adapter-js.svg)](https://badge.fury.io/js/event-store-adapter-js)
-[![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen.svg)](https://renovatebot.com)
-[![License](https://img.shields.io/badge/License-APACHE2.0-blue.svg)](https://opensource.org/licenses/apache-2-0)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![](https://tokei.rs/b1/github/j5ik2o/event-store-adapter-js)](https://github.com/XAMPPRocky/tokei)
 
-This library is designed to turn DynamoDB into an Event Store for CQRS/Event Sourcing.
+Event sourcing with Memory and DynamoDB, using the common v4 contract. The common contract version is separate from the npm package version.
 
 [日本語](./README.ja.md)
 
-# Installation
+## Installation
+
+Requires Node.js 24 or later.
 
 ```shell
 npm install event-store-adapter-js
 ```
 
-`@google-cloud/spanner` (`^8.7.1` or `^9.0.0`) is required for all backends, including Memory and DynamoDB, because the public entry point imports Spanner at runtime.
+## Usage
 
-## Migrating to 4.0.0
-
-In 4.0.0, `@google-cloud/spanner` moves from a regular dependency to a required peer dependency. When upgrading from 3.x:
-
-- **npm 7 and later or pnpm 8 and later:** the required peer dependency is automatically installed by default.
-- **Yarn (Classic or v2 and later), npm 6 and earlier, pnpm 7 and earlier, or other package managers that do not automatically install peer dependencies:** add `@google-cloud/spanner` to your application's `dependencies`. With Yarn, use `yarn add @google-cloud/spanner@^8.7.1` for v8 or `yarn add @google-cloud/spanner@^9.0.0` for v9. Without it, importing `event-store-adapter-js` fails.
-
-If you pass a Spanner `Database` to `EventStore.createSpanner`, the library uses your application's installed Spanner version. You can keep v8 or upgrade to v9 within the supported ranges above.
-
-# Usage
-
-You can easily implement an Event Sourcing-enabled repository using EventStore.
+Metadata belongs to envelopes; payloads may be any domain type supported by your serializer. Sequence numbers are safe integers, and writes start at 1 and remain contiguous. Aggregate IDs use `typeName-value`; `typeName` cannot contain `-`, and the complete UTF-8 ID is at most 1024 bytes.
 
 ```typescript
-const UserAccountRepository = Object.freeze({
-    create(eventStore: EventStore<UserAccountId, UserAccount, UserAccountEvent>) {
-        return Object.freeze({
-            storeEvent: (event: UserAccountEvent, version: number) =>
-                eventStore.persistEvent(event, version),
-            storeEventAndSnapshot: (event: UserAccountEvent, snapshot: UserAccount) =>
-                eventStore.persistEventAndSnapshot(event, snapshot),
-            async findById(id: UserAccountId): Promise<UserAccount | undefined> {
-                const snapshot = await eventStore.getLatestSnapshotById(id);
-                if (snapshot === undefined) {
-                    return undefined;
-                }
-                const events = await eventStore.getEventsByIdSinceSequenceNumber(
-                    id,
-                    snapshot.sequenceNumber + 1,
-                );
-                return UserAccount.replay(events, snapshot);
-            },
-        });
-    },
+import {
+  AggregateId, EventEnvelope, EventStore, SnapshotEnvelope,
+  type EventStoreError, type Result,
+} from "event-store-adapter-js";
+
+function unwrap<T>(result: Result<T, EventStoreError>): T {
+  if (result.type === "err") {
+    throw new Error(result.error.message, { cause: result.error });
+  }
+  return result.value;
+}
+
+const store = unwrap(EventStore.createMemory<{ added: number }, { total: number }>());
+const id = unwrap(AggregateId.of("Order", "1"));
+const event = unwrap(EventEnvelope.create({
+  aggregateId: id, seqNr: 1, occurredAt: new Date(),
+  manifest: "OrderEvent.v1", payload: { added: 2 },
+}));
+const snapshot = unwrap(SnapshotEnvelope.create({
+  seqNr: 1, manifest: "Order.v1", aggregate: { total: 2 },
+}));
+unwrap(await store.persistEventAndSnapshot(event, snapshot));
+unwrap(await store.persistEvent(unwrap(EventEnvelope.create({
+  aggregateId: id, seqNr: 2, occurredAt: new Date(),
+  payload: { added: 3 },
+}))));
+
+const latest = unwrap(await store.getLatestSnapshotById(id));
+const saved = latest?.snapshot;
+const events = unwrap(await store.getEventsByIdSinceSeqNr(
+  id, saved === undefined ? 1 : saved.seqNr + 1,
+));
+const total = events.reduce((value, next) => value + next.payload.added, saved?.aggregate.total ?? 0);
+// total === 5; latest.headSeqNr === 2; saved.seqNr === 1.
+```
+
+`getLatestSnapshotById` returns `undefined` when no head exists. When a head exists, it returns `{ headSeqNr, snapshot }`, with an optional snapshot. Start replay at snapshot number + 1, or 1 without a snapshot. The head number describes the latest committed event.
+
+Both factories and all four operations return `Result`. DynamoDB creation is asynchronous. Errors are `contract-violation` (including `rule`), `optimistic-lock-conflict`, `serialization-error`, `configuration-error`, or `storage-error`; the original `cause` is preserved when present.
+
+## DynamoDB
+
+Create the three tables and history GSI described in [DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) before opening the store. The library creates or verifies their shared configuration items.
+
+```typescript
+const opened = await EventStore.createDynamoDB({
+  client: dynamodbClient,
+  tables: { journal: "journal", snapshot: "snapshot", head: "head" },
+  snapshotAidIndexName: "snapshot-history",
+  retention: { count: 3, mode: { type: "delete" } },
+  onRetentionFailure: (failure) => console.error(failure.kind, failure.cause),
 });
+const store = unwrap(opened);
 ```
 
-The following is an example of the repository usage.
+The caller owns the AWS client. Snapshot retention runs after a successful snapshot write; event-only DynamoDB writes send no retention requests. Retention failure preserves the successful write and is reported through the logger and `onRetentionFailure`. For TTL use `mode: { type: "ttl", graceSeconds: 3600 }` and enable the snapshot table's `ttl` attribute.
+
+## Serializers and Memory storage
+
+The default `PayloadSerializer.json()` handles JSON values only. A custom synchronous `PayloadSerializer<P>` implements `serialize(payload): Uint8Array` and `deserialize(bytes, manifest): P`. Serialize the payload alone and restore domain classes or brands in `deserialize`. See the [domain serializers](../examples/src/domain/user-account-serializers.ts) in the runnable examples.
+
+Memory creation without a storage uses isolated storage. To share records, pass the same value returned by `MemoryStorage.create()` to multiple factories. Configure retention on that storage:
 
 ```typescript
-const eventStore = EventStore.createDynamoDB<
-    UserAccountId,
-    UserAccount,
-    UserAccountEvent
->({
-    client: dynamodbClient,
-    journalTableName: JOURNAL_TABLE_NAME,
-    snapshotTableName: SNAPSHOT_TABLE_NAME,
-    journalAidIndexName: JOURNAL_AID_INDEX_NAME,
-    snapshotAidIndexName: SNAPSHOT_AID_INDEX_NAME,
-    snapshotActiveTtlIndexName: SNAPSHOT_ACTIVE_TTL_INDEX_NAME,
-    shardCount: 32,
-    eventConverter: convertJSONToUserAccountEvent,
-    snapshotConverter: convertJSONToUserAccount,
-});
-// if you want to use in-memory event store, use the following code.
-// const eventStore = EventStore.createMemory<UserAccountId, UserAccount, UserAccountEvent>({});
-// if you want to use Cloud Spanner, pass a caller-managed Database.
-// const eventStore = EventStore.createSpanner<UserAccountId, UserAccount, UserAccountEvent>({
-//     database: spannerDatabase,
-//     journalTableName: "journal",
-//     snapshotTableName: "snapshot",
-//     shardCount: 32,
-//     eventConverter: convertJSONToUserAccountEvent,
-//     snapshotConverter: convertJSONToUserAccount,
-// });
-
-const userAccountRepository = UserAccountRepository.create(eventStore);
-
-const id = UserAccountId.create(ulid());
-const name = "Alice";
-const [userAccount1, created] = UserAccount.create(id, name);
-
-const createdResult = await userAccountRepository.storeEventAndSnapshot(created, userAccount1);
-if (createdResult.type === "err") {
-    throw new Error(createdResult.error.message);
-}
-
-const [userAccount2, renamed] = userAccount1.rename("Bob");
-
-const renamedResult = await userAccountRepository.storeEvent(renamed, userAccount2.version);
-if (renamedResult.type === "err") {
-    throw new Error(renamedResult.error.message);
-}
-
-const userAccount3 = await userAccountRepository.findById(id);
-if (userAccount3 === undefined) {
-    throw new Error("userAccount3 is undefined");
-}
-
-expect(userAccount3.id).toEqual(id);
-expect(userAccount3.name).toEqual("Bob");
-expect(userAccount3.sequenceNumber).toEqual(2);
-expect(userAccount3.version).toEqual(2);
+const storage = unwrap(MemoryStorage.create({ retention: { count: 3 } }));
+const first = unwrap(EventStore.createMemory({ storage }));
+const second = unwrap(EventStore.createMemory({ storage }));
 ```
 
-## Runtime brands and JSON conversion
+Memory supports deletion retention, including cleanup on a later event-only write after a retention failure. It does not support TTL. JavaScript time uses `Date` at millisecond precision; DynamoDB stores event epoch nanoseconds derived from the complete epoch millisecond value. Sub-millisecond precision is outside this API's representation.
 
-The sample domain values use module-private `unique symbol` brands to tell
-factory-created values apart from plain objects inside the current process.
-`typeName` remains the JSON boundary discriminant; the symbol brand is not
-serialized and must be restored by a factory.
+## Migration and development
 
-```typescript
-const USER_ACCOUNT_ID_BRAND: unique symbol = Symbol("UserAccountId");
+Read the [JavaScript migration guide](docs/MIGRATION_GUIDE.md) before moving existing records into new tables. Spanner and the old shard, version, converter and serializer APIs are outside this entry point.
 
-type UserAccountId = AggregateId & {
-    typeName: "user-account";
-    readonly [USER_ACCOUNT_ID_BRAND]: true;
-};
-
-namespace UserAccountId {
-    export function create(value: string): UserAccountId {
-        return Object.freeze({
-            [USER_ACCOUNT_ID_BRAND]: true,
-            typeName: "user-account",
-            value,
-            asString: () => `user-account-${value}`,
-        });
-    }
-
-    export function is(value: unknown): value is UserAccountId {
-        return (
-            typeof value === "object" &&
-            value !== null &&
-            (value as Partial<UserAccountId>)[USER_ACCOUNT_ID_BRAND] === true
-        );
-    }
-
-    export function toJSON(value: UserAccountId) {
-        return { typeName: value.typeName, value: value.value };
-    }
-
-    export function fromJSON(json: { typeName: "user-account"; value: string }) {
-        return create(json.value);
-    }
-}
-```
-
-`JSON.stringify(...)` drops the symbol brand. In EventStore converters, call the
-domain `fromJSON(...)` function so deserialized events and snapshots become
-branded values again. The `EventSerializer` and `SnapshotSerializer` APIs stay
-unchanged; their `deserialize(bytes, converter)` contract still delegates
-domain reconstruction to the converter.
-
-## Development
-
-This repository uses pnpm workspaces. The library package is located at
-`packages/library`. Runnable examples are located at `packages/examples`, and
-`packages/tests` is reserved for future e2e test packages.
+From the repository root:
 
 ```shell
 pnpm install
-pnpm run lint
 pnpm run build
-pnpm run test
-pnpm run coverage
+pnpm run lint
+pnpm run test:packages
+pnpm run test:examples
+pnpm run coverage --runInBand
 pnpm run example:memory
 pnpm run example:dynamodb
-pnpm run example:spanner
 ```
 
-## Table Specifications
-
-See [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md).
-
-For Cloud Spanner, see [docs/SPANNER_DATABASE_SCHEMA.md](docs/SPANNER_DATABASE_SCHEMA.md).
-
-## CQRS/Event Sourcing Example
-
-See [j5ik2o/cqrs-es-example-js](https://github.com/j5ik2o/cqrs-es-example-js).
+DynamoDB tests and examples use DynamoDB Local 3.3.1 through Testcontainers and require Docker. Package tests also pack, install, type-check and execute the library from an independent external project. Conformance results are saved under the library's `coverage/conformance` directory; set `CONFORMANCE_REPORT_DIR` to choose another output directory.
 
 ## License
 
-Dual-licensed under MIT and Apache-2.0.
-See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).
+Dual-licensed under MIT and Apache-2.0. See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).
 
-## Links
-
-- [Common Documents](https://github.com/j5ik2o/event-store-adapter)
+[Common documents](https://github.com/j5ik2o/event-store-adapter)

@@ -1,19 +1,9 @@
 import { EventStore } from "event-store-adapter-js";
-import type { UserAccount } from "./domain/user-account";
-import type { UserAccountEvent } from "./domain/user-account-event";
-import type { UserAccountId } from "./domain/user-account-id";
-import { runUserAccountExample } from "./run-user-account-example";
+import { userAccountSerializers } from "./domain/user-account-serializers";
+import { runUserAccountExample, unwrap } from "./run-user-account-example";
 
 async function main(): Promise<void> {
-  const eventStore = EventStore.createMemory<
-    UserAccountId,
-    UserAccount,
-    UserAccountEvent
-  >();
-  await runUserAccountExample("memory", eventStore);
+  const store = unwrap(EventStore.createMemory(userAccountSerializers()));
+  await runUserAccountExample("memory", store);
 }
-
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main().catch((error: unknown) => { console.error(error); process.exitCode = 1; });

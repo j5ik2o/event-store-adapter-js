@@ -1,146 +1,203 @@
 import type { EventStore } from "../event-store";
+import { EventStoreError } from "../event-store-error";
 import type { MemoryEventStoreInput } from "../memory-event-store-input";
+import { MemoryStorage } from "../memory-storage";
+import { Result } from "../result";
+import { validateEventStoreInput } from "./event-store-input-validation";
+import type { MemoryEventStoreHooks } from "./memory-event-store-hooks";
 import {
-  type Aggregate,
-  type AggregateId,
-  type Event,
-  EventStoreError,
-  Result,
-} from "../types";
+  commitMemoryStorageRecords,
+  readMemoryStorageEvents,
+  readMemoryStorageLatestSnapshot,
+} from "./memory-storage-records";
+import { validateSeqNr } from "./seq-nr-validation";
 import {
-  assertEventMatchesAggregate,
-  assertPersistableUpdateEvent,
-  toExpectedVersionError,
-} from "./event-store-assertions";
+  validateAggregateId,
+  validateEvent,
+  validateEventAndSnapshot,
+} from "./validated-event-store";
 
-function createMemoryEventStore<
-  AID extends AggregateId,
-  A extends Aggregate<A, AID>,
-  E extends Event<AID>,
->(input: MemoryEventStoreInput<AID, A, E> = {}): EventStore<AID, A, E> {
-  const events = new Map(
-    Array.from(input.events ?? new Map<AID, E[]>()).map(([key, values]) => {
-      return [key.asString(), [...values]];
-    }),
-  );
-  const snapshots = new Map(
-    Array.from(input.snapshots ?? new Map<AID, A>()).map(([key, value]) => {
-      return [key.asString(), copySeededSnapshot(key, value)];
-    }),
-  );
+/** 実Storageと保持処理に接続した4操作を返す内部入口。 */
+export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
+  input?: MemoryEventStoreInput<PE, PS>,
+  hooks?: MemoryEventStoreHooks,
+): Result<EventStore<PE, PS>, EventStoreError> {
+  const settings = validateEventStoreInput(input);
+  if (settings.type === "err") return settings;
+  const {
+    eventSerializer: serializer,
+    snapshotSerializer,
+    logger,
+    onRetentionFailure,
+  } = settings.value;
+  const inputStorage = input?.storage;
+  const storage =
+    inputStorage === undefined
+      ? MemoryStorage.create()
+      : Result.ok(inputStorage);
+  if (storage.type === "err") return storage;
+  const retention = Object.freeze({ hooks, logger, onRetentionFailure });
 
-  function appendEvent(aggregateIdString: string, event: E): void {
-    const aggregateEvents = events.get(aggregateIdString) ?? [];
-    events.set(aggregateIdString, [...aggregateEvents, event]);
-  }
+  return Result.ok(
+    Object.freeze<EventStore<PE, PS>>({
+      async persistEvent(event) {
+        const validated = validateEvent(event);
+        if (validated.type === "err") return validated;
 
-  function assertSnapshotCopy(snapshot: A, copiedSnapshot: A): void {
-    if (copiedSnapshot === snapshot) {
-      throw new Error(
-        `Aggregate.withVersion must return a new instance for aggregate ${snapshot.id.asString()}`,
-      );
-    }
-  }
-
-  function copySnapshot(snapshot: A): A {
-    const copiedSnapshot = snapshot.withVersion(snapshot.version);
-    assertSnapshotCopy(snapshot, copiedSnapshot);
-    return copiedSnapshot;
-  }
-
-  function copySeededSnapshot(key: AID, snapshot: A): A {
-    try {
-      return copySnapshot(snapshot);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `Invalid seeded snapshot for aggregate ${key.asString()}: ${message}`,
-      );
-    }
-  }
-
-  return Object.freeze({
-    async persistEvent(event: E, expectedVersion: number) {
-      assertPersistableUpdateEvent(event);
-      const aggregateIdString = event.aggregateId.asString();
-      const snapshot = snapshots.get(aggregateIdString);
-      if (snapshot === undefined) {
-        return Result.err(
-          EventStoreError.optimisticLockConflict(
-            `Aggregate does not exist: ${aggregateIdString}`,
-          ),
-        );
-      }
-      assertEventMatchesAggregate(event, snapshot);
-      const versionError = toExpectedVersionError(
-        snapshot.version,
-        expectedVersion,
-      );
-      if (versionError !== undefined) {
-        return Result.err(versionError);
-      }
-      const newVersion = snapshot.version + 1;
-      const newSnapshot = snapshot.withVersion(newVersion);
-      assertSnapshotCopy(snapshot, newSnapshot);
-      appendEvent(aggregateIdString, event);
-      snapshots.set(aggregateIdString, newSnapshot);
-      return Result.ok(undefined);
-    },
-
-    async persistEventAndSnapshot(event: E, aggregate: A) {
-      assertEventMatchesAggregate(event, aggregate);
-      const aggregateIdString = event.aggregateId.asString();
-      const aggregateEvents = events.get(aggregateIdString) ?? [];
-      const snapshot = snapshots.get(aggregateIdString);
-
-      let newVersion = 1;
-      if (event.isCreated) {
-        if (snapshot !== undefined || aggregateEvents.length > 0) {
+        let bytes: Uint8Array;
+        try {
+          bytes = serializer.serialize(validated.value.payload);
+          if (!(bytes instanceof Uint8Array)) {
+            throw new TypeError("serializer.serialize must return Uint8Array");
+          }
+        } catch (cause) {
           return Result.err(
-            EventStoreError.optimisticLockConflict("Aggregate already exists"),
-          );
-        }
-      } else {
-        if (snapshot === undefined) {
-          return Result.err(
-            EventStoreError.optimisticLockConflict(
-              `Aggregate does not exist: ${aggregateIdString}`,
+            EventStoreError.serialization(
+              "serialize",
+              "event payload serialization failed",
+              cause,
             ),
           );
         }
-        const versionError = toExpectedVersionError(
-          snapshot.version,
-          aggregate.version,
+
+        return commitMemoryStorageRecords(
+          storage.value,
+          { ...validated.value, payload: bytes },
+          undefined,
+          hooks?.beforeCommit,
+          retention,
         );
-        if (versionError !== undefined) {
-          return Result.err(versionError);
+      },
+
+      async persistEventAndSnapshot(event, snapshot) {
+        const validated = validateEventAndSnapshot(event, snapshot);
+        if (validated.type === "err") return validated;
+
+        let eventBytes: Uint8Array;
+        try {
+          const bytes = serializer.serialize(validated.value.event.payload);
+          if (!(bytes instanceof Uint8Array)) {
+            throw new TypeError("serializer.serialize must return Uint8Array");
+          }
+          eventBytes = new Uint8Array(bytes);
+        } catch (cause) {
+          return Result.err(
+            EventStoreError.serialization(
+              "serialize",
+              "event payload serialization failed",
+              cause,
+            ),
+          );
         }
-        newVersion = snapshot.version + 1;
-      }
-      const newSnapshot = aggregate.withVersion(newVersion);
-      assertSnapshotCopy(aggregate, newSnapshot);
-      appendEvent(aggregateIdString, event);
-      snapshots.set(aggregateIdString, newSnapshot);
-      return Result.ok(undefined);
-    },
 
-    async getEventsByIdSinceSequenceNumber(
-      id: AID,
-      sequenceNumber: number,
-    ): Promise<E[]> {
-      const aggregateIdString = id.asString();
-      const aggregateEvents = events.get(aggregateIdString) ?? [];
-      return aggregateEvents.filter(
-        (event) => event.sequenceNumber >= sequenceNumber,
-      );
-    },
+        let snapshotBytes: Uint8Array;
+        try {
+          const bytes = snapshotSerializer.serialize(
+            validated.value.snapshot.aggregate,
+          );
+          if (!(bytes instanceof Uint8Array)) {
+            throw new TypeError("serializer.serialize must return Uint8Array");
+          }
+          snapshotBytes = new Uint8Array(bytes);
+        } catch (cause) {
+          return Result.err(
+            EventStoreError.serialization(
+              "serialize",
+              "snapshot payload serialization failed",
+              cause,
+            ),
+          );
+        }
 
-    async getLatestSnapshotById(id: AID): Promise<A | undefined> {
-      const aggregateIdString = id.asString();
-      const snapshot = snapshots.get(aggregateIdString);
-      return snapshot === undefined ? undefined : copySnapshot(snapshot);
-    },
-  });
+        return commitMemoryStorageRecords(
+          storage.value,
+          { ...validated.value.event, payload: eventBytes },
+          { ...validated.value.snapshot, aggregate: snapshotBytes },
+          hooks?.beforeCommit,
+          retention,
+        );
+      },
+
+      async getLatestSnapshotById(aggregateId) {
+        const validatedId = validateAggregateId(aggregateId);
+        if (validatedId.type === "err") return validatedId;
+        const aid = `${validatedId.value.typeName}-${validatedId.value.value}`;
+
+        const records = await readMemoryStorageLatestSnapshot(
+          storage.value,
+          aid,
+          hooks?.beforeReadSnapshot,
+        );
+        if (records.type === "err") return records;
+        if (records.value === undefined) return Result.ok(undefined);
+
+        try {
+          return Result.ok(
+            Object.freeze({
+              headSeqNr: records.value.headSeqNr,
+              snapshot:
+                records.value.snapshot === undefined
+                  ? undefined
+                  : Object.freeze({
+                      ...records.value.snapshot,
+                      aggregate: snapshotSerializer.deserialize(
+                        records.value.snapshot.aggregate,
+                        records.value.snapshot.manifest,
+                      ),
+                    }),
+            }),
+          );
+        } catch (cause) {
+          return Result.err(
+            EventStoreError.serialization(
+              "deserialize",
+              "snapshot payload deserialization failed",
+              cause,
+            ),
+          );
+        }
+      },
+
+      async getEventsByIdSinceSeqNr(aggregateId, seqNr) {
+        const validatedId = validateAggregateId(aggregateId);
+        if (validatedId.type === "err") return validatedId;
+        const aid = `${validatedId.value.typeName}-${validatedId.value.value}`;
+        const start = validateSeqNr(seqNr);
+        if (start.type === "err") return start;
+
+        const records = await readMemoryStorageEvents(
+          storage.value,
+          aid,
+          start.value,
+          hooks?.beforeReadEvents,
+        );
+        if (records.type === "err") return records;
+
+        try {
+          return Result.ok(
+            records.value.map((record) =>
+              Object.freeze({
+                aggregateId: validatedId.value,
+                seqNr: record.seqNr,
+                occurredAt: new Date(record.occurredAt),
+                manifest: record.manifest,
+                payload: serializer.deserialize(
+                  record.payload,
+                  record.manifest,
+                ),
+              }),
+            ),
+          );
+        } catch (cause) {
+          return Result.err(
+            EventStoreError.serialization(
+              "deserialize",
+              "event payload deserialization failed",
+              cause,
+            ),
+          );
+        }
+      },
+    }),
+  );
 }
-
-export { createMemoryEventStore };
