@@ -1,11 +1,16 @@
-import type {
-  AttributeValue,
-  BatchGetItemCommandInput,
-  BatchGetItemCommandOutput,
-  DynamoDBClient,
-  QueryCommandInput,
-  QueryCommandOutput,
-  TransactWriteItemsCommandInput,
+import {
+  type AttributeValue,
+  type BatchGetItemCommandInput,
+  type BatchGetItemCommandOutput,
+  BatchWriteItemCommand,
+  type BatchWriteItemCommandInput,
+  type BatchWriteItemCommandOutput,
+  type DynamoDBClient,
+  type QueryCommandInput,
+  type QueryCommandOutput,
+  type TransactWriteItemsCommandInput,
+  type UpdateItemCommandInput,
+  type UpdateItemCommandOutput,
 } from "@aws-sdk/client-dynamodb";
 
 function journalItemBytes(item: Record<string, AttributeValue>): number {
@@ -55,6 +60,13 @@ type Observation = {
   };
   error?: unknown;
   fault?: number;
+  retention?: {
+    operation: number;
+    stage: RetentionStage;
+    request: number;
+    table: string;
+  };
+  delegatedDelete?: BatchWriteItemCommandInput;
 };
 type Fault = { cause: unknown; applied: number };
 type QueryFault = {
@@ -85,6 +97,30 @@ type SnapshotFault = {
     }
 );
 
+type RetentionStage = "query" | "delete" | "ttl";
+type RetentionOutput =
+  | QueryCommandOutput
+  | BatchWriteItemCommandOutput
+  | UpdateItemCommandOutput;
+type RetentionFault = {
+  operation: number;
+  table: string;
+  stage: RetentionStage;
+  request: number;
+  applied: number;
+} & (
+  | { injection: "replace-request"; cause: unknown }
+  | {
+      injection: "replace-response";
+      replace: (output: RetentionOutput) => RetentionOutput;
+    }
+  | {
+      injection: "partial-delete";
+      pendingCount: number;
+      observer: DynamoDBClient;
+    }
+);
+
 /** 試験専用。実SDKへ委譲した結果と、明示したreplace-requestの適用を別に記録する。 */
 export class DynamoDBPersistEventObservation {
   private observations: Observation[] = [];
@@ -92,6 +128,13 @@ export class DynamoDBPersistEventObservation {
   private queryFaults: QueryFault[] = [];
   private readEvents?: { operation: number; table: string; page: number };
   private snapshotFaults: SnapshotFault[] = [];
+  private retentionFaults: RetentionFault[] = [];
+  private retention?: {
+    operation: number;
+    table: string;
+    indexName: string;
+    requests: Record<RetentionStage, number>;
+  };
   private readSnapshot?: {
     operation: number;
     tables: readonly string[];
@@ -130,6 +173,105 @@ export class DynamoDBPersistEventObservation {
             throw fault.cause;
           }
           if (beforeSend !== undefined) await beforeSend();
+        }
+        let retentionFault:
+          | { index: number; fault: RetentionFault }
+          | undefined;
+        const retention = this.retention;
+        if (retention !== undefined) {
+          const queryInput = args.input as QueryCommandInput;
+          const deleteInput = args.input as BatchWriteItemCommandInput;
+          const updateInput = args.input as UpdateItemCommandInput;
+          const stage =
+            context.commandName === "QueryCommand" &&
+            queryInput.TableName === retention.table &&
+            queryInput.IndexName === retention.indexName
+              ? "query"
+              : context.commandName === "BatchWriteItemCommand" &&
+                  Object.keys(deleteInput.RequestItems ?? {}).includes(
+                    retention.table,
+                  )
+                ? "delete"
+                : context.commandName === "UpdateItemCommand" &&
+                    updateInput.TableName === retention.table
+                  ? "ttl"
+                  : undefined;
+          if (stage !== undefined) {
+            const request = retention.requests[stage] + 1;
+            this.retention = {
+              ...retention,
+              requests: { ...retention.requests, [stage]: request },
+            };
+            observation.retention = {
+              operation: retention.operation,
+              table: retention.table,
+              stage,
+              request,
+            };
+            const index = this.retentionFaults.findIndex(
+              (fault) =>
+                fault.applied === 0 &&
+                fault.operation === retention.operation &&
+                fault.table === retention.table &&
+                fault.stage === stage &&
+                fault.request === request,
+            );
+            if (index !== -1) {
+              const fault = this.retentionFaults[index];
+              retentionFault = { index, fault };
+              observation.fault = index;
+              if (fault.injection === "replace-request") {
+                this.markRetentionFaultApplied(index);
+                observation.error = fault.cause;
+                throw fault.cause;
+              }
+              if (fault.injection === "partial-delete") {
+                try {
+                  const requests = deleteInput.RequestItems?.[retention.table];
+                  if (requests === undefined)
+                    throw new Error(
+                      "partial-delete fault requires delete requests",
+                    );
+                  const pending = requests.slice(0, fault.pendingCount);
+                  const processed = requests.slice(fault.pendingCount);
+                  let upstream: BatchWriteItemCommandOutput | undefined;
+                  if (processed.length > 0) {
+                    const delegated = {
+                      RequestItems: { [retention.table]: processed },
+                    };
+                    observation.delegatedDelete = structuredClone(delegated);
+                    upstream = await fault.observer.send(
+                      new BatchWriteItemCommand(delegated),
+                    );
+                    observation.upstream = structuredClone(upstream);
+                  }
+                  const output: BatchWriteItemCommandOutput = {
+                    ...upstream,
+                    $metadata: upstream?.$metadata ?? {},
+                    UnprocessedItems: {
+                      ...upstream?.UnprocessedItems,
+                      [retention.table]: [
+                        ...pending,
+                        ...(Object.entries(
+                          upstream?.UnprocessedItems ?? {},
+                        ).find(([table]) => table === retention.table)?.[1] ??
+                          []),
+                      ],
+                    },
+                  };
+                  observation.returned = structuredClone(output);
+                  this.markRetentionFaultApplied(index);
+                  return {
+                    response: { statusCode: 200, headers: {}, body: "" },
+                    output,
+                  };
+                } catch (cause) {
+                  observation.error = cause;
+                  throw cause;
+                }
+              }
+            }
+          }
         }
         const query = args.input as QueryCommandInput;
         let queryFault: { index: number; fault: QueryFault } | undefined;
@@ -221,19 +363,24 @@ export class DynamoDBPersistEventObservation {
               ? result.output
               : correctReadEventsPage(result.output as QueryCommandOutput);
           if (queryFault?.fault.injection === "replace-response") {
-            this.markQueryFaultApplied(queryFault.index);
             output = queryFault.fault.replace(output as QueryCommandOutput);
+            this.markQueryFaultApplied(queryFault.index);
           }
           if (snapshotFault?.fault.injection === "replace-response") {
-            this.markSnapshotFaultApplied(snapshotFault.index);
             output = snapshotFault.fault.replace(
               output as BatchGetItemCommandOutput,
               batch,
             );
+            this.markSnapshotFaultApplied(snapshotFault.index);
+          }
+          if (retentionFault?.fault.injection === "replace-response") {
+            output = retentionFault.fault.replace(output as RetentionOutput);
+            this.markRetentionFaultApplied(retentionFault.index);
           }
           if (
             observation.readEvents !== undefined ||
-            observation.readSnapshot !== undefined
+            observation.readSnapshot !== undefined ||
+            observation.retention !== undefined
           ) {
             observation.returned = structuredClone(output);
             return { ...result, output };
@@ -258,6 +405,71 @@ export class DynamoDBPersistEventObservation {
     this.snapshotFaults = this.snapshotFaults.map((fault, position) =>
       position === index ? { ...fault, applied: fault.applied + 1 } : fault,
     );
+  }
+
+  private markRetentionFaultApplied(index: number): void {
+    this.retentionFaults = this.retentionFaults.map((fault, position) =>
+      position === index ? { ...fault, applied: fault.applied + 1 } : fault,
+    );
+  }
+
+  beginRetention(table: string, indexName: string, operation: number): void {
+    this.retention = {
+      table,
+      indexName,
+      operation,
+      requests: { query: 0, delete: 0, ttl: 0 },
+    };
+  }
+
+  failRetention(
+    input: Readonly<{
+      operation: number;
+      table: string;
+      stage: RetentionStage;
+      request: number;
+      cause: unknown;
+    }>,
+  ): void {
+    this.retentionFaults = [
+      ...this.retentionFaults,
+      { ...input, injection: "replace-request", applied: 0 },
+    ];
+  }
+
+  replaceRetentionQuery(
+    input: Readonly<{
+      operation: number;
+      table: string;
+      request: number;
+      replace: (output: QueryCommandOutput) => QueryCommandOutput;
+    }>,
+  ): void {
+    this.retentionFaults = [
+      ...this.retentionFaults,
+      {
+        ...input,
+        stage: "query",
+        injection: "replace-response",
+        applied: 0,
+        replace: (output) => input.replace(output as QueryCommandOutput),
+      },
+    ];
+  }
+
+  deferRetentionDeletes(
+    input: Readonly<{
+      operation: number;
+      table: string;
+      request: number;
+      pendingCount: number;
+      observer: DynamoDBClient;
+    }>,
+  ): void {
+    this.retentionFaults = [
+      ...this.retentionFaults,
+      { ...input, stage: "delete", injection: "partial-delete", applied: 0 },
+    ];
   }
 
   failNext(cause: unknown): void {
@@ -348,6 +560,11 @@ export class DynamoDBPersistEventObservation {
       faults: this.faults.map((fault) => ({ ...fault })),
       queryFaults: this.queryFaults.map((fault) => ({ ...fault })),
       snapshotFaults: this.snapshotFaults.map((fault) => ({ ...fault })),
+      retentionFaults: this.retentionFaults.map(({ ...fault }) =>
+        fault.injection === "partial-delete"
+          ? { ...fault, observer: undefined }
+          : fault,
+      ),
       unapplied: this.faults.flatMap(({ applied }, index) =>
         applied === 0 ? [index] : [],
       ),
@@ -355,6 +572,9 @@ export class DynamoDBPersistEventObservation {
         applied === 0 ? [index] : [],
       ),
       snapshotUnapplied: this.snapshotFaults.flatMap(({ applied }, index) =>
+        applied === 0 ? [index] : [],
+      ),
+      retentionUnapplied: this.retentionFaults.flatMap(({ applied }, index) =>
         applied === 0 ? [index] : [],
       ),
     };
@@ -367,5 +587,7 @@ export class DynamoDBPersistEventObservation {
       throw new Error("registered read-events fault was not applied");
     if (this.snapshot().snapshotUnapplied.length !== 0)
       throw new Error("registered read-snapshot fault was not applied");
+    if (this.snapshot().retentionUnapplied.length !== 0)
+      throw new Error("registered retention fault was not applied");
   }
 }

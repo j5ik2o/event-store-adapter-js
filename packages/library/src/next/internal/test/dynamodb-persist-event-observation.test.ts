@@ -2,6 +2,7 @@ import {
   BatchGetItemCommand,
   type BatchGetItemCommandInput,
   type BatchGetItemCommandOutput,
+  BatchWriteItemCommand,
   DynamoDBClient,
   GetItemCommand,
   QueryCommand,
@@ -299,7 +300,7 @@ test.each(["replace-request", "replace-response"] as const)(
     const observation = new DynamoDBPersistEventObservation(client);
     const cause = new Error("request blocked");
     const replace = jest.fn((output: QueryCommandOutput) => {
-      expect(observation.snapshot().queryFaults[0].applied).toBe(1);
+      expect(observation.snapshot().queryFaults[0].applied).toBe(0);
       return { ...output, Count: 7 };
     });
     observation.beginReadEvents("journal", 1);
@@ -404,7 +405,7 @@ test("application updates only the selected fault while another operation remain
   }
 });
 
-test("a replacement failure preserves the upstream response, applied count and its cause", async () => {
+test("a replacement failure preserves the upstream response and cause but remains unapplied", async () => {
   const { client } = fixtureClient();
   const observation = new DynamoDBPersistEventObservation(client);
   const cause = new Error("replacement failed");
@@ -414,7 +415,7 @@ test("a replacement failure preserves the upstream response, applied count and i
     table: "journal",
     page: 1,
     replace() {
-      expect(observation.snapshot().queryFaults[0].applied).toBe(1);
+      expect(observation.snapshot().queryFaults[0].applied).toBe(0);
       throw cause;
     },
   });
@@ -424,9 +425,9 @@ test("a replacement failure preserves the upstream response, applied count and i
     ).rejects.toBe(cause);
     expect(observation.snapshot().observations[0].upstream).toBeDefined();
     expect(observation.snapshot().observations[0].error).toBe(cause);
-    expect(observation.snapshot().queryFaults[0].applied).toBe(1);
-    expect(observation.snapshot().queryUnapplied).toEqual([]);
-    observation.assertApplied();
+    expect(observation.snapshot().queryFaults[0].applied).toBe(0);
+    expect(observation.snapshot().queryUnapplied).toEqual([0]);
+    expect(() => observation.assertApplied()).toThrow("not applied");
   } finally {
     client.destroy();
   }
@@ -698,7 +699,7 @@ test("snapshot response replacements retain separate upstream, actual request an
   const replace = jest.fn(
     (output: BatchGetItemCommandOutput, input: BatchGetItemCommandInput) => {
       expect(input).toEqual(snapshotBatch);
-      expect(observation.snapshot().snapshotFaults[0].applied).toBe(1);
+      expect(observation.snapshot().snapshotFaults[0].applied).toBe(0);
       return { ...output, Responses: {} };
     },
   );
@@ -760,7 +761,7 @@ test("a real SDK failure leaves a selected snapshot response fault unapplied", a
   }
 });
 
-test("snapshot replacement exceptions preserve upstream and the applied fault count", async () => {
+test("snapshot replacement exceptions preserve upstream and remain unapplied", async () => {
   const { client } = fixtureClient();
   const observation = new DynamoDBPersistEventObservation(client);
   observation.beginReadSnapshot({ head: "head", snapshot: "snapshot" }, 1);
@@ -780,9 +781,152 @@ test("snapshot replacement exceptions preserve upstream and the applied fault co
     const saved = observation.snapshot();
     expect(saved.observations[0].upstream).toBeDefined();
     expect(saved.observations[0].error).toBe(cause);
-    expect(saved.snapshotFaults[0].applied).toBe(1);
+    expect(saved.snapshotFaults[0].applied).toBe(0);
+    expect(() => observation.assertApplied()).toThrow("not applied");
+  } finally {
+    client.destroy();
+  }
+});
+
+test("retention faults match operation, table, index and request without intercepting reads", async () => {
+  const { client, handle } = fixtureClient();
+  const observation = new DynamoDBPersistEventObservation(client);
+  const cause = new Error("retention query failed");
+  observation.failRetention({
+    operation: 2,
+    table: "snapshot",
+    stage: "query",
+    request: 2,
+    cause,
+  });
+  const query = { TableName: "snapshot", IndexName: "history" };
+  try {
+    await client.send(new QueryCommand(query));
+    observation.beginRetention("snapshot", "history", 1);
+    await client.send(new QueryCommand(query));
+    observation.beginRetention("snapshot", "history", 2);
+    await client.send(new QueryCommand({ ...query, TableName: "other" }));
+    await client.send(new QueryCommand({ ...query, IndexName: "other" }));
+    await client.send(new QueryCommand({ TableName: "snapshot" }));
+    await client.send(new QueryCommand(query));
+    const before = observation.snapshot();
+    expect(before.retentionUnapplied).toEqual([0]);
+    expect(before.retentionFaults[0].applied).toBe(0);
+    expect(() => observation.assertApplied()).toThrow(Error);
+    await expect(client.send(new QueryCommand(query))).rejects.toBe(cause);
+    expect(handle).toHaveBeenCalledTimes(6);
+    const saved = observation.snapshot();
+    expect(saved.retentionFaults[0].applied).toBe(1);
+    expect(saved.retentionUnapplied).toEqual([]);
+    expect(saved.observations[6].upstream).toBeUndefined();
+    expect(saved.observations[6].error).toBe(cause);
     observation.assertApplied();
   } finally {
     client.destroy();
   }
 });
+
+test.each(["success", "SDK failure", "replacement failure"])(
+  "retention response fault records its actual application for %s",
+  async (mode) => {
+    const { client, handle } = fixtureClient(mode === "SDK failure", {
+      Items: [],
+      Count: 0,
+    });
+    const observation = new DynamoDBPersistEventObservation(client);
+    const cause = new Error("replacement failed");
+    const replace = jest.fn((output: QueryCommandOutput) => {
+      if (mode === "replacement failure") throw cause;
+      return { ...output, Count: 7 };
+    });
+    observation.beginRetention("snapshot", "history", 1);
+    observation.replaceRetentionQuery({
+      operation: 1,
+      table: "snapshot",
+      request: 1,
+      replace,
+    });
+    try {
+      const result = await client
+        .send(new QueryCommand({ TableName: "snapshot", IndexName: "history" }))
+        .catch((error: unknown) => error);
+      expect(handle).toHaveBeenCalledTimes(1);
+      const saved = observation.snapshot();
+      if (mode === "success") {
+        expect(result).toMatchObject({ Count: 7 });
+        expect(saved.observations[0].upstream).toMatchObject({ Count: 0 });
+        expect(saved.observations[0].returned).toEqual(result);
+        expect(saved.retentionFaults[0].applied).toBe(1);
+        observation.assertApplied();
+      } else {
+        expect(saved.retentionFaults[0].applied).toBe(0);
+        expect(saved.retentionUnapplied).toEqual([0]);
+        expect(saved.observations[0].returned).toBeUndefined();
+        expect(() => observation.assertApplied()).toThrow("not applied");
+        if (mode === "SDK failure") {
+          expect(result).toBeInstanceOf(ResourceNotFoundException);
+          expect(replace).not.toHaveBeenCalled();
+          expect(saved.observations[0].upstream).toBeUndefined();
+        } else {
+          expect(result).toBe(cause);
+          expect(saved.observations[0].upstream).toBeDefined();
+        }
+      }
+    } finally {
+      client.destroy();
+    }
+  },
+);
+
+test.each([false, true])(
+  "partial delete faults delegate only the complement and record real application, observer failure = %s",
+  async (failure) => {
+    const { client, handle } = fixtureClient();
+    const delegate = fixtureClient(failure);
+    const observation = new DynamoDBPersistEventObservation(client);
+    const requests = [1, 2].map((seqNr) => ({
+      DeleteRequest: {
+        Key: { aid: { S: "Order-1" }, skey: { N: seqNr.toString() } },
+      },
+    }));
+    observation.beginRetention("snapshot", "history", 1);
+    observation.deferRetentionDeletes({
+      operation: 1,
+      table: "snapshot",
+      request: 1,
+      pendingCount: 1,
+      observer: delegate.client,
+    });
+    try {
+      const result = await client
+        .send(
+          new BatchWriteItemCommand({ RequestItems: { snapshot: requests } }),
+        )
+        .catch((error: unknown) => error);
+      expect(handle).not.toHaveBeenCalled();
+      expect(delegate.handle).toHaveBeenCalledTimes(1);
+      expect(
+        JSON.parse(delegate.handle.mock.calls[0][0].body as string)
+          .RequestItems,
+      ).toEqual({ snapshot: requests.slice(1) });
+      const saved = observation.snapshot();
+      if (failure) {
+        expect(result).toBeInstanceOf(ResourceNotFoundException);
+        expect(saved.retentionFaults[0].applied).toBe(0);
+        expect(saved.observations[0].upstream).toBeUndefined();
+        expect(() => observation.assertApplied()).toThrow("not applied");
+      } else {
+        expect(result).toMatchObject({
+          UnprocessedItems: { snapshot: requests.slice(0, 1) },
+        });
+        expect(saved.observations[0].upstream).toBeDefined();
+        expect(saved.observations[0].returned).toEqual(result);
+        expect(saved.retentionFaults[0].applied).toBe(1);
+        observation.assertApplied();
+      }
+    } finally {
+      client.destroy();
+      delegate.client.destroy();
+    }
+  },
+);

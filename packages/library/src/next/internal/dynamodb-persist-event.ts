@@ -10,6 +10,9 @@ import type { SnapshotEnvelope } from "../snapshot-envelope";
 import type { validateDynamoDBEventStoreInput } from "./dynamodb-event-store-input-validation";
 import { dynamoDBItemSize } from "./dynamodb-item-size";
 import { classifyDynamoDBPersistEventError } from "./dynamodb-persist-event-error";
+import { notifyDynamoDBRetentionFailure } from "./dynamodb-retention-failure-notification";
+import type { DynamoDBRetentionHooks } from "./dynamodb-retention-hooks";
+import { retainDynamoDBSnapshots } from "./dynamodb-snapshot-retention";
 import {
   validateEvent,
   validateEventAndSnapshot,
@@ -22,16 +25,18 @@ type Settings<PE, PS> = Extract<
 
 export function createDynamoDBPersistEvent<PE, PS>(
   settings: Settings<PE, PS>,
+  hooks?: DynamoDBRetentionHooks,
 ): EventStore<PE, PS>["persistEvent"] {
   return async (event) => {
     const validated = validateEvent(event);
     if (validated.type === "err") return validated;
-    return persistDynamoDBEvent(settings, validated.value);
+    return persistDynamoDBEvent(settings, validated.value, undefined, hooks);
   };
 }
 
 export function createDynamoDBPersistEventAndSnapshot<PE, PS>(
   settings: Settings<PE, PS>,
+  hooks?: DynamoDBRetentionHooks,
 ): EventStore<PE, PS>["persistEventAndSnapshot"] {
   return async (event, snapshot) => {
     const validated = validateEventAndSnapshot(event, snapshot);
@@ -40,6 +45,7 @@ export function createDynamoDBPersistEventAndSnapshot<PE, PS>(
       settings,
       validated.value.event,
       validated.value.snapshot,
+      hooks,
     );
   };
 }
@@ -48,6 +54,7 @@ async function persistDynamoDBEvent<PE, PS>(
   settings: Settings<PE, PS>,
   event: EventEnvelope<PE>,
   snapshot?: SnapshotEnvelope<PS>,
+  hooks?: DynamoDBRetentionHooks,
 ): Promise<Result<void, EventStoreError>> {
   const { client, tables, eventSerializer, snapshotSerializer, retention } =
     settings;
@@ -186,8 +193,25 @@ async function persistDynamoDBEvent<PE, PS>(
         ],
       }),
     );
-    return Result.ok(undefined);
   } catch (cause) {
     return Result.err(classifyDynamoDBPersistEventError(cause, aid, seqNr));
   }
+  if (snapshotInput !== undefined && retention !== undefined) {
+    try {
+      await retainDynamoDBSnapshots(
+        { ...settings, retention },
+        aid,
+        Number(snapshotInput.metadata.seq_nr.N),
+        hooks,
+      );
+    } catch (cause) {
+      await notifyDynamoDBRetentionFailure(
+        aid,
+        cause,
+        settings.logger,
+        settings.onRetentionFailure,
+      );
+    }
+  }
+  return Result.ok(undefined);
 }
