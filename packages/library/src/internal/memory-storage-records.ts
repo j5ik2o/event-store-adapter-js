@@ -51,6 +51,12 @@ export function createMemoryStorageRecords(
   return storage;
 }
 
+export function isRegisteredMemoryStorage(storage: unknown): boolean {
+  return typeof storage === "object" && storage !== null
+    ? states.has(storage as MemoryStorage)
+    : false;
+}
+
 function stateOf(storage: MemoryStorage): StorageState {
   const state = states.get(storage);
   if (state === undefined) throw new TypeError("unknown memory storage");

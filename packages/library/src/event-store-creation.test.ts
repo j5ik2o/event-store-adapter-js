@@ -604,3 +604,24 @@ test("MemoryStorage captures delete retention without reading ttl settings", () 
     expect(get).toHaveBeenCalledTimes(1);
   expect(graceSeconds).not.toHaveBeenCalled();
 });
+
+test("rejects Memory storage not created by MemoryStorage.create", () => {
+  const forged = Object.freeze({}) as MemoryStorage;
+
+  expect(EventStore.createMemory({ storage: forged })).toMatchObject({
+    type: "err",
+    error: { type: "configuration-error", fieldName: "storage" },
+  });
+});
+
+test.each(["retention", "changeFeed"])(
+  "rejects unsupported Memory setting %s at creation",
+  (field) => {
+    const input = { [field]: {} } as object;
+
+    expect(EventStore.createMemory(input)).toMatchObject({
+      type: "err",
+      error: { type: "configuration-error", fieldName: field },
+    });
+  },
+);

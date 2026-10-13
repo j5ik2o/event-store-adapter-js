@@ -1082,29 +1082,13 @@ describe("memory getLatestSnapshotById real records", () => {
     },
   );
 
-  test("preserves a real snapshot storage read error without starting restoration", async () => {
-    const deserialize = jest.fn(() => null);
-    const store = unwrap(
-      createMemoryEventStoreInternal({
-        storage: {} as MemoryStorage,
-        snapshotSerializer: { serialize: () => Uint8Array.of(1), deserialize },
-      }),
-    );
-    const read = jest.spyOn(
-      memoryStorageRecords,
-      "readMemoryStorageLatestSnapshot",
-    );
-    try {
-      const result = await store.getLatestSnapshotById(eventOf().aggregateId);
-      expect(result).toMatchObject({
-        type: "err",
-        error: { type: "storage-error", cause: expect.any(TypeError) },
-      });
-      expect(result).toBe(await read.mock.results[0].value);
-      expect(deserialize).not.toHaveBeenCalled();
-    } finally {
-      read.mockRestore();
-    }
+  test("rejects an unregistered storage at creation before snapshot reads", () => {
+    expect(
+      createMemoryEventStoreInternal({ storage: {} as MemoryStorage }),
+    ).toMatchObject({
+      type: "err",
+      error: { type: "configuration-error", fieldName: "storage" },
+    });
   });
 });
 
@@ -1630,30 +1614,13 @@ describe("memory getEventsByIdSinceSeqNr real records", () => {
     },
   );
 
-  test("preserves a real storage read error and does not start restoration", async () => {
-    const deserialize = jest.fn(() => null);
-    const store = unwrap(
-      createMemoryEventStoreInternal({
-        storage: {} as MemoryStorage,
-        eventSerializer: { serialize: () => Uint8Array.of(1), deserialize },
-      }),
-    );
-    const read = jest.spyOn(memoryStorageRecords, "readMemoryStorageEvents");
-    try {
-      const result = await store.getEventsByIdSinceSeqNr(
-        eventOf().aggregateId,
-        0,
-      );
-
-      expect(result).toMatchObject({
-        type: "err",
-        error: { type: "storage-error", cause: expect.any(TypeError) },
-      });
-      expect(result).toBe(await read.mock.results[0].value);
-      expect(deserialize).not.toHaveBeenCalled();
-    } finally {
-      read.mockRestore();
-    }
+  test("rejects an unregistered storage at creation before event reads", () => {
+    expect(
+      createMemoryEventStoreInternal({ storage: {} as MemoryStorage }),
+    ).toMatchObject({
+      type: "err",
+      error: { type: "configuration-error", fieldName: "storage" },
+    });
   });
 });
 
@@ -1962,14 +1929,12 @@ describe("memory persistEvent real records", () => {
     },
   );
 
-  test("preserves a real commit storage error", async () => {
-    const store = unwrap(
+  test("rejects an unregistered storage at creation instead of failing on first use", () => {
+    expect(
       createMemoryEventStoreInternal({ storage: {} as MemoryStorage }),
-    );
-
-    expect(await store.persistEvent(eventOf())).toMatchObject({
+    ).toMatchObject({
       type: "err",
-      error: { type: "storage-error", cause: expect.any(TypeError) },
+      error: { type: "configuration-error", fieldName: "storage" },
     });
   });
 

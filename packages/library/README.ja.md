@@ -62,7 +62,7 @@ headがなければ `getLatestSnapshotById` は `undefined` を返します。he
 
 ## DynamoDB
 
-[DATABASE_SCHEMA.ja.md](docs/DATABASE_SCHEMA.ja.md) に従い、3表と履歴GSIを作成してからストアを生成します。ライブラリは3表の共通設定項目を作成・照合します。
+[DATABASE_SCHEMA.ja.md](docs/DATABASE_SCHEMA.ja.md) に従い、3表と履歴GSIを作成してからストアを生成します。ライブラリは3表の共通設定項目を作成・照合します。3 つの表は同じリージョンに置き、書き込みもそのリージョンからだけ行ってください。グローバルテーブル（複数リージョンのレプリカ）は範囲外です。
 
 ```typescript
 const opened = await EventStore.createDynamoDB({
@@ -81,7 +81,7 @@ AWSクライアントは呼び出し側で管理します。snapshot書き込み
 
 既定の `PayloadSerializer.json()` はJSON値だけを扱います。任意の同期 `PayloadSerializer<P>` は `serialize(payload): Uint8Array` と `deserialize(bytes, manifest): P` を実装します。payloadだけを直列化し、クラスやbrandは `deserialize` で復元してください。実例の [domain serializer](../examples/src/domain/user-account-serializers.ts) を参照できます。
 
-storageを省略したMemory生成は独立します。共有する場合は `MemoryStorage.create()` の同じ値を複数のfactoryへ渡し、保持設定もstorageに指定します。
+メモリの保存先は単一プロセスのメモリだけを使います。ファイルへの保存、再起動後の回復、プロセス間の共有はしません。storageを省略したMemory生成は独立します。共有する場合は `MemoryStorage.create()` の同じ値を複数のfactoryへ渡し、保持設定もstorageに指定します。
 
 ```typescript
 const storage = unwrap(MemoryStorage.create({ retention: { count: 3 } }));
