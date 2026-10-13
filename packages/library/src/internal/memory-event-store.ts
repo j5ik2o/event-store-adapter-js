@@ -7,6 +7,7 @@ import { validateEventStoreInput } from "./event-store-input-validation";
 import type { MemoryEventStoreHooks } from "./memory-event-store-hooks";
 import {
   commitMemoryStorageRecords,
+  isRegisteredMemoryStorage,
   readMemoryStorageEvents,
   readMemoryStorageLatestSnapshot,
 } from "./memory-storage-records";
@@ -16,6 +17,14 @@ import {
   validateEvent,
   validateEventAndSnapshot,
 } from "./validated-event-store";
+
+const knownSettings: ReadonlySet<string> = new Set([
+  "storage",
+  "eventSerializer",
+  "snapshotSerializer",
+  "onRetentionFailure",
+  "logger",
+]);
 
 /** 実Storageと保持処理に接続した4操作を返す内部入口。 */
 export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
@@ -39,6 +48,36 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
         "storage",
         "storage could not be read",
         cause,
+      ),
+    );
+  }
+  let unknownSetting: string | undefined;
+  try {
+    unknownSetting = Object.keys(input ?? {}).find(
+      (key) => !knownSettings.has(key),
+    );
+  } catch (cause) {
+    return Result.err(
+      EventStoreError.configuration(
+        "input",
+        "input settings could not be read",
+        cause,
+      ),
+    );
+  }
+  if (unknownSetting !== undefined) {
+    return Result.err(
+      EventStoreError.configuration(
+        unknownSetting,
+        "unsupported Memory setting; retention belongs to MemoryStorage.create",
+      ),
+    );
+  }
+  if (inputStorage !== undefined && !isRegisteredMemoryStorage(inputStorage)) {
+    return Result.err(
+      EventStoreError.configuration(
+        "storage",
+        "storage must be created by MemoryStorage.create",
       ),
     );
   }

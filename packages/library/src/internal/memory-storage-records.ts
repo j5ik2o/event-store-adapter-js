@@ -51,6 +51,11 @@ export function createMemoryStorageRecords(
   return storage;
 }
 
+export function isRegisteredMemoryStorage(storage: unknown): boolean {
+  // WeakMap.has は、オブジェクト以外の値には false を返す。
+  return states.has(storage as MemoryStorage);
+}
+
 function stateOf(storage: MemoryStorage): StorageState {
   const state = states.get(storage);
   if (state === undefined) throw new TypeError("unknown memory storage");

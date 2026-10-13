@@ -1,6 +1,6 @@
 # DynamoDB schema
 
-Use three distinct tables in one region. The caller creates them; `EventStore.createDynamoDB` verifies shared configuration records. Table names and the history index name come from its input.
+Use three distinct tables in one region. Keep the three tables in one Region and write to them only from that Region. Global tables (multi-Region replicas) are not supported. The caller creates them; `EventStore.createDynamoDB` verifies shared configuration records. Table names and the history index name come from its input.
 
 | Table | Partition key | Sort key | Index / Streams |
 | --- | --- | --- | --- |

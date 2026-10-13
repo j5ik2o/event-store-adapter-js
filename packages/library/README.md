@@ -62,7 +62,7 @@ Both factories and all four operations return `Result`. DynamoDB creation is asy
 
 ## DynamoDB
 
-Create the three tables and history GSI described in [DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) before opening the store. The library creates or verifies their shared configuration items.
+Create the three tables and history GSI described in [DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) before opening the store. The library creates or verifies their shared configuration items. Keep the three tables in one Region and write to them only from that Region. Global tables (multi-Region replicas) are not supported.
 
 ```typescript
 const opened = await EventStore.createDynamoDB({
@@ -81,7 +81,7 @@ The caller owns the AWS client. Snapshot retention runs after a successful snaps
 
 The default `PayloadSerializer.json()` handles JSON values only. A custom synchronous `PayloadSerializer<P>` implements `serialize(payload): Uint8Array` and `deserialize(bytes, manifest): P`. Serialize the payload alone and restore domain classes or brands in `deserialize`. See the [domain serializers](../examples/src/domain/user-account-serializers.ts) in the runnable examples.
 
-Memory creation without a storage uses isolated storage. To share records, pass the same value returned by `MemoryStorage.create()` to multiple factories. Configure retention on that storage:
+The memory storage lives in a single process. It does not persist to files, survive restarts, or share data across processes. Memory creation without a storage uses isolated storage. To share records, pass the same value returned by `MemoryStorage.create()` to multiple factories. Configure retention on that storage:
 
 ```typescript
 const storage = unwrap(MemoryStorage.create({ retention: { count: 3 } }));
