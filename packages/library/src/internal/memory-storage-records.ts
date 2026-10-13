@@ -52,9 +52,8 @@ export function createMemoryStorageRecords(
 }
 
 export function isRegisteredMemoryStorage(storage: unknown): boolean {
-  return typeof storage === "object" && storage !== null
-    ? states.has(storage as MemoryStorage)
-    : false;
+  // WeakMap.has は、オブジェクト以外の値には false を返す。
+  return states.has(storage as MemoryStorage);
 }
 
 function stateOf(storage: MemoryStorage): StorageState {

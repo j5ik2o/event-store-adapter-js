@@ -53,10 +53,9 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
   }
   let unknownSetting: string | symbol | undefined;
   try {
-    unknownSetting =
-      input === undefined || input === null
-        ? undefined
-        : Reflect.ownKeys(input).find((key) => !knownSettings.has(key));
+    unknownSetting = Reflect.ownKeys(input ?? {}).find(
+      (key) => !knownSettings.has(key),
+    );
   } catch (cause) {
     return Result.err(
       EventStoreError.configuration(

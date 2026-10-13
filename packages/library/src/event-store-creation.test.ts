@@ -625,3 +625,19 @@ test.each(["retention", "changeFeed"])(
     });
   },
 );
+
+test("rejects Memory settings that cannot be enumerated", () => {
+  const input = new Proxy(
+    {},
+    {
+      ownKeys() {
+        throw new Error("boom");
+      },
+    },
+  );
+
+  expect(EventStore.createMemory(input)).toMatchObject({
+    type: "err",
+    error: { type: "configuration-error", fieldName: "input" },
+  });
+});
