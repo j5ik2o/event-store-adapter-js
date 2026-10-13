@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import re
 import subprocess
@@ -102,6 +103,7 @@ class ReleaseVersionsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(output.read_text().splitlines(), ['next_version=5.0.0', 'next_tag=v5.0.0'])
 
+    @unittest.skipUnless(importlib.util.find_spec('semver'), 'next-semver.py needs the semver package')
     def test_versions_step_without_request_keeps_level_calculation(self):
         self.assertIn('next-semver.py', run_body(BUMP, 'versions'))
         with tempfile.TemporaryDirectory() as directory:
@@ -110,11 +112,8 @@ class ReleaseVersionsTest(unittest.TestCase):
             script = run_body(BUMP, 'versions').replace('${{ steps.defines.outputs.prev_tag }}', 'v4.0.1') \
                 .replace('${{ steps.semver_level.outputs.semver_level }}', 'minor')
             result = self.run_script(script, directory, {'GITHUB_OUTPUT': str(output), 'REQUESTED_VERSION': ''})
-            if result.returncode == 0:
-                self.assertEqual(output.read_text().splitlines(), ['next_version=4.1.0', 'next_tag=v4.1.0'])
-            else:
-                # CI 以外の環境では semver パッケージが無い場合がある
-                self.assertIn('semver', result.stderr)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(output.read_text().splitlines(), ['next_version=4.1.0', 'next_tag=v4.1.0'])
 
     def test_workflow_conditions(self):
         for step in ('versions', 'git_commit_push', 'tag_version'):
