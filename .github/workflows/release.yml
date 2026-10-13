@@ -45,6 +45,17 @@ jobs:
           node-version: 24.x
           registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
+      - name: Verify tag matches package version
+        id: package_version
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          expected="${RELEASE_TAG#v}"
+          actual=$(node -p "require('./packages/library/package.json').version")
+          if [[ "$expected" != "$actual" ]]; then
+            echo "::error::tag version ${expected} does not match packages/library/package.json version ${actual}"
+            exit 1
+          fi
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
