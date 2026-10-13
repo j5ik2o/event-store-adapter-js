@@ -166,9 +166,56 @@ jobs:
       - name: Build
         run: pnpm run build
       - name: Generate coverage
+        env:
+          CONFORMANCE_REPORT_DIR: ${{ runner.temp }}/conformance-report
         run: pnpm --filter event-store-adapter-js run coverage --runInBand
       - name: Verify coverage file exists
         run: test -f "${GITHUB_WORKSPACE}/packages/library/coverage/lcov.info"
+      - name: Upload conformance report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: conformance-report-node-${{ matrix.node-version }}
+          path: ${{ runner.temp }}/conformance-report/*.json
+          if-no-files-found: error
+      - name: Summarize conformance per rule
+        if: ${{ !cancelled() }}
+        env:
+          CONFORMANCE_REPORT_DIR: ${{ runner.temp }}/conformance-report
+        run: |
+          node <<'NODE' >> "${GITHUB_STEP_SUMMARY}"
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const dir = process.env.CONFORMANCE_REPORT_DIR;
+          const statuses = ["passed", "failed", "not-applicable", "unverified"];
+          const escape = (text) => String(text).replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+          for (const backend of ["memory", "dynamodb"]) {
+            const report = JSON.parse(
+              fs.readFileSync(path.join(dir, `${backend}.json`), "utf8"),
+            );
+            const reasons = new Map();
+            for (const result of report.results) {
+              if (result.status !== "not-applicable") continue;
+              for (const rule of result.rules) {
+                reasons.set(rule, [...new Set([...(reasons.get(rule) ?? []), result.reason])]);
+              }
+            }
+            const rules = Object.keys(report.ruleCounts).sort((a, b) =>
+              a.localeCompare(b, undefined, { numeric: true }),
+            );
+            console.log(`### Conformance (${backend})`);
+            console.log("");
+            console.log(`| Rule | ${statuses.join(" | ")} | not-applicable reason |`);
+            console.log(`|---|${statuses.map(() => "---:").join("|")}|---|`);
+            for (const rule of rules) {
+              const counts = report.ruleCounts[rule];
+              const cells = statuses.map((status) => counts[status] ?? 0);
+              const reason = escape((reasons.get(rule) ?? []).join("; "));
+              console.log(`| ${rule} | ${cells.join(" | ")} | ${reason} |`);
+            }
+            console.log("");
+          }
+          NODE
       - name: Upload coverage to Codecov
         if: success()
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1

@@ -1,5 +1,7 @@
 # Migration Guide 3.0
 
+この文書は旧版（3.0）向けです。5.0 への移行は [MIGRATION_GUIDE](./MIGRATION_GUIDE.ja.md) を参照してください。
+
 このガイドは、DynamoDB と Cloud Spanner の shard 選択 API を揃えるために入った破壊的変更を説明します。
 
 > 注: このガイドのコード例は v4.0 API に合わせて更新しています。

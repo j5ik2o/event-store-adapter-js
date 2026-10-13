@@ -1,5 +1,7 @@
 # Migration Guide 3.0
 
+This document is for the legacy 3.0 release; to migrate to 5.0, see [MIGRATION_GUIDE](./MIGRATION_GUIDE.md).
+
 This guide covers breaking API changes introduced while aligning DynamoDB and Cloud Spanner shard selection.
 
 > Note: The examples in this guide are kept current with the v4.0 API surface.
