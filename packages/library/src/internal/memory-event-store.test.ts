@@ -1090,6 +1090,36 @@ describe("memory getLatestSnapshotById real records", () => {
       error: { type: "configuration-error", fieldName: "storage" },
     });
   });
+
+  test("propagates a registered storage snapshot read error without starting restoration", async () => {
+    const cause = new Error("snapshot read failed");
+    const deserialize = jest.fn(() => null);
+    const storage = unwrap(MemoryStorage.create());
+    const store = unwrap(
+      createMemoryEventStoreInternal(
+        {
+          storage,
+          snapshotSerializer: {
+            serialize: () => Uint8Array.of(1),
+            deserialize,
+          },
+        },
+        {
+          beforeReadSnapshot: () => {
+            throw cause;
+          },
+        },
+      ),
+    );
+
+    expect(
+      await store.getLatestSnapshotById(eventOf().aggregateId),
+    ).toMatchObject({
+      type: "err",
+      error: { type: "storage-error", cause },
+    });
+    expect(deserialize).not.toHaveBeenCalled();
+  });
 });
 
 describe("memory getEventsByIdSinceSeqNr real records", () => {
@@ -1621,6 +1651,33 @@ describe("memory getEventsByIdSinceSeqNr real records", () => {
       type: "err",
       error: { type: "configuration-error", fieldName: "storage" },
     });
+  });
+
+  test("propagates a registered storage event read error without starting restoration", async () => {
+    const cause = new Error("event read failed");
+    const deserialize = jest.fn(() => null);
+    const storage = unwrap(MemoryStorage.create());
+    const store = unwrap(
+      createMemoryEventStoreInternal(
+        {
+          storage,
+          eventSerializer: { serialize: () => Uint8Array.of(1), deserialize },
+        },
+        {
+          beforeReadEvents: () => {
+            throw cause;
+          },
+        },
+      ),
+    );
+
+    expect(
+      await store.getEventsByIdSinceSeqNr(eventOf().aggregateId, 0),
+    ).toMatchObject({
+      type: "err",
+      error: { type: "storage-error", cause },
+    });
+    expect(deserialize).not.toHaveBeenCalled();
   });
 });
 
