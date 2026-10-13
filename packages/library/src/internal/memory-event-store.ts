@@ -18,7 +18,7 @@ import {
   validateEventAndSnapshot,
 } from "./validated-event-store";
 
-const knownSettings: ReadonlySet<string | symbol> = new Set([
+const knownSettings: ReadonlySet<string> = new Set([
   "storage",
   "eventSerializer",
   "snapshotSerializer",
@@ -51,9 +51,9 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
       ),
     );
   }
-  let unknownSetting: string | symbol | undefined;
+  let unknownSetting: string | undefined;
   try {
-    unknownSetting = Reflect.ownKeys(input ?? {}).find(
+    unknownSetting = Object.keys(input ?? {}).find(
       (key) => !knownSettings.has(key),
     );
   } catch (cause) {
@@ -68,7 +68,7 @@ export function createMemoryEventStoreInternal<PE = unknown, PS = unknown>(
   if (unknownSetting !== undefined) {
     return Result.err(
       EventStoreError.configuration(
-        String(unknownSetting),
+        unknownSetting,
         "unsupported Memory setting; retention belongs to MemoryStorage.create",
       ),
     );

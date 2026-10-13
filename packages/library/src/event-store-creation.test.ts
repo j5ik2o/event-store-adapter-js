@@ -641,3 +641,9 @@ test("rejects Memory settings that cannot be enumerated", () => {
     error: { type: "configuration-error", fieldName: "input" },
   });
 });
+
+test("accepts Memory settings that carry symbol metadata", () => {
+  const input = { [Symbol.toStringTag]: "Module" };
+
+  expect(EventStore.createMemory(input)).toMatchObject({ type: "ok" });
+});
