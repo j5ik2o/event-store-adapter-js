@@ -12,6 +12,11 @@ on:
           - patch
           - minor
           - major
+      version:
+        description: Explicit next version (X.Y.Z). When set, level is ignored
+        type: string
+        required: false
+        default: ''
 jobs:
   bump-version:
     runs-on: ubuntu-latest
@@ -21,6 +26,36 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      - name: Validate requested version
+        id: requested_version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          LC_ALL: C
+        run: |
+          if [[ -z "$REQUESTED_VERSION" ]]; then
+            echo "version=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          numeric='(0|[1-9][0-9]*)'
+          semver="^${numeric}\\.${numeric}\\.${numeric}$"
+          if [[ ! "$REQUESTED_VERSION" =~ $semver ]]; then
+            echo "::error::version must be X.Y.Z without a v prefix, prerelease or build metadata"
+            exit 1
+          fi
+          LATEST_VERSION=$(git tag -l 'v*' | sort -V | tail -n 1)
+          LATEST_VERSION="${LATEST_VERSION#v}"
+          if [[ -n "$LATEST_VERSION" ]]; then
+            HIGHEST=$(printf '%s\n' "$LATEST_VERSION" "$REQUESTED_VERSION" | sort -V | tail -n 1)
+            if [[ "$LATEST_VERSION" == "$REQUESTED_VERSION" || "$HIGHEST" != "$REQUESTED_VERSION" ]]; then
+              echo "::error::version $REQUESTED_VERSION must be greater than the latest tag v$LATEST_VERSION"
+              exit 1
+            fi
+          fi
+          if git rev-parse -q --verify "refs/tags/v${REQUESTED_VERSION}" > /dev/null; then
+            echo "::error::tag v${REQUESTED_VERSION} already exists"
+            exit 1
+          fi
+          echo "version=$REQUESTED_VERSION" >> "$GITHUB_OUTPUT"
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
         with:
           run_install: false
@@ -60,15 +95,21 @@ jobs:
             | python3 "${GITHUB_WORKSPACE}"/.github/semver-level.py)
           echo "SEMVER_LEVEL=$SEMVER_LEVEL"
           echo "semver_level=$SEMVER_LEVEL" >> "$GITHUB_OUTPUT"
-        if: steps.changes.outputs.count > 0 || inputs.level != 'auto'
+        if: inputs.version == '' && (steps.changes.outputs.count > 0 || inputs.level != 'auto')
       - name: Get the next version
         id: versions
+        env:
+          REQUESTED_VERSION: ${{ steps.requested_version.outputs.version }}
         run: |
-          NEXT_VERSION=$(echo ${{ steps.defines.outputs.prev_tag }} | python3 "${GITHUB_WORKSPACE}"/.github/next-semver.py ${{ steps.semver_level.outputs.semver_level }})
+          if [[ -n "$REQUESTED_VERSION" ]]; then
+            NEXT_VERSION="$REQUESTED_VERSION"
+          else
+            NEXT_VERSION=$(echo ${{ steps.defines.outputs.prev_tag }} | python3 "${GITHUB_WORKSPACE}"/.github/next-semver.py ${{ steps.semver_level.outputs.semver_level }})
+          fi
           echo "NEXT_VERSION=$NEXT_VERSION"
           echo "next_version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
           echo "next_tag=v$NEXT_VERSION" >> "$GITHUB_OUTPUT"
-        if: steps.changes.outputs.count > 0 || inputs.level != 'auto'
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
       - name: git commit & push
         id: git_commit_push
         run: |
@@ -80,7 +121,7 @@ jobs:
           git push origin main
           COMMIT_SHA=$(git rev-parse HEAD)
           echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
-        if: steps.changes.outputs.count > 0 || inputs.level != 'auto'
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
       - name: tagging and push tag
         id: tag_version
         run: |
@@ -96,7 +137,7 @@ jobs:
             -P --grep='^(BREAKING CHANGE|build|ci|feat|fix|docs|style|refactor|perf|test|revert|chore)(.*)?:.*$' \
             --no-merges --full-history | \
             python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-body.py >> changelog.txt
-        if: steps.changes.outputs.count > 0 || inputs.level != 'auto'
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
       - name: Create a GitHub release
         uses: actions/create-release@v1
         env:
@@ -105,7 +146,7 @@ jobs:
           tag_name: ${{ steps.versions.outputs.next_tag }}
           release_name: Release ${{ steps.versions.outputs.next_tag }}
           body_path: changelog.txt
-        if: steps.changes.outputs.count > 0 || inputs.level != 'auto'
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
       - name: Switch to Snapshot version
         run: |
           rm changelog.txt
@@ -115,4 +156,4 @@ jobs:
           git add packages/library/package.json pnpm-lock.yaml
           git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
           git push origin main
-        if: steps.changes.outputs.count > 0 || inputs.level != 'auto'
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''

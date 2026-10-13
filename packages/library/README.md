@@ -3,7 +3,7 @@
 [![CI](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/event-store-adapter-js.svg)](https://badge.fury.io/js/event-store-adapter-js)
 
-Event sourcing with Memory and DynamoDB, using [common contract v4](https://github.com/j5ik2o/event-store-adapter/blob/main/docs/spec/README.md). The common contract version is separate from the npm package version.
+Event sourcing with Memory and DynamoDB. This library follows [common contract v5](https://github.com/j5ik2o/event-store-adapter/blob/main/docs/spec/README.md); its major version 5 matches the contract revision.
 
 [日本語](./README.ja.md)
 
