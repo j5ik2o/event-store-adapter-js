@@ -1,5 +1,7 @@
 # Migration Guide 4.0
 
+This document is for the legacy 4.0 release; to migrate to 5.0, see [MIGRATION_GUIDE](./MIGRATION_GUIDE.md).
+
 Version 4.0 is an intentional breaking release. The package keeps structural type names such as `Aggregate`, `AggregateId`, `Event`, and `EventStore`, but runtime factories now use same-name factory objects.
 
 ## EventStore factories

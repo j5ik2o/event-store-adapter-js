@@ -3,7 +3,7 @@
 [![CI](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/event-store-adapter-js.svg)](https://badge.fury.io/js/event-store-adapter-js)
 
-共通v4契約に従うMemoryとDynamoDBのイベントストアです。共通契約の版とnpmパッケージの版は別です。
+[共通契約 v4](https://github.com/j5ik2o/event-store-adapter/blob/main/docs/spec/README.md)に従うMemoryとDynamoDBのイベントストアです。共通契約の版とnpmパッケージの版は別です。
 
 [English](./README.md)
 

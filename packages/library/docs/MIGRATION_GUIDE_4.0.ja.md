@@ -1,5 +1,7 @@
 # 移行ガイド 4.0
 
+この文書は旧版（4.0）向けです。5.0 への移行は [MIGRATION_GUIDE](./MIGRATION_GUIDE.ja.md) を参照してください。
+
 4.0 は意図的な破壊的リリースです。`Aggregate`、`AggregateId`、`Event`、`EventStore` などの構造的な型名は維持しますが、ランタイム factory は同名 factory object に揃えます。
 
 ## EventStore factory

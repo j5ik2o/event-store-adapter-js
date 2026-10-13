@@ -5,7 +5,7 @@
 - 規範: ハブ（j5ik2o/event-store-adapter）の `docs/spec/core-contract.md`、`docs/spec/storage/dynamodb.md`、`docs/spec/storage/memory.md`、`docs/plan/implementation-plan.md`、`docs/adr/`。
 - 適合テストデータ: このリポジトリの `conformance/`（v1.0.0、`conformance/README.md` が読み方）。
 - 規則番号（T-1、W-8、DY-9 など）は上記の規範の番号である。この文書は規則を足さず、仕様も変えない。
-- 「現行」は 4.0.x（`packages/library/package.json` の版は `4.0.2-snapshot.0`）を指す。
+- 「現行」は、この設計を書いた時点の 4.0.x（`packages/library/package.json` の版は `4.0.2-snapshot.0`）を指す。この設計による実装は main に入り、版は `5.0.0-snapshot.0` になった。
 - 第9章には、オーナーが決めた点とその理由を残す。保留は Spanner の入口だけである。
 - 「設計判断」と書いた箇所は、仕様の規則ではなく、この文書が決めた設計である。
 

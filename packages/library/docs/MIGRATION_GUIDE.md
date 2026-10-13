@@ -75,7 +75,7 @@ With default JSON serialization, `records` contains JSON payloads. For custom do
 
 Compare exported and rewritten event counts, contiguous numbers, final head number, metadata and deserialized payloads. Restore each aggregate from snapshot number + 1, or 1 without a snapshot, and compare domain state. Snapshot history retention may discard older history, so verify current state independently of how many snapshots remain.
 
-After verification, switch the application to the new entry point and new tables. Keep the old export and tables until the caller confirms cleanup. This change does not publish a release, alter a version number or create a tag.
+After verification, switch the application to the new entry point and new tables. Keep the old export and tables until the caller confirms cleanup.
 
 ## API changes
 
