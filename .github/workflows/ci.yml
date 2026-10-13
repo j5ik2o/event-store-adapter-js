@@ -187,7 +187,7 @@ jobs:
           const fs = require("node:fs");
           const path = require("node:path");
           const dir = process.env.CONFORMANCE_REPORT_DIR;
-          const statuses = ["passed", "failed", "not-applicable", "unverified"];
+          const statuses = ["passed", "failed", "not-applicable", "unverified", "not-representable"];
           const escape = (text) => String(text).replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
           for (const backend of ["memory", "dynamodb"]) {
             const report = JSON.parse(
@@ -195,7 +195,7 @@ jobs:
             );
             const reasons = new Map();
             for (const result of report.results) {
-              if (result.status !== "not-applicable") continue;
+              if (result.status !== "not-applicable" && result.status !== "not-representable") continue;
               for (const rule of result.rules) {
                 reasons.set(rule, [...new Set([...(reasons.get(rule) ?? []), result.reason])]);
               }
@@ -205,7 +205,7 @@ jobs:
             );
             console.log(`### Conformance (${backend})`);
             console.log("");
-            console.log(`| Rule | ${statuses.join(" | ")} | not-applicable reason |`);
+            console.log(`| Rule | ${statuses.join(" | ")} | reason (not-applicable / not-representable) |`);
             console.log(`|---|${statuses.map(() => "---:").join("|")}|---|`);
             for (const rule of rules) {
               const counts = report.ruleCounts[rule];
