@@ -59,3 +59,19 @@ describe("否定の試験（形をずらした定義を報告する）", () => {
     expect(checkApiSurface(fixture(name), surface, mapping)).toEqual(expected);
   });
 });
+
+describe("否定の試験（期待する型を解決できない）", () => {
+  it("公開 API が AggregateId を公開しなくなると、黙って通らずに報告する", () => {
+    const problems = checkApiSurface(
+      fixture("unexported-aggregate-id"),
+      surface,
+      mapping,
+    );
+    expect(problems.length).toBeGreaterThan(0);
+    expect(problems).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^期待する型を解決できません.*AggregateId/),
+      ]),
+    );
+  });
+});

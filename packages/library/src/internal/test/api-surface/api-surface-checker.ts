@@ -351,6 +351,22 @@ export function checkApiSurface(
   const exported = new Map(
     checker.getExportsOfModule(moduleSymbol).map((s) => [s.name, s]),
   );
+  // 期待する型を解決できないと、その型はエラー型（any と同じ扱い）になり、照合が黙って通る。
+  // そこで、探査用のファイルの型の検査のエラーを、そのままずれとして報告する。
+  for (const diagnostic of ts.getPreEmitDiagnostics(program, probeSourceFile)) {
+    const line =
+      diagnostic.file !== undefined && diagnostic.start !== undefined
+        ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start).line
+        : -1;
+    const index = line - 1; // 1 行目は import
+    const typeText =
+      index >= 0 && index < probeTexts.length
+        ? `（${readable(probeTexts[index])}）`
+        : "";
+    problems.push(
+      `期待する型を解決できません${typeText}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, " ")}`,
+    );
+  }
   const aliases = probeSourceFile.statements.filter(ts.isTypeAliasDeclaration);
   const probeType = (index: number): ts.Type =>
     checker.getTypeFromTypeNode(aliases[index].type);
