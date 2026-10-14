@@ -58,6 +58,12 @@ describe("checkDynamoDBRequestScope", () => {
     ).not.toThrow();
   });
 
+  test("rejects an operation without any recorded request", () => {
+    expect(() => checkDynamoDBRequestScope([], scope, own.S)).toThrow(
+      "no requests were recorded",
+    );
+  });
+
   test("rejects a Scan request", () => {
     expect(() =>
       checkDynamoDBRequestScope(

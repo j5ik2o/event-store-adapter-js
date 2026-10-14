@@ -102,6 +102,9 @@ export function checkDynamoDBRequestScope(
   const declared = recordOf(scope);
   assert.equal(textOf(declared.aid), "aggregate_id", "unsupported aid scope");
   const apis = listOf(declared.apis).map(textOf);
+  // Every operation sends at least one DynamoDB request. None means the recorder or the
+  // operation numbering is broken, so the scope must not pass vacuously.
+  assert.ok(requests.length > 0, "no requests were recorded for request_scope");
   for (const request of requests) {
     const api = (request.commandName ?? "").replace(/Command$/, "");
     assert.ok(apis.includes(api), `request API ${api} is outside the scope`);
