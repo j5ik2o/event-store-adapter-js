@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import sys
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 DEFAULT_ROOT = Path(__file__).resolve().parents[2] / "conformance"
 
 

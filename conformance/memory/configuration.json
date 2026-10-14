@@ -1,0 +1,70 @@
+{
+  "format": "scenarios",
+  "version": "1.1.0",
+  "cases": [
+    {
+      "id": "memory-ttl-unsupported",
+      "rules": [
+        "MEM-3",
+        "MEM-12"
+      ],
+      "description": "メモリの保存先は期限切れ方式を提供しないので、それを求める設定では生成が設定エラーとなる。",
+      "backends": [
+        "memory"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "ttl",
+        "ttl_grace_seconds": 60
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "memory-change-feed-unsupported",
+      "rules": [
+        "MEM-3",
+        "MEM-13"
+      ],
+      "description": "メモリの保存先は変更フィードを提供しないので、それを求める設定では生成が設定エラーとなる。",
+      "backends": [
+        "memory"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete",
+        "change_feed": true
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    }
+  ]
+}

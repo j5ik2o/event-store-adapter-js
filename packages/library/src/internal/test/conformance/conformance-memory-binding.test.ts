@@ -46,3 +46,35 @@ test("internal hook injection stays behind the public factory and preserves the 
   ).toEqual({ kind: "ok", value: [] });
   await created.dispose();
 });
+
+test("creating a store with a TTL retention mode fails as a configuration error", async () => {
+  const binding = new ConformanceMemoryBinding();
+  const created = await binding.createStore({
+    config: {
+      retentionCount: 1,
+      retentionMode: "ttl",
+      ttlGraceSeconds: 60,
+    },
+    seedItems: [],
+    faults: [],
+  });
+  expect(created.outcome).toMatchObject({
+    kind: "error",
+    category: "configuration",
+  });
+  await created.dispose();
+});
+
+test("creating a store that requests a change feed fails as a configuration error", async () => {
+  const binding = new ConformanceMemoryBinding();
+  const created = await binding.createStore({
+    config: { retentionCount: null, retentionMode: "delete", changeFeed: true },
+    seedItems: [],
+    faults: [],
+  });
+  expect(created.outcome).toMatchObject({
+    kind: "error",
+    category: "configuration",
+  });
+  await created.dispose();
+});

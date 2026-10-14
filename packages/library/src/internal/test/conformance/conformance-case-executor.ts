@@ -20,6 +20,17 @@ import type { ConformanceStoreBinding } from "./conformance-store-binding";
 import { storeCreationOf } from "./conformance-store-creation";
 import { nativeTimeEpochNanos } from "./conformance-time";
 
+const operationAggregateIdOf = (
+  step: ReturnType<typeof recordOf>,
+  fixtures: ConformanceJsonValue,
+): ConformanceJsonValue | undefined => {
+  const args = recordOf(step.arguments);
+  return (
+    args.aggregate_id ??
+    jsonAt(fixtures, "events", textOf(args.event), "aggregate_id")
+  );
+};
+
 export async function executeConformanceOperation(
   binding: ConformanceStoreBinding<unknown, unknown>,
   store: ConformanceStore<unknown, unknown>,
@@ -238,11 +249,9 @@ export async function executeConformanceCase(
               created.hooks.readHistory,
               "history observation must be connected",
             );
-            const args = recordOf(step.arguments);
-            const id =
-              args.aggregate_id ??
-              jsonAt(fixtures, "events", textOf(args.event), "aggregate_id");
-            const physical = await created.hooks.readHistory(aggregateIdOf(id));
+            const physical = await created.hooks.readHistory(
+              aggregateIdOf(operationAggregateIdOf(step, fixtures)),
+            );
             const active = [...physical.active].sort((a, b) =>
               a < b ? -1 : a > b ? 1 : 0,
             );
@@ -288,6 +297,9 @@ export async function executeConformanceCase(
             await created.hooks.checkStorageObservation(
               observe,
               step.arguments,
+              recordOf(observe).request_scope === undefined
+                ? undefined
+                : aggregateIdOf(operationAggregateIdOf(step, fixtures)),
             );
           }
           created.hooks.finishOperation?.(failedOperation);

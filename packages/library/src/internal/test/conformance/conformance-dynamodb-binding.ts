@@ -25,6 +25,10 @@ export class ConformanceDynamoDBBinding extends ConformancePublicBinding {
   async createStore(
     creation: ConformanceStoreCreation,
   ): Promise<ConformanceCreatedStore<unknown, unknown>> {
+    assert.ok(
+      creation.config.changeFeed !== true,
+      "DynamoDB binding has no change feed setting",
+    );
     const layout = await this.local.createTables(
       creation.config.retentionMode === "ttl",
     );
@@ -184,7 +188,8 @@ export class ConformanceDynamoDBBinding extends ConformancePublicBinding {
           checkStorageObservation: (
             observe: ConformanceJsonValue,
             args: ConformanceJsonValue,
-          ) => inspection.check(observe, args),
+            aggregateId?: { typeName: string; value: string },
+          ) => inspection.check(observe, args, aggregateId),
           checkLayout: (body: ConformanceJsonValue) =>
             inspection.checkLayout(body),
           evidence: () => ({

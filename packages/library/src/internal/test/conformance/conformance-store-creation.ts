@@ -24,6 +24,7 @@ export function storeCreationOf(c: ConformanceCase): ConformanceStoreCreation {
   const retentionMode = jsonAt(c.body, "store", "retention_mode");
   const ttlGraceSeconds = jsonAt(c.body, "store", "ttl_grace_seconds");
   const retryLimit = jsonAt(c.body, "store", "retry_limit");
+  const changeFeed = jsonAt(c.body, "store", "change_feed");
   return {
     config: {
       retentionCount:
@@ -31,6 +32,7 @@ export function storeCreationOf(c: ConformanceCase): ConformanceStoreCreation {
       retentionMode: retentionMode === "ttl" ? "ttl" : "delete",
       ...(typeof ttlGraceSeconds === "number" ? { ttlGraceSeconds } : {}),
       ...(typeof retryLimit === "number" ? { retryLimit } : {}),
+      ...(changeFeed === true ? { changeFeed: true } : {}),
     },
     seedItems: arrayAt(c.body, "seed", "items"),
     faults: arrayAt(c.body, "faults"),

@@ -17,6 +17,7 @@ import {
   compareDynamoDBItem,
   declaredItemKey,
 } from "./conformance-dynamodb-items";
+import { checkDynamoDBRequestScope } from "./conformance-dynamodb-request-scope";
 import {
   aggregateIdOf,
   integerOf,
@@ -124,6 +125,7 @@ export class ConformanceDynamoDBObservation {
   async check(
     observeValue: ConformanceJsonValue,
     args: ConformanceJsonValue,
+    aggregateId?: { typeName: string; value: string },
   ): Promise<void> {
     const observe = recordOf(observeValue);
     const allowed = [
@@ -134,6 +136,7 @@ export class ConformanceDynamoDBObservation {
       "no_requests_in_phases",
       "request_count",
       "minimum_request_count",
+      "request_scope",
     ];
     assert.ok(
       Object.keys(observe).every((key) => allowed.includes(key)),
@@ -157,6 +160,17 @@ export class ConformanceDynamoDBObservation {
     const requests = this.observation
       .snapshot()
       .observations.filter((r) => r.operation === this.operation());
+    if (observe.request_scope !== undefined) {
+      assert.ok(
+        aggregateId,
+        "request_scope needs the operation's aggregate id",
+      );
+      checkDynamoDBRequestScope(
+        requests,
+        observe.request_scope,
+        `${aggregateId.typeName}-${aggregateId.value}`,
+      );
+    }
     for (const phase of listOf(observe.no_requests_in_phases ?? []))
       assert.equal(
         requests.filter((r) => r.phase === phase).length,

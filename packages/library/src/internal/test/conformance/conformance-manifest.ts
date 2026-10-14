@@ -5,7 +5,7 @@ import { listConformanceFiles } from "./conformance-file-lister";
 import { parseConformanceJson } from "./conformance-json-parser";
 import { readConformanceText } from "./conformance-text-reader";
 
-const EXPECTED_VERSION = "1.0.0";
+const EXPECTED_VERSION = "1.1.0";
 
 export type ManifestVerification = {
   ok: boolean;

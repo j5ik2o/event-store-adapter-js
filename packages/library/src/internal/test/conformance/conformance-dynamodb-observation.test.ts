@@ -78,3 +78,34 @@ test("rejects an unrelated continuation key and a response changed below the byt
     inspection.checkReadEventPages([{ ...page, returned: { Items: [] } }]),
   ).rejects.toThrow("normal raw page");
 });
+
+test("rejects a Scan request observed during an operation when request_scope is required", async () => {
+  const scan = {
+    ...page,
+    commandName: "ScanCommand",
+    input: { TableName: "journal" },
+    wireBody: JSON.stringify({ TableName: "journal" }),
+  };
+  const observation = {
+    snapshot: () => ({ observations: structuredClone([scan]) }),
+  } as unknown as DynamoDBPersistEventObservation;
+  const inspection = new ConformanceDynamoDBObservation(
+    {} as DynamoDBClient,
+    { journal: "journal", snapshot: "snapshot", head: "head" },
+    "history",
+    observation,
+    () => 1,
+  );
+  await expect(
+    inspection.check(
+      {
+        request_scope: {
+          apis: ["GetItem", "Query"],
+          aid: "aggregate_id",
+        },
+      },
+      {},
+      { typeName: "Order", value: "9" },
+    ),
+  ).rejects.toThrow();
+});

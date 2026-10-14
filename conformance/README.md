@@ -1,6 +1,6 @@
 # 適合テストデータ v1
 
-共通契約と DynamoDB プロファイルの期待値を、言語に依存しない UTF-8 の JSON で配るデータである。データの版は `1.0.0` である。[共通契約](../docs/spec/core-contract.md)と [DynamoDB プロファイル](../docs/spec/storage/dynamodb.md)が規範であり、このデータは規則を追加しない。[ハッシュ仕様](../docs/spec/storage/hash.md)が収録を求める FNV-1a 64 の4件も含める。値30件、操作場面85件（共通42件・DynamoDB固有43件）、配置1件の計116件で、54規則を対象とする。今回の検証はデータと道具だけを対象とし、言語実装や保存先には実行しない。
+共通契約・DynamoDB プロファイル・メモリプロファイルの期待値を、言語に依存しない UTF-8 の JSON で配るデータである。データの版は `1.1.0` である。[共通契約](../docs/spec/core-contract.md)・[DynamoDB プロファイル](../docs/spec/storage/dynamodb.md)・[メモリプロファイル](../docs/spec/storage/memory.md)が規範であり、このデータは規則を追加しない。[ハッシュ仕様](../docs/spec/storage/hash.md)が収録を求める FNV-1a 64 の4件も含める。値30件、操作場面89件（共通42件・DynamoDB固有45件・メモリ固有2件）、配置1件の計120件で、58規則を対象とする。4つの仕様の文書が定義する73規則は、すべてがケースか `coverage.json` の対象外の理由を持つ。今回の検証はデータと道具だけを対象とし、言語実装や保存先には実行しない。
 
 ## ファイルと形式
 
@@ -9,6 +9,7 @@
 | `values/` | aid・occurred_at・seq_nr・FNV-1a 64 の入力と期待値 | `schema/values.schema.json` |
 | `scenarios/core/` | 共通契約の操作列・保持・エラー | `schema/scenarios.schema.json` |
 | `dynamodb/`（layout 以外） | 設定・書き込み・読み取り・保持・項目検査の操作列 | `schema/scenarios.schema.json` |
+| `memory/` | メモリの設定エラーの操作列（生成の結果だけを期待する） | `schema/scenarios.schema.json` |
 | `dynamodb/layout.json` | 3 テーブル・GSI と項目の属性の期待値 | `schema/layout.schema.json` |
 | `coverage.json` | 網羅対象と対象外の理由 | `schema/coverage.schema.json` |
 | `manifest.json` | 版と配布ファイルの SHA-256 | `schema/manifest.schema.json` |
@@ -55,12 +56,14 @@ Schema は draft 2020-12 である。共通定義は `schema/common.schema.json`
 各場面は独立したストアで実行する。DynamoDB のテーブル名・GSI 名は実行器が割り当て、同じ場面の3テーブルは同じリージョンに置く。ほかのケースの項目を使い回さない。実行器は宣言された方式の保持処理を決定的に実行するためのフックと、内部履歴・失敗通知・SDK 要求の検査フックを用意する。
 
 1. `backends` に実行する保存先があることを確認する。`requires = ["ttl"]` は TTL 方式を要求する。v1 の TTL 場面は DynamoDB だけを対象とする。
-2. `store` の設定でストアを生成する。`retention_count = null` は履歴を作らず現在だけを保存する。`delete` は古い履歴を削除し、`ttl` は印を付ける。`ttl_grace_seconds` は DynamoDB の猶予秒である。名前はデータ上の共通名であり、実装の設定 API へ対応付ける。
+2. `store` の設定でストアを生成する。`retention_count = null` は履歴を作らず現在だけを保存する。`delete` は古い履歴を削除し、`ttl` は印を付ける。`ttl_grace_seconds` は DynamoDB の猶予秒である。`change_feed = true` は変更フィードの提供を求める設定であり、省略時は求めない。名前はデータ上の共通名であり、実装の設定 API へ対応付ける。
 3. `seed.items` があれば、ストア生成前にテスト用の権限でその項目を入れる。値の型とバイナリの扱いは後述の属性検査と同じである。設定項目が seed にない場合は、通常の生成手順で初期化する。
 4. `initialization` があれば生成結果を検査する。生成失敗のケースは操作列を持たない。生成前の障害は先に登録する。
 5. `generators` があれば後述の手順で文字列を展開する。`fixtures.events` と `fixtures.snapshots` を読み、各操作の直前に参照された封筒を構築する。キーは場面内だけで有効な参照名である。manifest 省略時の期待値は空文字列である。無効な入力の封筒の構築中に生じた規則違反も、対応する操作の失敗として捕捉する。実行器自身の事前検査でライブラリの検査を代替してはならない。
 6. `steps` を配列順に、並行実行せずに実行する。引数の `event`・`snapshot` は fixture の参照、`aggregate_id` と `seq_nr` は値である。書き込みは1操作で1イベントを追記する。
 7. 各操作の `expect` と、その操作で指定された `observe` を検査する。保持失敗や遅延のある場面では、宣言された保持・検査フックが完了してから観測する。フックが書き込みの成功・失敗を変更してはならない。
+
+`backends = ["memory"]` の `memory/` の場面は、メモリの保存先が提供しない期限切れ方式（`retention_mode = ttl`）と変更フィード（`change_feed = true`）を求める設定が、生成時に `configuration` の分類で失敗することを期待する。言語の設定 API で要求そのものを表せない実装（設定の型に期限切れ方式や変更フィードの項目がないなど）は、理由を付けて「表現不能」と報告してよい。扱いは `signed_seq_nr` と同じである。要求を表せるのに設定エラーにならなければ失敗である。
 
 `store.retry_limit` は設定照合の再要求回数の上限であり、初回要求は数えない。実装の上限が回数ではなく待ち時間なら、実行器が同じ未処理応答の列で上限到達を再現する。指数バックオフを待つ試験は、要求列と待ち時間を観測する時計のフックで実時間を短縮してよい。
 
@@ -160,6 +163,8 @@ D-7 の400KBと DY-11 の1MBは、DynamoDB の2進単位である。項目上限
 
 `observe.requests` は指定 API・段階の要求に対する条件である。式は構造化した属性操作・条件で指定する。実行器は SDK の式と属性名・値の束縛を解析し、属性名へ解決した構造を比較する。空白、節の順序、条件の AND の順序は比較しない。`update.set` は設定する属性と `value_binding`、`update.remove` は取り除く属性、`condition` は属性の存在・不在を表す。`key_condition.all` は AND の条件の集合であり、`operator = eq/gte` と `argument` を操作の aggregate_id・seq_nr へ束縛する。TTL の `#ttl` と `expression_attribute_names` の対応は予約語回避の観測として明示する。`expires` は Unix エポック秒であり、ttl の `value_binding = expires` が参照する値である。条件に含めていない設定値や SDK の自動付与属性は要求しない。`initial_batch_sizes` は未処理項目の再送を除いた削除バッチの件数であり、再送は別に検査する。`no_requests_in_phases` はその操作で送ってはならない要求段階、`request_count` は段階ごとの正確な回数、`minimum_request_count` は最低回数である。`classify-condition-failure-read` は条件不成立の分類のためだけの追加読み取りを指す。
 
+`observe.request_scope` は、DynamoDB の場面で、操作（`operation` が 1 以上）の間にライブラリが送った要求の範囲を検査する。`apis` は許される API 名の集合で、`GetItem`・`BatchGetItem`・`Query`・`TransactWriteItems`・`BatchWriteItem`・`UpdateItem` の 6 種類である。その操作の間に送った要求の API 名が、すべてこの集合のどれかでなければならない。`Scan`・`PutItem`・`DeleteItem`・`ExecuteStatement` などが 1 つでもあれば失敗である。`aid` は `aggregate_id` だけを書け、各要求が読み書きする項目の aid（`Key`・`Keys`・`Item` の `aid`、`Query` のキー条件のパーティションキー `aid` の等価条件）が、すべてその操作の集約の aid 文字列であることを表す。`Query` はキー条件を必ず持つ。3 つのテーブルと GSI は、どれもパーティションキーが `aid` である。ストアの生成（`operation` が 0）は対象外であり、`initialization` には置けない。この観測を使う場面は DY-19 のケースである。参照モデルは要求を実測できないので、この観測を実行器へ委ねる。
+
 `requests` の要素は、実際の別々の要求に配列順で対応付ける。同じ API・段階の要素を複数置いた場合に、1回の要求で複数の要素を満たしたと判断してはならない。ページ送り・未処理キーの再要求・削除バッチ分割の条件は、その段階の要求列全体に対して検査する。
 
 `observe.items` と `seed.items` は DynamoDB の属性を次の形で書く。
@@ -195,7 +200,7 @@ uv run --project tools/conformance --locked python tools/conformance/validate.py
 uv run --project tools/conformance --locked python -m unittest discover -s tools/conformance -p 'test_*.py'
 ```
 
-規則番号はローカルの `docs/spec/core-contract.md`、`docs/spec/storage/dynamodb.md`、`docs/spec/storage/hash.md` の定義から収集する。削除済みの番号や本文で言及しただけの番号を、有効なケースの規則として認めない。コピー先で仕様を別の位置に置く場合は `--root` と `--spec-root` でそれぞれ指定する。後者は core-contract.md、storage/dynamodb.md、storage/hash.md があるディレクトリである。
+規則番号はローカルの `docs/spec/core-contract.md`、`docs/spec/storage/dynamodb.md`、`docs/spec/storage/memory.md`、`docs/spec/storage/hash.md` の定義から収集する。削除済みの番号や本文で言及しただけの番号を、有効なケースの規則として認めない。コピー先で仕様を別の位置に置く場合は `--root` と `--spec-root` でそれぞれ指定する。後者は core-contract.md、storage/dynamodb.md、storage/memory.md、storage/hash.md があるディレクトリである。検証器は、この4つの文書が定義するすべての規則が、ケースか `coverage.json` の対象外の理由を持つことを検査する。ケースも理由もない規則は未網羅として拒否する。
 
 データを変更したときは、次の順に再生成・照合する。網羅表の生成モードは manifest の照合を行わないので、最後の照合まで実行する必要がある。
 
@@ -211,7 +216,7 @@ uv run --project tools/conformance --locked python tools/conformance/validate.py
 
 `tools/conformance/reference_model.py` は、集約ごとのヘッド番号、ジャーナル、現在のスナップショット、履歴とTTL期限を状態として操作列を再生する。モデルは期待値を状態の更新に使わない。成功・エラー分類・規則番号・読み取りの全封筒・保持履歴・失敗通知を、独立に計算した結果と比較する。時刻の値域や項目サイズの明らかな超過、確定前の失敗、取り消し理由、履歴ページ、BatchGetItem の応答差し替えも扱う。
 
-送信後の書き込み失敗や保持の更新・削除応答の失敗では確定状態が仕様から決まらないため、その操作と以後の状態依存操作を理由付きで飛ばす。v1 の85場面では、この理由で飛ばす操作はない。SDK要求の実測、物理属性の型、メッセージの実際の文言はモデルの対象外であり、場面ごとに実行器へ委ねる検査として明示する。項目サイズは既存ケースの属性値だけで上限超過を確かめ、厳密な境界のサイズ計算は扱わない。
+送信後の書き込み失敗や保持の更新・削除応答の失敗では確定状態が仕様から決まらないため、その操作と以後の状態依存操作を理由付きで飛ばす。v1 の89場面では、この理由で飛ばす操作はない。SDK要求の実測、物理属性の型、メッセージの実際の文言はモデルの対象外であり、場面ごとに実行器へ委ねる検査として明示する。項目サイズは既存ケースの属性値だけで上限超過を確かめ、厳密な境界のサイズ計算は扱わない。
 
 T-13 の値域は整数のナノ秒で検査する。言語の時刻型へ変換した後の丸め・往復は実行器の検査であり、モデルが丸め方向を決めることはない。FNV-1a 64 の表は仕様の計算で別途照合する。ADR-0008 と Bigtable 仕様は入出力表の収録を求めていないため、固定バイナリ封筒は v1 の対象外とし、coverage.json に理由を記録する。
 

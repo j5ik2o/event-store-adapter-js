@@ -7,13 +7,13 @@
       "const": "coverage"
     },
     "version": {
-      "const": "1.0.0"
+      "const": "1.1.0"
     },
     "required_rules": {
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^(K|T|H|W|R|E|S|SP|DY|D)-[1-9][0-9]*$"
+        "pattern": "^(K|T|H|W|R|E|S|SP|DY|D|F|MEM)-[1-9][0-9]*$"
       },
       "minItems": 1,
       "uniqueItems": true
@@ -25,7 +25,7 @@
         "properties": {
           "rule": {
             "type": "string",
-            "pattern": "^(K|T|H|W|R|E|S|SP|DY|D)-[1-9][0-9]*$"
+            "pattern": "^(K|T|H|W|R|E|S|SP|DY|D|F|MEM)-[1-9][0-9]*$"
           },
           "reason": {
             "type": "string"
@@ -34,7 +34,13 @@
             "enum": [
               "deleted",
               "caller-obligation",
-              "profile-documentation"
+              "profile-documentation",
+              "api-surface",
+              "not-provided",
+              "no-target-profile",
+              "out-of-scope",
+              "nondeterministic",
+              "core-scenarios"
             ]
           }
         },
