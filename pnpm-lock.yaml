@@ -170,7 +170,7 @@ importers:
     dependencies:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.413.0
-        version: 3.1150.0
+        version: 3.1151.0
       event-store-adapter-js:
         specifier: workspace:*
         version: link:../library
@@ -195,7 +195,7 @@ importers:
     dependencies:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.413.0
-        version: 3.1150.0
+        version: 3.1151.0
     devDependencies:
       '@biomejs/biome':
         specifier: 2.5.15
@@ -245,7 +245,7 @@ importers:
     devDependencies:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.413.0
-        version: 3.1150.0
+        version: 3.1151.0
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
@@ -258,8 +258,8 @@ importers:
 
 packages:
 
-  '@aws-sdk/client-dynamodb@3.1150.0':
-    resolution: {integrity: sha512-04ysWG8zKrFM4e550/OEb3Pu+yE3cgppKIPwY7kS5xV4MFGW0S3hSD+1+ocWyw1Rb1UusaJCkcDHKZEdIO3dRw==}
+  '@aws-sdk/client-dynamodb@3.1151.0':
+    resolution: {integrity: sha512-kWsWKCbL/53ABtNTUSJLLicEG4xE2CAXllPIp8iq8LDafxjAp/dZa82/z0s2eHpDGnbImjXBCYjhOZBGlFf/qQ==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.978.3':
@@ -2626,7 +2626,7 @@ packages:
 
 snapshots:
 
-  '@aws-sdk/client-dynamodb@3.1150.0':
+  '@aws-sdk/client-dynamodb@3.1151.0':
     dependencies:
       '@aws-sdk/core': 3.978.3
       '@aws-sdk/credential-provider-node': 3.972.86
