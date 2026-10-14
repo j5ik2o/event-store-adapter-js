@@ -1,11 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-
-export type ApiSurfaceElement = Readonly<{
-  name: string;
-  type: string;
-  required?: boolean;
-}>;
+import type { ApiSurfaceElement } from "./api-surface-element";
 
 export type ApiSurfaceDefinition = Readonly<{
   types: readonly Readonly<{

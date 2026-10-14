@@ -1,9 +1,7 @@
 import * as path from "node:path";
 import ts from "typescript";
-import type {
-  ApiSurfaceDefinition,
-  ApiSurfaceElement,
-} from "./api-surface-definition";
+import type { ApiSurfaceDefinition } from "./api-surface-definition";
+import type { ApiSurfaceElement } from "./api-surface-element";
 import type { ApiSurfaceMapping } from "./api-surface-mapping";
 
 const PROBE_FILE = "__api_surface_probe.ts";
@@ -99,7 +97,17 @@ export function checkApiSurface(
     surfaceParams: readonly string[],
     params: Readonly<Record<string, string>>,
   ): void => {
-    const declaration = symbol.declarations?.find(ts.isTypeAliasDeclaration);
+    const declaration = symbol.declarations?.find(
+      (
+        d,
+      ): d is
+        | ts.TypeAliasDeclaration
+        | ts.InterfaceDeclaration
+        | ts.ClassDeclaration =>
+        ts.isTypeAliasDeclaration(d) ||
+        ts.isInterfaceDeclaration(d) ||
+        ts.isClassDeclaration(d),
+    );
     const actual = declaration?.typeParameters ?? [];
     surfaceParams.forEach((name, i) => {
       const parameter = actual[i];
@@ -136,19 +144,27 @@ export function checkApiSurface(
           return;
         }
         const actual = checker.getTypeOfSymbol(prop);
-        const isOptional =
-          (prop.flags & ts.SymbolFlags.Optional) !== 0 ||
-          (actual.isUnion() &&
-            actual.types.some((t) => (t.flags & ts.TypeFlags.Undefined) !== 0));
-        const mustBeOptional =
-          (checkRequired && element.required === false) ||
-          element.type.startsWith("optional<");
-        if (checkRequired && element.required && isOptional) {
+        // 省略できるかは ? の印で決まる。値の型に undefined を含むかは別に見る
+        const optionalProperty = (prop.flags & ts.SymbolFlags.Optional) !== 0;
+        const acceptsUndefined =
+          actual.isUnion() &&
+          actual.types.some((t) => (t.flags & ts.TypeFlags.Undefined) !== 0);
+        const mustBeRequired = checkRequired
+          ? element.required === true
+          : !element.type.startsWith("optional<");
+        const mustBeOptional = checkRequired
+          ? element.required === false
+          : element.type.startsWith("optional<");
+        if (mustBeRequired && (optionalProperty || acceptsUndefined)) {
           problems.push(
             `${where}: 要素 ${element.name}（${jsName}）は必須である必要があります`,
           );
         }
-        if (mustBeOptional && !isOptional) {
+        if (
+          mustBeOptional &&
+          !optionalProperty &&
+          !(acceptsUndefined && !checkRequired)
+        ) {
           problems.push(
             `${where}: 要素 ${element.name}（${jsName}）は省略できる必要があります`,
           );
@@ -203,6 +219,30 @@ export function checkApiSurface(
       map.type_parameters,
       true,
     );
+    checks.push((_checker, _probeType, exported) => {
+      const inputSymbol = exported.get(input);
+      if (inputSymbol !== undefined) {
+        checkTypeParameters(
+          input,
+          inputSymbol,
+          type.type_parameters,
+          map.type_parameters,
+        );
+      }
+    });
+    const genericCreation = probe(
+      `typeof ${qualify(map.name)}.${functionName}`,
+    );
+    checks.push((_checker, probeType) => {
+      const signature = probeType(genericCreation).getCallSignatures()[0];
+      for (const parameter of signature?.typeParameters ?? []) {
+        if (parameter.getConstraint() !== undefined) {
+          problems.push(
+            `${map.name}.${functionName}: 型の引数 ${parameter.symbol.name} に制約（extends）があってはいけません`,
+          );
+        }
+      }
+    });
     const creation = probe(
       `typeof ${qualify(map.name)}.${functionName}<${args}>`,
     );

@@ -53,10 +53,43 @@ describe("否定の試験（形をずらした定義を報告する）", () => {
     [
       "イベント封筒の型の引数を P extends object に狭める",
       "constrained-type-parameter",
-      ["EventEnvelope: 型の引数 P に制約（extends）があってはいけません"],
+      [
+        "EventEnvelope: 型の引数 P に制約（extends）があってはいけません",
+        "EventEnvelope.create: 型の引数 P に制約（extends）があってはいけません",
+      ],
+    ],
+    [
+      "構築の入力と create の型の引数だけを P extends object に狭める",
+      "narrowed-input-type-parameter",
+      [
+        "EventEnvelopeInput: 型の引数 P に制約（extends）があってはいけません",
+        "EventEnvelope.create: 型の引数 P に制約（extends）があってはいけません",
+      ],
+    ],
+    [
+      "イベント封筒の aggregateId を省略可能にする",
+      "optional-output-aggregate-id",
+      [
+        "EventEnvelope: 要素 aggregate_id（aggregateId）は必須である必要があります",
+      ],
+    ],
+    [
+      "構築の入力の manifest を string | undefined にする（? を外す）",
+      "input-manifest-undefined",
+      [
+        "EventEnvelopeInput: 要素 manifest（manifest）は省略できる必要があります",
+      ],
     ],
   ])("%s", (_title, name, expected) => {
     expect(checkApiSurface(fixture(name), surface, mapping)).toEqual(expected);
+  });
+});
+
+describe("書き方の違いを誤って報告しない", () => {
+  it("イベント封筒を interface で書いても、形が同じなら報告しない", () => {
+    expect(
+      checkApiSurface(fixture("interface-envelope"), surface, mapping),
+    ).toEqual([]);
   });
 });
 
