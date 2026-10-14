@@ -1,0 +1,74 @@
+{
+  "format": "event-store-adapter-api-surface-mapping",
+  "surface_version": "0.1.0",
+  "language": "js",
+  "module": "packages/library/src/index.ts",
+  "value_types": {
+    "aggregate_id": "AggregateId",
+    "seq_nr": "number",
+    "timestamp": "Date",
+    "string": "string"
+  },
+  "value_type_notes": {
+    "timestamp": "T-3 のとおり、Date はミリ秒精度までの丸めを認める"
+  },
+  "containers": {
+    "none": "void",
+    "optional": "T | undefined",
+    "list": ["T[]", "readonly T[]"]
+  },
+  "types": {
+    "event_envelope": {
+      "name": "EventEnvelope",
+      "type_parameters": { "P": "P" },
+      "elements": {
+        "aggregate_id": "aggregateId",
+        "seq_nr": "seqNr",
+        "occurred_at": "occurredAt",
+        "manifest": "manifest",
+        "payload": "payload"
+      },
+      "construction": { "function": "create", "input": "EventEnvelopeInput" }
+    },
+    "snapshot_envelope": {
+      "name": "SnapshotEnvelope",
+      "type_parameters": { "A": "S" },
+      "elements": {
+        "aggregate": "aggregate",
+        "seq_nr": "seqNr",
+        "manifest": "manifest"
+      },
+      "construction": { "function": "create", "input": "SnapshotEnvelopeInput" }
+    },
+    "snapshot_read": {
+      "name": "LatestSnapshot",
+      "type_parameters": { "A": "S" },
+      "elements": {
+        "snapshot": "snapshot",
+        "head_seq_nr": "headSeqNr"
+      }
+    }
+  },
+  "store": {
+    "name": "EventStore",
+    "type_parameters": { "P": "PE", "A": "PS" },
+    "result": "Promise<Result<T, EventStoreError>>",
+    "operations": {
+      "persist_event": "persistEvent",
+      "persist_event_and_snapshot": "persistEventAndSnapshot",
+      "get_latest_snapshot_by_id": "getLatestSnapshotById",
+      "get_events_by_id_since_seq_nr": "getEventsByIdSinceSeqNr"
+    }
+  },
+  "error_categories": {
+    "type": "EventStoreError",
+    "discriminant": "type",
+    "names": {
+      "optimistic_lock": "optimistic-lock-conflict",
+      "contract_violation": "contract-violation",
+      "serialization": "serialization-error",
+      "configuration": "configuration-error",
+      "storage": "storage-error"
+    }
+  }
+}

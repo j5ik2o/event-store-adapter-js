@@ -1,0 +1,96 @@
+{
+  "format": "event-store-adapter-api-surface",
+  "version": "0.1.0",
+  "status": "experimental",
+  "contract": "v5",
+  "spec": "docs/spec/core-contract.md",
+  "type_parameters": {
+    "P": "利用者が決めるイベントのペイロードの型",
+    "A": "利用者が決める集約の状態の型"
+  },
+  "value_types": {
+    "aggregate_id": "集約 ID（1.1）。型名と値の組を表す型、または T-1 の aid 文字列",
+    "seq_nr": "seq_nr（1.5）。言語の整数の型、またはそれを包む型",
+    "timestamp": "発生時刻（T-3）。言語の標準の時刻型。ナノ秒を表せない型では、その型の精度までの丸めを認める",
+    "string": "文字列"
+  },
+  "types": [
+    {
+      "name": "event_envelope",
+      "spec": "1.2",
+      "rules": ["T-2", "T-5"],
+      "type_parameters": ["P"],
+      "elements": [
+        { "name": "aggregate_id", "type": "aggregate_id", "required": true },
+        { "name": "seq_nr", "type": "seq_nr", "required": true },
+        { "name": "occurred_at", "type": "timestamp", "required": true },
+        { "name": "manifest", "type": "string", "required": false, "default": "" },
+        { "name": "payload", "type": "P", "required": true }
+      ]
+    },
+    {
+      "name": "snapshot_envelope",
+      "spec": "1.4",
+      "rules": ["T-10", "T-5"],
+      "type_parameters": ["A"],
+      "elements": [
+        { "name": "aggregate", "type": "A", "required": true },
+        { "name": "seq_nr", "type": "seq_nr", "required": true },
+        { "name": "manifest", "type": "string", "required": false, "default": "" }
+      ]
+    },
+    {
+      "name": "snapshot_read",
+      "spec": "3.4",
+      "rules": ["R-2", "R-3"],
+      "type_parameters": ["A"],
+      "elements": [
+        { "name": "snapshot", "type": "optional<snapshot_envelope<A>>" },
+        { "name": "head_seq_nr", "type": "seq_nr" }
+      ]
+    }
+  ],
+  "store": {
+    "name": "event_store",
+    "type_parameters": ["P", "A"],
+    "operations": [
+      {
+        "name": "persist_event",
+        "spec": "3.1",
+        "inputs": [{ "name": "event", "type": "event_envelope<P>" }],
+        "output": "none"
+      },
+      {
+        "name": "persist_event_and_snapshot",
+        "spec": "3.2",
+        "inputs": [
+          { "name": "event", "type": "event_envelope<P>" },
+          { "name": "snapshot", "type": "snapshot_envelope<A>" }
+        ],
+        "output": "none"
+      },
+      {
+        "name": "get_latest_snapshot_by_id",
+        "spec": "3.4",
+        "rules": ["R-1", "R-2"],
+        "inputs": [{ "name": "aggregate_id", "type": "aggregate_id" }],
+        "output": "optional<snapshot_read<A>>"
+      },
+      {
+        "name": "get_events_by_id_since_seq_nr",
+        "spec": "3.5",
+        "rules": ["R-4", "R-6"],
+        "inputs": [
+          { "name": "aggregate_id", "type": "aggregate_id" },
+          { "name": "seq_nr", "type": "seq_nr" }
+        ],
+        "output": "list<event_envelope<P>>"
+      }
+    ]
+  },
+  "error_categories": {
+    "spec": "4",
+    "rules": ["E-1"],
+    "names": ["optimistic_lock", "contract_violation", "serialization", "configuration", "storage"]
+  }
+}
