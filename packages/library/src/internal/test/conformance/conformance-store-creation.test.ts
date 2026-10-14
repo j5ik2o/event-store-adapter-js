@@ -29,6 +29,25 @@ describe("storeCreationOf", () => {
   });
 });
 
+describe("storeCreationOf change_feed", () => {
+  test("reads store.change_feed when it is true", () => {
+    expect(
+      storeCreationOf(find("memory-change-feed-unsupported")).config,
+    ).toEqual({
+      retentionCount: null,
+      retentionMode: "delete",
+      changeFeed: true,
+    });
+  });
+
+  test("omits changeFeed when store.change_feed is absent", () => {
+    expect(
+      "changeFeed" in
+        storeCreationOf(find("dynamodb-config-unprocessed-keys")).config,
+    ).toBe(false);
+  });
+});
+
 describe("aggregateIdInputOf", () => {
   test("keeps user_string", () => {
     expect(aggregateIdInputOf(find("aid-library-format"))).toEqual({

@@ -56,7 +56,7 @@
         },
         "rule": {
           "type": "string",
-          "pattern": "^(K|T|H|W|R|E|S|SP|DY|D)-[1-9][0-9]*$"
+          "pattern": "^(K|T|H|W|R|E|S|SP|DY|D|F|MEM)-[1-9][0-9]*$"
         },
         "message": {
           "type": "object",
@@ -145,7 +145,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^(K|T|H|W|R|E|S|SP|DY|D)-[1-9][0-9]*$"
+            "pattern": "^(K|T|H|W|R|E|S|SP|DY|D|F|MEM)-[1-9][0-9]*$"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -197,6 +197,9 @@
             "retry_limit": {
               "type": "integer",
               "minimum": 0
+            },
+            "change_feed": {
+              "type": "boolean"
             }
           },
           "required": [
@@ -718,6 +721,34 @@
     "observe": {
       "type": "object",
       "properties": {
+        "request_scope": {
+          "type": "object",
+          "properties": {
+            "apis": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "GetItem",
+                  "BatchGetItem",
+                  "Query",
+                  "TransactWriteItems",
+                  "BatchWriteItem",
+                  "UpdateItem"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "aid": {
+              "const": "aggregate_id"
+            }
+          },
+          "required": [
+            "apis",
+            "aid"
+          ],
+          "additionalProperties": false
+        },
         "history": {
           "type": "object",
           "properties": {

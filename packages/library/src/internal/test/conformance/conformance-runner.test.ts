@@ -46,8 +46,8 @@ const bindingFor = (
 
 describe("runConformance", () => {
   test.each([
-    ["memory", 12, 60, 72],
-    ["dynamodb", 12, 104, 116],
+    ["memory", 12, 62, 74],
+    ["dynamodb", 12, 106, 118],
   ] as const)(
     "reports %s with %i not-applicable and %i unverified of %i",
     async (backend, notApplicable, unverified, total) => {
@@ -125,7 +125,7 @@ describe("runConformance", () => {
     const report = await run("memory", new ConformanceMemoryBinding());
     expect(report.results.filter((r) => r.status === "failed")).toEqual([]);
     expect(report.counts).toEqual({
-      passed: 60,
+      passed: 62,
       failed: 0,
       "not-applicable": 12,
       unverified: 0,
@@ -134,7 +134,7 @@ describe("runConformance", () => {
     expect(
       report.results.filter((r) => r.status === "passed").map((r) => r.caseId),
     ).toEqual(report.requiredCaseIds);
-    expect(report.backendNotApplicable).toHaveLength(44);
+    expect(report.backendNotApplicable).toHaveLength(46);
     expect(report.backendNotApplicable.every((r) => r.reason.length > 0)).toBe(
       true,
     );
@@ -162,13 +162,38 @@ describe("runConformance", () => {
 
   test("reports exclusions with reasons and the implementation commit", async () => {
     const report = await run("memory");
-    expect(report.exclusions.map((e) => e.rule)).toEqual(["W-5", "R-7"]);
+    expect(report.exclusions.map((e) => e.rule)).toEqual([
+      "W-5",
+      "R-7",
+      "T-5",
+      "T-6",
+      "F-1",
+      "F-2",
+      "F-3",
+      "F-4",
+      "F-5",
+      "DY-13",
+      "DY-15",
+      "SP-1",
+      "DY-18",
+      "MEM-1",
+      "K-2",
+      "MEM-2",
+      "MEM-6",
+      "MEM-4",
+      "MEM-5",
+      "MEM-7",
+      "MEM-8",
+      "MEM-9",
+      "MEM-10",
+      "MEM-11",
+    ]);
     expect(report.implementationCommit).toBe("abc123");
     const summary = summarizeConformanceReport(report);
     expect(summary).toContain("abc123");
     expect(summary).toContain("W-5");
     expect(summary).toContain("R-7");
-    expect(summary).toContain("expected 1.0.0");
+    expect(summary).toContain("expected 1.1.0");
   });
 
   test("keeps per-backend status for the same case id", async () => {

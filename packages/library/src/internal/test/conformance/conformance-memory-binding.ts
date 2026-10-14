@@ -21,6 +21,7 @@ export class ConformanceMemoryBinding extends ConformancePublicBinding {
     let notifications: string[] = [];
     let observations: unknown[] = [];
     const storage = MemoryStorage.create({
+      ...(creation.config.changeFeed === true ? { changeFeed: true } : {}),
       retention:
         creation.config.retentionCount === null
           ? undefined

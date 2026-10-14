@@ -8,6 +8,7 @@ export interface ConformanceHooks {
   checkStorageObservation?(
     observe: ConformanceJsonValue,
     args: ConformanceJsonValue,
+    aggregateId?: ConformanceAggregateId,
   ): Promise<void>;
   checkLayout?(layout: ConformanceJsonValue): Promise<void>;
   awaitRetention?(): Promise<void>;

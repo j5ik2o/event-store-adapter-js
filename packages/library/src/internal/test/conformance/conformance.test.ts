@@ -82,22 +82,40 @@ describe.each(CONFORMANCE_BACKENDS)("conformance (%s)", (backend) => {
     }
   });
 
+  test("the cases added in data 1.1.0 are required and reported by rule", () => {
+    expect(report.requiredCaseIds).toEqual(
+      expect.arrayContaining(
+        backend === "memory"
+          ? ["memory-ttl-unsupported", "memory-change-feed-unsupported"]
+          : [
+              "dynamodb-single-aggregate-delete",
+              "dynamodb-single-aggregate-ttl",
+            ],
+      ),
+    );
+    expect(Object.keys(report.ruleCounts)).toEqual(
+      expect.arrayContaining(
+        backend === "memory" ? ["MEM-3", "MEM-12", "MEM-13"] : ["DY-19"],
+      ),
+    );
+  });
+
   test("required results exactly cover all applicable cases", () => {
     expect(report.requiredCaseIds).toHaveLength(
-      backend === "memory" ? 60 : 104,
+      backend === "memory" ? 62 : 106,
     );
     expect(
       report.results.filter((r) => r.status === "passed").map((r) => r.caseId),
     ).toEqual(report.requiredCaseIds);
     expect(report.counts).toEqual({
-      passed: backend === "memory" ? 60 : 104,
+      passed: backend === "memory" ? 62 : 106,
       failed: 0,
       "not-applicable": 12,
       unverified: 0,
       "not-representable": 0,
     });
     expect(report.backendNotApplicable).toHaveLength(
-      backend === "memory" ? 44 : 0,
+      backend === "memory" ? 46 : 2,
     );
     expect(
       report.notApplicableReasons.map((entry) => entry.count).sort(),

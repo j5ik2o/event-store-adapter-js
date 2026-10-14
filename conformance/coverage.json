@@ -1,6 +1,6 @@
 {
   "format": "coverage",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "required_rules": [
     "T-1",
     "T-3",
@@ -59,6 +59,116 @@
       "rule": "R-7",
       "status": "caller-obligation",
       "reason": "呼び出し側の推奨事項であり、ストアの4操作の適合ケースとしては実行しない。リプレイの最終番号と取得したヘッドを照合する責任は実行器の利用者にある。"
+    },
+    {
+      "rule": "T-5",
+      "status": "api-surface",
+      "reason": "公開APIの形と、ペイロードの型への要件である。操作の場面では表せず、公開APIの形の照合（ハブのapi-surface/）の範囲である。"
+    },
+    {
+      "rule": "T-6",
+      "status": "api-surface",
+      "reason": "公開APIの形と、ペイロードの型への要件である。操作の場面では表せず、公開APIの形の照合（ハブのapi-surface/）の範囲である。"
+    },
+    {
+      "rule": "F-1",
+      "status": "not-provided",
+      "reason": "最初のメジャーは変更フィードを提供しない。"
+    },
+    {
+      "rule": "F-2",
+      "status": "not-provided",
+      "reason": "最初のメジャーは変更フィードを提供しない。"
+    },
+    {
+      "rule": "F-3",
+      "status": "not-provided",
+      "reason": "最初のメジャーは変更フィードを提供しない。"
+    },
+    {
+      "rule": "F-4",
+      "status": "not-provided",
+      "reason": "最初のメジャーは変更フィードを提供しない。"
+    },
+    {
+      "rule": "F-5",
+      "status": "not-provided",
+      "reason": "最初のメジャーは変更フィードを提供しない。"
+    },
+    {
+      "rule": "DY-13",
+      "status": "not-provided",
+      "reason": "最初のメジャーは変更フィードを提供しない。"
+    },
+    {
+      "rule": "DY-15",
+      "status": "not-provided",
+      "reason": "最初のメジャーは変更フィードを提供しない。"
+    },
+    {
+      "rule": "SP-1",
+      "status": "profile-documentation",
+      "reason": "前提を文書に書くという義務で、操作の場面では表せない。"
+    },
+    {
+      "rule": "DY-18",
+      "status": "profile-documentation",
+      "reason": "前提を文書に書くという義務で、操作の場面では表せない。"
+    },
+    {
+      "rule": "MEM-1",
+      "status": "profile-documentation",
+      "reason": "前提を文書に書くという義務で、操作の場面では表せない。"
+    },
+    {
+      "rule": "K-2",
+      "status": "no-target-profile",
+      "reason": "ハッシュを使う保存先がない。キーへの埋め込み方は、その保存先のプロファイルが定める。"
+    },
+    {
+      "rule": "MEM-2",
+      "status": "out-of-scope",
+      "reason": "1.1.0の範囲外。複数のストアの生成と、値の書き換えという新しい操作が要る。"
+    },
+    {
+      "rule": "MEM-6",
+      "status": "out-of-scope",
+      "reason": "1.1.0の範囲外。複数のストアの生成と、値の書き換えという新しい操作が要る。"
+    },
+    {
+      "rule": "MEM-4",
+      "status": "nondeterministic",
+      "reason": "並行の結果が非決定的になる。"
+    },
+    {
+      "rule": "MEM-5",
+      "status": "core-scenarios",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をメモリで実行して確かめる。メモリ固有の規則番号は場面に付けない。"
+    },
+    {
+      "rule": "MEM-7",
+      "status": "core-scenarios",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をメモリで実行して確かめる。メモリ固有の規則番号は場面に付けない。"
+    },
+    {
+      "rule": "MEM-8",
+      "status": "core-scenarios",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をメモリで実行して確かめる。メモリ固有の規則番号は場面に付けない。"
+    },
+    {
+      "rule": "MEM-9",
+      "status": "core-scenarios",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をメモリで実行して確かめる。メモリ固有の規則番号は場面に付けない。"
+    },
+    {
+      "rule": "MEM-10",
+      "status": "core-scenarios",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をメモリで実行して確かめる。メモリ固有の規則番号は場面に付けない。"
+    },
+    {
+      "rule": "MEM-11",
+      "status": "core-scenarios",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をメモリで実行して確かめる。メモリ固有の規則番号は場面に付けない。"
     }
   ],
   "notes": [

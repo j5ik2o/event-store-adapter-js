@@ -3,4 +3,5 @@ export type ConformanceStoreConfig = {
   retentionMode: "delete" | "ttl";
   ttlGraceSeconds?: number;
   retryLimit?: number;
+  changeFeed?: boolean;
 };
