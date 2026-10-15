@@ -1,6 +1,6 @@
 {
   "format": "scenarios",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "cases": [
     {
       "id": "core-replay-without-snapshot",

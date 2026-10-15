@@ -24,7 +24,7 @@ describe("verifyConformanceManifest", () => {
   test("accepts the real conformance data", () => {
     const result = verifyConformanceManifest(root);
     expect(result.ok).toBe(true);
-    expect(result.fileCount).toBe(24);
+    expect(result.fileCount).toBe(26);
     expect(result.mismatches).toEqual([]);
   });
 
@@ -59,11 +59,11 @@ describe("verifyConformanceManifest", () => {
       file,
       fs
         .readFileSync(file, "utf8")
-        .replace('"version": "1.1.0"', '"version": "9.9.9"'),
+        .replace('"version": "1.2.0"', '"version": "9.9.9"'),
     );
     const result = verifyConformanceManifest(dir);
     expect(result.version).toBe("9.9.9");
-    expect(result.expectedVersion).toBe("1.1.0");
+    expect(result.expectedVersion).toBe("1.2.0");
     expect(result.versionMatches).toBe(false);
     expect(result.ok).toBe(false);
     expect(result.mismatches.join("\n")).not.toContain("version");

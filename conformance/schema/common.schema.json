@@ -1113,6 +1113,10 @@
             },
             "clock_epoch_seconds": {
               "type": "integer"
+            },
+            "store": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
             }
           },
           "required": [
@@ -1156,6 +1160,10 @@
             },
             "clock_epoch_seconds": {
               "type": "integer"
+            },
+            "store": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
             }
           },
           "required": [
@@ -1193,6 +1201,10 @@
             },
             "clock_epoch_seconds": {
               "type": "integer"
+            },
+            "store": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
             }
           },
           "required": [
@@ -1236,6 +1248,163 @@
             },
             "clock_epoch_seconds": {
               "type": "integer"
+            },
+            "store": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            }
+          },
+          "required": [
+            "op",
+            "arguments",
+            "expect"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "createStore"
+              ]
+            },
+            "arguments": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9-]*$"
+                    },
+                    "storage": {
+                      "enum": [
+                        "new"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "storage"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9-]*$"
+                    },
+                    "storage": {
+                      "enum": [
+                        "shared"
+                      ]
+                    },
+                    "shared_with": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9-]*$"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "storage",
+                    "shared_with"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "expect": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/result"
+            }
+          },
+          "required": [
+            "op",
+            "arguments",
+            "expect"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "mutateWrittenPayload"
+              ]
+            },
+            "arguments": {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "pointer": {
+                  "type": "string",
+                  "pattern": "^/"
+                },
+                "value": {
+                  "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+                }
+              },
+              "required": [
+                "operation",
+                "pointer",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            "expect": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/result"
+            }
+          },
+          "required": [
+            "op",
+            "arguments",
+            "expect"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "mutateReadPayload"
+              ]
+            },
+            "arguments": {
+              "type": "object",
+              "properties": {
+                "operation": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "event": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "pointer": {
+                  "type": "string",
+                  "pattern": "^/"
+                },
+                "value": {
+                  "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/json"
+                }
+              },
+              "required": [
+                "operation",
+                "event",
+                "pointer",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            "expect": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/result"
             }
           },
           "required": [

@@ -1,0 +1,169 @@
+{
+  "format": "scenarios",
+  "version": "1.2.0",
+  "cases": [
+    {
+      "id": "memory-payload-written-mutation",
+      "rules": [
+        "MEM-6"
+      ],
+      "description": "書き込んだ後に、呼び出し側が手元のペイロードを書き換えても、保存済みの値は変わらない。",
+      "backends": [
+        "memory"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "items": [
+                {
+                  "qty": 1
+                }
+              ],
+              "note": "original"
+            }
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "mutateWrittenPayload",
+          "arguments": {
+            "operation": 1,
+            "pointer": "/items/0/qty",
+            "value": 99
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "memory-payload-read-mutation",
+      "rules": [
+        "MEM-6"
+      ],
+      "description": "取得した結果のペイロードを書き換えても、保存済みの値は変わらず、読み直すと書き込んだときの値が返る。",
+      "backends": [
+        "memory"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "items": [
+                {
+                  "qty": 1
+                }
+              ],
+              "note": "original"
+            }
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        },
+        {
+          "op": "mutateReadPayload",
+          "arguments": {
+            "operation": 2,
+            "event": "e1",
+            "pointer": "/items/0/qty",
+            "value": 99
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

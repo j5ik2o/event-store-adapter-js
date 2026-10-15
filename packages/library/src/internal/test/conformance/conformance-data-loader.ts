@@ -11,7 +11,7 @@ import { createConformanceSchemaValidator } from "./conformance-schema-validator
 import { readConformanceText } from "./conformance-text-reader";
 import { parseEpochNanos, parseOccurredAtEpochNanos } from "./conformance-time";
 
-const SUPPORTED_VERSION = "1.1.0";
+const SUPPORTED_VERSION = "1.2.0";
 const NON_VALUE_KEYS = new Set(["payload", "aggregate", "binary_json"]);
 
 type JsonRecord = { readonly [key: string]: ConformanceJsonValue };

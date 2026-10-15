@@ -46,7 +46,7 @@ const bindingFor = (
 
 describe("runConformance", () => {
   test.each([
-    ["memory", 12, 62, 74],
+    ["memory", 12, 66, 78],
     ["dynamodb", 12, 106, 118],
   ] as const)(
     "reports %s with %i not-applicable and %i unverified of %i",
@@ -125,7 +125,7 @@ describe("runConformance", () => {
     const report = await run("memory", new ConformanceMemoryBinding());
     expect(report.results.filter((r) => r.status === "failed")).toEqual([]);
     expect(report.counts).toEqual({
-      passed: 62,
+      passed: 66,
       failed: 0,
       "not-applicable": 12,
       unverified: 0,
@@ -178,8 +178,6 @@ describe("runConformance", () => {
       "DY-18",
       "MEM-1",
       "K-2",
-      "MEM-2",
-      "MEM-6",
       "MEM-4",
       "MEM-5",
       "MEM-7",
@@ -193,7 +191,7 @@ describe("runConformance", () => {
     expect(summary).toContain("abc123");
     expect(summary).toContain("W-5");
     expect(summary).toContain("R-7");
-    expect(summary).toContain("expected 1.1.0");
+    expect(summary).toContain("expected 1.2.0");
   });
 
   test("keeps per-backend status for the same case id", async () => {

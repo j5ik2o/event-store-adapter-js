@@ -1,5 +1,7 @@
 import type { ConformanceAggregateId } from "./conformance-aggregate-id";
 import type { ConformanceJsonValue } from "./conformance-json-value";
+import type { ConformanceOutcome } from "./conformance-outcome";
+import type { ConformanceStore } from "./conformance-store";
 
 export interface ConformanceHooks {
   beginOperation?(operation: number): void;
@@ -18,4 +20,9 @@ export interface ConformanceHooks {
   }>;
   takeRetentionFailures?(): readonly string[];
   setClockEpochSeconds?(s: number): void;
+  createStore?(request: {
+    name: string;
+    storage: "new" | "shared";
+    sharedWith?: string;
+  }): Promise<ConformanceOutcome<ConformanceStore<unknown, unknown>>>;
 }
