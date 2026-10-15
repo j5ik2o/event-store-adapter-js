@@ -14,6 +14,8 @@ SUBJECT_RE = re.compile(
 )
 BREAKING_RE = re.compile(r"^(?:BREAKING CHANGE|BREAKING-CHANGE):[ \t]*(?P<text>.*)$")
 PR_RE = re.compile(r" \(#(?P<pr>\d+)\)$")
+# Conventional Commits の footer の始まり（"Co-authored-by: x"、"Refs #12" など）。
+FOOTER_RE = re.compile(r"^(?:BREAKING CHANGE|[A-Za-z][A-Za-z0-9-]*)(?:: | #)")
 
 SECTIONS = [
     ("feat", "Features"),
@@ -45,19 +47,27 @@ def parse_records(data):
     return records
 
 
-def body_breaking_text(body):
+def body_breaking_texts(body):
+    """本文の BREAKING CHANGE の footer ごとの文を、出てくる順に返す。"""
     lines = body.splitlines()
-    for i, line in enumerate(lines):
-        m = BREAKING_RE.match(line)
+    texts = []
+    i = 0
+    while i < len(lines):
+        m = BREAKING_RE.match(lines[i])
+        i += 1
         if m is None:
             continue
         pieces = [m.group("text").strip()]
-        for follow in lines[i + 1:]:
-            if not follow.strip():
-                break
-            pieces.append(follow.strip())
-        return " ".join(p for p in pieces if p)
-    return None
+        while (
+            i < len(lines)
+            and lines[i].strip()
+            and not FOOTER_RE.match(lines[i])
+            and not BREAKING_RE.match(lines[i])
+        ):
+            pieces.append(lines[i].strip())
+            i += 1
+        texts.append(" ".join(p for p in pieces if p))
+    return texts
 
 
 def split_pr(text):
@@ -87,22 +97,23 @@ def render(records, base):
     for commit_hash, subject, body in records:
         subject_text, pr = split_pr(subject)
         m = SUBJECT_RE.match(subject_text)
-        body_text = body_breaking_text(body)
+        body_texts = body_breaking_texts(body)
         subject_mark = BREAKING_RE.match(subject_text)
-        is_breaking = bool((m and m.group("bang")) or body_text is not None or subject_mark)
+        is_breaking = bool((m and m.group("bang")) or body_texts or subject_mark)
         scope = m.group("scope") if m else None
 
         if is_breaking:
             mark_text = subject_mark.group("text").strip() if subject_mark else ""
-            if body_text:
-                text = body_text
-            elif mark_text:
-                text = mark_text
-            elif m is not None:
-                text = m.group("desc")
-            else:
-                text = subject_text
-            breaking.append(format_item(text, scope, pr, commit_hash, base))
+            texts = [t for t in body_texts if t]
+            if not texts:
+                if mark_text:
+                    texts = [mark_text]
+                elif m is not None:
+                    texts = [m.group("desc")]
+                else:
+                    texts = [subject_text]
+            for text in texts:
+                breaking.append(format_item(text, scope, pr, commit_hash, base))
 
         if m is not None:
             item = format_item(m.group("desc"), scope, pr, commit_hash, base)
