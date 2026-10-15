@@ -102,6 +102,38 @@ class BodyScriptTest(unittest.TestCase):
         self.assertIn(f"* 一行目 二行目 {link(a)}", text)
         self.assertNotIn("別の段落", text)
 
+    def test_2d_breaking_text_stops_at_the_next_footer(self):
+        a, b = h40("a"), h40("b")
+        text = out(
+            commit(a, "feat: x", "BREAKING CHANGE: 理由A\n続き\nCo-authored-by: T <t@example.com>")
+            + commit(b, "fix: y", "BREAKING-CHANGE: 理由B\nRefs #12\nSigned-off-by: T <t@example.com>")
+        )
+        breaking = text.split("### Features")[0]
+        self.assertIn(f"* 理由A 続き {link(a)}", breaking)
+        self.assertIn(f"* 理由B {link(b)}", breaking)
+        self.assertNotIn("Co-authored-by", text)
+        self.assertNotIn("Signed-off-by", text)
+        self.assertNotIn("Refs", text)
+
+    def test_2e_each_breaking_footer_becomes_an_item(self):
+        a = h40("a")
+        text = out(
+            commit(a, "feat: x", "* feat!: a\n\nBREAKING CHANGE: 理由A\n\n* feat!: b\n\nBREAKING-CHANGE: 理由B\n続き")
+        )
+        breaking = text.split("### Features")[0]
+        self.assertIn(f"* 理由A {link(a)}", breaking)
+        self.assertIn(f"* 理由B 続き {link(a)}", breaking)
+        self.assertLess(breaking.index("理由A"), breaking.index("理由B"))
+        self.assertEqual(1, text.split("### Features")[1].count(link(a)))
+
+    def test_2f_next_breaking_marker_ends_the_previous_text(self):
+        a = h40("a")
+        text = out(commit(a, "feat: x", "BREAKING CHANGE: 理由A\nBREAKING-CHANGE:\ttab\nBREAKING-CHANGE:"))
+        breaking = text.split("### Features")[0]
+        self.assertIn(f"* 理由A {link(a)}", breaking)
+        self.assertIn(f"* tab {link(a)}", breaking)
+        self.assertNotIn("理由A BREAKING", text)
+
     def test_3_non_conventional_subjects(self):
         a, b, c = h40("a"), h40("b"), h40("c")
         self.assertEqual("", out(commit(a, "version up to v5.0.2")))
