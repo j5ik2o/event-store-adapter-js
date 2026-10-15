@@ -133,10 +133,8 @@ jobs:
             ${{ steps.defines.outputs.prev_tag }} \
             ${{ steps.versions.outputs.next_tag }} \
             > changelog.txt
-          git log ${{ steps.defines.outputs.prev_tag }}..${{ steps.versions.outputs.next_tag }} --pretty=format:"%h%x09%H%x09%s" \
-            -P --grep='^(BREAKING CHANGE|build|ci|feat|fix|docs|style|refactor|perf|test|revert|chore)(.*)?:.*$' \
-            --no-merges --full-history | \
-            python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-body.py >> changelog.txt
+          git log ${{ steps.defines.outputs.prev_tag }}..${{ steps.versions.outputs.next_tag }} --no-merges --format='%H%x1f%s%x1f%b%x1e' \
+            | python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-body.py "${{ github.server_url }}" "${{ github.repository }}" >> changelog.txt
         if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
       - name: Create a GitHub release
         uses: actions/create-release@v1
