@@ -5,6 +5,7 @@ import type { ConformanceCaseResult } from "./conformance-case-result";
 import { withCaseStore } from "./conformance-case-store-scope";
 import { compareExpectation } from "./conformance-expectation";
 import { eventInputOf, snapshotInputOf } from "./conformance-fixtures";
+import type { ConformanceHooks } from "./conformance-hooks";
 import {
   aggregateIdOf,
   integerOf,
@@ -15,6 +16,7 @@ import {
 import { jsonAt } from "./conformance-json-lookup";
 import type { ConformanceJsonValue } from "./conformance-json-value";
 import type { ConformanceOutcome } from "./conformance-outcome";
+import { mutateConformancePayload } from "./conformance-payload-mutation";
 import type { ConformanceStore } from "./conformance-store";
 import type { ConformanceStoreBinding } from "./conformance-store-binding";
 import { storeCreationOf } from "./conformance-store-creation";
@@ -31,21 +33,94 @@ const operationAggregateIdOf = (
   );
 };
 
+type CaseStores = ReadonlyMap<string, ConformanceStore<unknown, unknown>>;
+type WrittenPayloads = ReadonlyMap<number, ConformanceJsonValue>;
+type ReadResults = ReadonlyMap<number, readonly { payload: unknown }[]>;
+
+// createStore 手順の引数を検査し、フックでストアを生成して登録する
+const createCaseStore = async (
+  hooks: ConformanceHooks,
+  stores: CaseStores,
+  args: ReturnType<typeof recordOf>,
+): Promise<{
+  outcome: ConformanceOutcome<unknown>;
+  stores: CaseStores;
+}> => {
+  const name = textOf(args.name);
+  const storage = textOf(args.storage);
+  assert.ok(
+    name !== "primary" && !stores.has(name),
+    `store name ${name} must be new`,
+  );
+  assert.ok(
+    storage === "new" || storage === "shared",
+    `unsupported storage ${storage}`,
+  );
+  const sharedWith =
+    args.shared_with === undefined ? undefined : textOf(args.shared_with);
+  assert.ok(
+    storage === "new" || (sharedWith !== undefined && stores.has(sharedWith)),
+    "shared_with must name a registered store",
+  );
+  assert.ok(hooks.createStore, "store creation must be connected");
+  const made = await hooks.createStore({
+    name,
+    storage,
+    ...(sharedWith === undefined ? {} : { sharedWith }),
+  });
+  if (made.kind === "error") return { outcome: made, stores };
+  return {
+    outcome: { kind: "ok", value: undefined },
+    stores: new Map([...stores, [name, made.value]]),
+  };
+};
+
+// mutate* 手順が書き換える対象のペイロードの実体を特定する
+const mutationTargetOf = (
+  op: "mutateWrittenPayload" | "mutateReadPayload",
+  args: ReturnType<typeof recordOf>,
+  steps: readonly ConformanceJsonValue[],
+  written: WrittenPayloads,
+  reads: ReadResults,
+): ConformanceJsonValue => {
+  const operation = Number(integerOf(args.operation));
+  let payload: ConformanceJsonValue | undefined;
+  if (op === "mutateWrittenPayload") {
+    payload = written.get(operation);
+  } else {
+    const names = listOf(
+      recordOf(recordOf(steps[operation - 1]).expect).events ?? [],
+    ).map(textOf);
+    const position = names.indexOf(textOf(args.event));
+    payload =
+      position < 0
+        ? undefined
+        : (reads.get(operation)?.[position]?.payload as ConformanceJsonValue);
+  }
+  assert.ok(payload !== undefined, "mutation target must exist");
+  return payload;
+};
+
 export async function executeConformanceOperation(
   binding: ConformanceStoreBinding<unknown, unknown>,
   store: ConformanceStore<unknown, unknown>,
   operation: ConformanceJsonValue,
   fixtures: ConformanceJsonValue,
+  onWrittenPayload?: (payload: ConformanceJsonValue) => void,
 ): Promise<ConformanceOutcome<unknown>> {
   const step = recordOf(operation);
   const args = recordOf(step.arguments);
   switch (step.op) {
     case "persistEvent":
     case "persistEventAndSnapshot": {
-      const event = binding.buildEvent(
-        eventInputOf(jsonAt(fixtures, "events", textOf(args.event))),
+      const input = eventInputOf(
+        jsonAt(fixtures, "events", textOf(args.event)),
       );
+      // fixture を書き換えると期待値も変わるため、書き込みには複製を渡す
+      const written = structuredClone(input.payload);
+      const event = binding.buildEvent({ ...input, payload: written });
       if (event.kind === "error") return event;
+      onWrittenPayload?.(written);
       if (step.op === "persistEvent") return store.persistEvent(event.value);
       const snapshot = binding.buildSnapshot(
         snapshotInputOf(jsonAt(fixtures, "snapshots", textOf(args.snapshot))),
@@ -140,6 +215,12 @@ export async function executeConformanceCase(
         });
         if (created.outcome.kind === "error") return;
         const store = created.outcome.value;
+        let stores: ReadonlyMap<string, typeof store> = new Map([
+          ["primary", store],
+        ]);
+        let written: ReadonlyMap<number, ConformanceJsonValue> = new Map();
+        let reads: ReadonlyMap<number, readonly { payload: unknown }[]> =
+          new Map();
         if (c.format === "layout") {
           assert.ok(
             created.hooks.checkLayout,
@@ -219,12 +300,51 @@ export async function executeConformanceCase(
             );
           }
           expected = step.expect;
-          actual = await executeConformanceOperation(
-            binding,
-            store,
-            operation,
-            fixtures,
-          );
+          const stepArgs = recordOf(step.arguments);
+          if (step.op === "createStore") {
+            const made = await createCaseStore(created.hooks, stores, stepArgs);
+            stores = made.stores;
+            actual = made.outcome;
+          } else if (
+            step.op === "mutateWrittenPayload" ||
+            step.op === "mutateReadPayload"
+          ) {
+            mutateConformancePayload(
+              mutationTargetOf(
+                step.op,
+                stepArgs,
+                listOf(body.steps ?? []),
+                written,
+                reads,
+              ),
+              textOf(stepArgs.pointer),
+              stepArgs.value,
+            );
+            actual = { kind: "ok", value: undefined };
+          } else {
+            const target = stores.get(
+              step.store === undefined ? "primary" : textOf(step.store),
+            );
+            assert.ok(target, "operation must target a registered store");
+            actual = await executeConformanceOperation(
+              binding,
+              target,
+              operation,
+              fixtures,
+              (payload) => {
+                written = new Map([...written, [failedOperation, payload]]);
+              },
+            );
+            const outcome = actual as ConformanceOutcome<unknown>;
+            if (step.op === "getEventsByIdSinceSeqNr" && outcome.kind === "ok")
+              reads = new Map([
+                ...reads,
+                [
+                  failedOperation,
+                  outcome.value as readonly { payload: unknown }[],
+                ],
+              ]);
+          }
           compareExpectation(
             step.expect,
             actual as ConformanceOutcome<unknown>,

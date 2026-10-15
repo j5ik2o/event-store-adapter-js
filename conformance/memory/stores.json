@@ -1,0 +1,323 @@
+{
+  "format": "scenarios",
+  "version": "1.2.0",
+  "cases": [
+    {
+      "id": "memory-store-new-independent",
+      "rules": [
+        "MEM-2"
+      ],
+      "description": "新しい保存先として生成した2つ目のストアは空で、1つ目のストアと独立している。1つ目に書いた記録は2つ目から読めず、2つ目に書いても1つ目の結果は変わらない。",
+      "backends": [
+        "memory"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "source": "primary"
+            }
+          },
+          "f1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "source": "second"
+            }
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "createStore",
+          "arguments": {
+            "name": "second",
+            "storage": "new"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "store": "second",
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "store": "second",
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "f1"
+          },
+          "store": "second",
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 1,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "store": "second",
+          "expect": {
+            "result": "events",
+            "events": [
+              "f1"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "memory-store-shared",
+      "rules": [
+        "MEM-2"
+      ],
+      "description": "1つ目の保存先を明示的に共有して生成した2つ目のストアは、全記録・ヘッド・排他制御を共有する。一方で書いた記録は他方から読め、同じ seq_nr の書き込みは楽観ロックで失敗する。",
+      "backends": [
+        "memory"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "source": "primary"
+            }
+          },
+          "e1-other": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "source": "second"
+            }
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "source": "second"
+            }
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "createStore",
+          "arguments": {
+            "name": "second",
+            "storage": "shared",
+            "shared_with": "primary"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "store": "second",
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "store": "second",
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 1,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1-other"
+          },
+          "store": "second",
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "1"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "store": "second",
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 2,
+            "snapshot": null
+          }
+        }
+      ]
+    }
+  ]
+}

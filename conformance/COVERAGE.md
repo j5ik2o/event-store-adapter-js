@@ -41,11 +41,11 @@
 | K-1 | [hash-fnv1a64-1](values/hash.json)、[hash-fnv1a64-2](values/hash.json)、[hash-fnv1a64-3](values/hash.json)、[hash-fnv1a64-4](values/hash.json) | — |
 | K-2 | — | ハッシュを使う保存先がない。キーへの埋め込み方は、その保存先のプロファイルが定める。 |
 | MEM-1 | — | 前提を文書に書くという義務で、操作の場面では表せない。 |
-| MEM-2 | — | 1.1.0の範囲外。複数のストアの生成と、値の書き換えという新しい操作が要る。 |
+| MEM-2 | [memory-store-new-independent](memory/stores.json)、[memory-store-shared](memory/stores.json) | — |
 | MEM-3 | [memory-change-feed-unsupported](memory/configuration.json)、[memory-ttl-unsupported](memory/configuration.json) | — |
 | MEM-4 | — | 並行の結果が非決定的になる。 |
 | MEM-5 | — | 共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をメモリで実行して確かめる。メモリ固有の規則番号は場面に付けない。 |
-| MEM-6 | — | 1.1.0の範囲外。複数のストアの生成と、値の書き換えという新しい操作が要る。 |
+| MEM-6 | [memory-payload-read-mutation](memory/payload-isolation.json)、[memory-payload-written-mutation](memory/payload-isolation.json) | — |
 | MEM-7 | — | 共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をメモリで実行して確かめる。メモリ固有の規則番号は場面に付けない。 |
 | MEM-8 | — | 共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をメモリで実行して確かめる。メモリ固有の規則番号は場面に付けない。 |
 | MEM-9 | — | 共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をメモリで実行して確かめる。メモリ固有の規則番号は場面に付けない。 |

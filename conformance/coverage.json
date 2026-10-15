@@ -1,6 +1,6 @@
 {
   "format": "coverage",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "required_rules": [
     "T-1",
     "T-3",
@@ -124,16 +124,6 @@
       "rule": "K-2",
       "status": "no-target-profile",
       "reason": "ハッシュを使う保存先がない。キーへの埋め込み方は、その保存先のプロファイルが定める。"
-    },
-    {
-      "rule": "MEM-2",
-      "status": "out-of-scope",
-      "reason": "1.1.0の範囲外。複数のストアの生成と、値の書き換えという新しい操作が要る。"
-    },
-    {
-      "rule": "MEM-6",
-      "status": "out-of-scope",
-      "reason": "1.1.0の範囲外。複数のストアの生成と、値の書き換えという新しい操作が要る。"
     },
     {
       "rule": "MEM-4",

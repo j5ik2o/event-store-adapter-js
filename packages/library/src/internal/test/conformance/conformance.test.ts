@@ -100,22 +100,39 @@ describe.each(CONFORMANCE_BACKENDS)("conformance (%s)", (backend) => {
     );
   });
 
+  test("the cases added in data 1.2.0 are required and reported by rule (memory only)", () => {
+    if (backend !== "memory") {
+      expect(report.requiredCaseIds).not.toContain("memory-store-shared");
+      return;
+    }
+    expect(report.requiredCaseIds).toEqual(
+      expect.arrayContaining([
+        "memory-store-new-independent",
+        "memory-store-shared",
+        "memory-payload-written-mutation",
+        "memory-payload-read-mutation",
+      ]),
+    );
+    expect(report.ruleCounts["MEM-2"]?.passed).toBe(2);
+    expect(report.ruleCounts["MEM-6"]?.passed).toBe(2);
+  });
+
   test("required results exactly cover all applicable cases", () => {
     expect(report.requiredCaseIds).toHaveLength(
-      backend === "memory" ? 62 : 106,
+      backend === "memory" ? 66 : 106,
     );
     expect(
       report.results.filter((r) => r.status === "passed").map((r) => r.caseId),
     ).toEqual(report.requiredCaseIds);
     expect(report.counts).toEqual({
-      passed: backend === "memory" ? 62 : 106,
+      passed: backend === "memory" ? 66 : 106,
       failed: 0,
       "not-applicable": 12,
       unverified: 0,
       "not-representable": 0,
     });
     expect(report.backendNotApplicable).toHaveLength(
-      backend === "memory" ? 46 : 2,
+      backend === "memory" ? 46 : 6,
     );
     expect(
       report.notApplicableReasons.map((entry) => entry.count).sort(),

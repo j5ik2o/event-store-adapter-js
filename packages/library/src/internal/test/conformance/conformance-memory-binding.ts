@@ -8,7 +8,9 @@ import type { ConformanceCreatedStore } from "./conformance-created-store";
 import { ConformanceFaultRegistry } from "./conformance-fault-registry";
 import { listOf, recordOf } from "./conformance-json-access";
 import type { ConformanceJsonValue } from "./conformance-json-value";
+import type { ConformanceOutcome } from "./conformance-outcome";
 import { ConformancePublicBinding } from "./conformance-public-binding";
+import type { ConformanceStore } from "./conformance-store";
 import type { ConformanceStoreCreation } from "./conformance-store-creation";
 
 export class ConformanceMemoryBinding extends ConformancePublicBinding {
@@ -20,22 +22,27 @@ export class ConformanceMemoryBinding extends ConformancePublicBinding {
     const registry = new ConformanceFaultRegistry(creation.faults);
     let notifications: string[] = [];
     let observations: unknown[] = [];
-    const storage = MemoryStorage.create({
-      ...(creation.config.changeFeed === true ? { changeFeed: true } : {}),
-      retention:
-        creation.config.retentionCount === null
-          ? undefined
-          : {
-              count: creation.config.retentionCount,
-              mode:
-                creation.config.retentionMode === "ttl"
-                  ? {
-                      type: "ttl",
-                      graceSeconds: creation.config.ttlGraceSeconds as number,
-                    }
-                  : { type: "delete" },
-            },
-    });
+    const createStorage = () =>
+      MemoryStorage.create({
+        ...(creation.config.changeFeed === true ? { changeFeed: true } : {}),
+        retention:
+          creation.config.retentionCount === null
+            ? undefined
+            : {
+                count: creation.config.retentionCount,
+                mode:
+                  creation.config.retentionMode === "ttl"
+                    ? {
+                        type: "ttl",
+                        graceSeconds: creation.config.ttlGraceSeconds as number,
+                      }
+                    : { type: "delete" },
+              },
+      });
+    const storage = createStorage();
+    let storages: ReadonlyMap<string, typeof storage> = new Map([
+      ["primary", storage],
+    ]);
     const fail = (phase: string) => {
       const fault = registry.take(phase);
       if (fault === undefined) return;
@@ -77,33 +84,52 @@ export class ConformanceMemoryBinding extends ConformancePublicBinding {
           },
         }),
       );
-    let opened: ReturnType<
-      typeof EventStore.createMemory<ConformanceJsonValue, ConformanceJsonValue>
-    >;
-    try {
-      opened =
-        storage.type === "err"
-          ? storage
-          : EventStore.createMemory<ConformanceJsonValue, ConformanceJsonValue>(
-              {
-                storage: storage.value,
+    const open = (
+      target: ReturnType<typeof createStorage>,
+    ): ConformanceOutcome<ConformanceStore<unknown, unknown>> => {
+      let opened: ReturnType<
+        typeof EventStore.createMemory<
+          ConformanceJsonValue,
+          ConformanceJsonValue
+        >
+      >;
+      try {
+        opened =
+          target.type === "err"
+            ? target
+            : EventStore.createMemory<
+                ConformanceJsonValue,
+                ConformanceJsonValue
+              >({
+                storage: target.value,
                 eventSerializer: this.serializer(registry, "event"),
                 snapshotSerializer: this.serializer(registry, "snapshot"),
                 onRetentionFailure: (failure) => {
                   notifications = [...notifications, failure.kind];
                 },
                 logger: { ...console, error: () => undefined },
-              },
-            );
-    } finally {
-      wrapper.mockRestore();
-    }
+              });
+      } finally {
+        wrapper.mockRestore();
+      }
+      return opened.type === "err"
+        ? this.outcome<never>(opened)
+        : { kind: "ok" as const, value: this.wrapStore(opened.value) };
+    };
     return {
-      outcome:
-        opened.type === "err"
-          ? this.outcome<never>(opened)
-          : { kind: "ok" as const, value: this.wrapStore(opened.value) },
+      outcome: open(storage),
       hooks: {
+        createStore: async (request) => {
+          const target =
+            request.storage === "new"
+              ? createStorage()
+              : storages.get(request.sharedWith ?? "");
+          assert.ok(target, "shared_with store must be registered");
+          const outcome = open(target);
+          if (outcome.kind === "ok")
+            storages = new Map([...storages, [request.name, target]]);
+          return outcome;
+        },
         beginOperation: (operation: number) => {
           registry.begin(operation);
         },
