@@ -61,7 +61,8 @@ jobs:
           fi
 
       - name: 失敗を知らせる
-        if: steps.run.outputs.target == 'true' && steps.run.outputs.conclusion == 'failure'
+        # 時間切れ（timed_out）と起動の失敗（startup_failure）も失敗として扱う
+        if: steps.run.outputs.target == 'true' && contains(fromJSON('["failure", "timed_out", "startup_failure"]'), steps.run.outputs.conclusion)
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -75,7 +76,7 @@ jobs:
           set -euo pipefail
           if [ "$EVENT" = "schedule" ]; then trigger="定期実行 (schedule)"; else trigger="push"; fi
           failed_jobs=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs" \
-            --jq '.jobs[] | select(.conclusion == "failure") | "  - " + .name')
+            --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | "  - " + .name')
           if [ -z "$failed_jobs" ]; then failed_jobs="  - （失敗したジョブを取得できなかった。実行の URL で確かめる）"; fi
           {
             echo "main の CI が失敗した。"
