@@ -113,30 +113,60 @@ describe.each(CONFORMANCE_BACKENDS)("conformance (%s)", (backend) => {
         "memory-payload-read-mutation",
       ]),
     );
-    expect(report.ruleCounts["MEM-2"]?.passed).toBe(2);
     expect(report.ruleCounts["MEM-6"]?.passed).toBe(2);
+  });
+
+  test("the cases added in data 1.3.0 are required (memory) or reported as not-applicable by rule", () => {
+    if (backend === "memory") {
+      expect(report.requiredCaseIds).toContain(
+        "memory-store-shared-configuration",
+      );
+      expect(report.ruleCounts["MEM-2"]?.passed).toBe(3);
+    } else {
+      expect(report.requiredCaseIds).not.toContain(
+        "memory-store-shared-configuration",
+      );
+    }
+    expect(report.ruleCounts["BT-D6a"]).toMatchObject({
+      passed: 0,
+      failed: 0,
+      "not-applicable": 10,
+    });
+    const unprovidedRules = Object.keys(report.ruleCounts).filter((rule) =>
+      /^(SQ|SPN|BT)-/.test(rule),
+    );
+    expect(unprovidedRules.length).toBeGreaterThan(0);
+    for (const rule of unprovidedRules) {
+      expect(report.ruleCounts[rule]).toMatchObject({
+        passed: 0,
+        failed: 0,
+      });
+      expect(report.ruleCounts[rule]?.["not-applicable"]).toBeGreaterThan(0);
+    }
   });
 
   test("required results exactly cover all applicable cases", () => {
     expect(report.requiredCaseIds).toHaveLength(
-      backend === "memory" ? 66 : 106,
+      backend === "memory" ? 67 : 106,
     );
     expect(
       report.results.filter((r) => r.status === "passed").map((r) => r.caseId),
     ).toEqual(report.requiredCaseIds);
     expect(report.counts).toEqual({
-      passed: backend === "memory" ? 66 : 106,
+      passed: backend === "memory" ? 67 : 106,
       failed: 0,
-      "not-applicable": 12,
+      "not-applicable": 56,
       unverified: 0,
       "not-representable": 0,
     });
     expect(report.backendNotApplicable).toHaveLength(
-      backend === "memory" ? 46 : 6,
+      backend === "memory" ? 46 : 7,
     );
     expect(
-      report.notApplicableReasons.map((entry) => entry.count).sort(),
-    ).toEqual([4, 8]);
+      report.notApplicableReasons
+        .map((entry) => entry.count)
+        .sort((a, b) => a - b),
+    ).toEqual([4, 8, 10, 34]);
     expect(
       report.results
         .filter((r) => r.status === "not-applicable")

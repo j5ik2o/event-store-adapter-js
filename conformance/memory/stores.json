@@ -1,6 +1,6 @@
 {
   "format": "scenarios",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "cases": [
     {
       "id": "memory-store-new-independent",
@@ -315,6 +315,175 @@
             "result": "snapshot",
             "head_seq_nr": 2,
             "snapshot": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "memory-store-shared-configuration",
+      "rules": [
+        "MEM-2"
+      ],
+      "description": "共有して生成した2つ目のストアは、記録と排他制御だけでなく設定（履歴の保持件数）も共有する。保持件数1の1つ目のストアと共有した2つ目のストアからスナップショット付きの追記を重ねても、履歴は最新の1件だけが残る。",
+      "backends": [
+        "memory"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 3
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          },
+          "s2": {
+            "aggregate": {
+              "total": 2
+            },
+            "seq_nr": 2,
+            "manifest": ""
+          },
+          "s3": {
+            "aggregate": {
+              "total": 3
+            },
+            "seq_nr": 3,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "createStore",
+          "arguments": {
+            "name": "second",
+            "storage": "shared",
+            "shared_with": "primary"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "store": "second",
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                1
+              ],
+              "marked": [],
+              "absent": []
+            }
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e2",
+            "snapshot": "s2"
+          },
+          "store": "second",
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                2
+              ],
+              "marked": [],
+              "absent": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e3",
+            "snapshot": "s3"
+          },
+          "store": "second",
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "history": {
+              "active": [
+                3
+              ],
+              "marked": [],
+              "absent": [
+                1,
+                2
+              ]
+            }
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 3,
+            "snapshot": "s3"
           }
         }
       ]

@@ -403,7 +403,7 @@ jobs:
       - name: Verify conformance data
         run: |
           python3 tools/conformance/manifest.py verify
-          echo "432241f3a9e45fc169b3fcdead480b505832af1eed9f4f48357210daccce84eb  conformance/manifest.json" | sha256sum -c -
+          echo "0157c012042afa9a19f0bff509a433a4bd5ddc5b674de864a41bec453c460691  conformance/manifest.json" | sha256sum -c -
           echo "37c91f8f94e10c73513a9c1deef990ea4deea96d5001ae700d6bf799658d0e32  api-surface/surface.json" | sha256sum -c -
       - name: Test semver detection
         run: |

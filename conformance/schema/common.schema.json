@@ -56,7 +56,7 @@
         },
         "rule": {
           "type": "string",
-          "pattern": "^(K|T|H|W|R|E|S|SP|DY|D|F|MEM)-[1-9][0-9]*$"
+          "pattern": "^(K|T|H|W|R|E|S|SP|DY|D|F|MEM|SQ|SPN|BT)-[1-9][0-9]*$"
         },
         "message": {
           "type": "object",
@@ -145,7 +145,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^(K|T|H|W|R|E|S|SP|DY|D|F|MEM)-[1-9][0-9]*$"
+            "pattern": "^((K|T|H|W|R|E|S|SP|DY|D|F|MEM|SQ|SPN|BT)-[1-9][0-9]*|BT-D6a)$"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -158,7 +158,10 @@
           "items": {
             "enum": [
               "memory",
-              "dynamodb"
+              "dynamodb",
+              "sqlite",
+              "spanner",
+              "bigtable"
             ]
           },
           "minItems": 1,
@@ -198,8 +201,23 @@
               "type": "integer",
               "minimum": 0
             },
+            "lock_wait_milliseconds": {
+              "type": "integer",
+              "minimum": 0
+            },
             "change_feed": {
               "type": "boolean"
+            },
+            "ttl_grace_days": {
+              "type": "integer"
+            },
+            "transaction_retry_limit": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "envelope_limit_bytes": {
+              "type": "integer",
+              "minimum": 1
             }
           },
           "required": [
@@ -322,18 +340,239 @@
         },
         "seed": {
           "type": "object",
-          "properties": {
-            "items": {
-              "type": "array",
-              "items": {
-                "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/item"
-              }
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/item"
+                  }
+                }
+              },
+              "required": [
+                "items"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "configuration": {
+                  "type": "object",
+                  "properties": {
+                    "store_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                    },
+                    "layout_version": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9223372036854775807
+                    },
+                    "keep_snapshot_count": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 1,
+                      "maximum": 9223372036854775807
+                    },
+                    "retention_mode": {
+                      "enum": [
+                        "delete",
+                        "ttl"
+                      ]
+                    },
+                    "change_feed_enabled": {
+                      "enum": [
+                        0,
+                        1
+                      ]
+                    }
+                  },
+                  "required": [
+                    "store_id",
+                    "layout_version",
+                    "keep_snapshot_count",
+                    "retention_mode",
+                    "change_feed_enabled"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "configuration"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "configuration": {
+                  "type": "object",
+                  "properties": {
+                    "store_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                    },
+                    "layout_version": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9223372036854775807
+                    },
+                    "keep_snapshot_count": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 1,
+                      "maximum": 9223372036854775807
+                    },
+                    "retention_mode": {
+                      "enum": [
+                        "delete",
+                        "ttl"
+                      ]
+                    },
+                    "change_feed_enabled": {
+                      "type": "boolean"
+                    },
+                    "ttl_grace_days": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 1,
+                      "maximum": 9223372036854775807
+                    }
+                  },
+                  "required": [
+                    "store_id",
+                    "layout_version",
+                    "keep_snapshot_count",
+                    "retention_mode",
+                    "ttl_grace_days",
+                    "change_feed_enabled"
+                  ],
+                  "additionalProperties": false
+                },
+                "row_deletion_policy_days": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1,
+                  "maximum": 9223372036854775807
+                }
+              },
+              "required": [
+                "configuration",
+                "row_deletion_policy_days"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "configuration": {
+                  "type": "object",
+                  "properties": {
+                    "journal": {
+                      "type": "object",
+                      "properties": {
+                        "store_id": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                        },
+                        "layout_version": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9223372036854775807
+                        },
+                        "keep_snapshot_count": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 1,
+                          "maximum": 9223372036854775807
+                        },
+                        "retention_mode": {
+                          "enum": [
+                            "delete"
+                          ]
+                        },
+                        "envelope_limit_bytes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9223372036854775807
+                        }
+                      },
+                      "required": [
+                        "store_id",
+                        "layout_version",
+                        "keep_snapshot_count",
+                        "retention_mode",
+                        "envelope_limit_bytes"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "head": {
+                      "type": "object",
+                      "properties": {
+                        "store_id": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                        },
+                        "layout_version": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9223372036854775807
+                        },
+                        "keep_snapshot_count": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 1,
+                          "maximum": 9223372036854775807
+                        },
+                        "retention_mode": {
+                          "enum": [
+                            "delete"
+                          ]
+                        },
+                        "envelope_limit_bytes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9223372036854775807
+                        }
+                      },
+                      "required": [
+                        "store_id",
+                        "layout_version",
+                        "keep_snapshot_count",
+                        "retention_mode",
+                        "envelope_limit_bytes"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "journal",
+                    "head"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "configuration"
+              ],
+              "additionalProperties": false
             }
-          },
-          "required": [
-            "items"
-          ],
-          "additionalProperties": false
+          ]
         },
         "clock": {
           "type": "object",
@@ -369,7 +608,9 @@
                   "retention-delete",
                   "retention-mark",
                   "configuration-read",
-                  "configuration-create"
+                  "configuration-create",
+                  "journal-write-previous",
+                  "journal-write-tail"
                 ]
               },
               "kind": {
@@ -378,7 +619,8 @@
                   "serialization-error",
                   "sdk-error",
                   "sdk-response",
-                  "read-interleave"
+                  "read-interleave",
+                  "transaction-aborted"
                 ]
               },
               "details": {
@@ -961,7 +1203,8 @@
           "type": "array",
           "items": {
             "enum": [
-              "retention-failure"
+              "retention-failure",
+              "journal-write-failure"
             ]
           }
         },
@@ -1401,6 +1644,54 @@
                 "pointer",
                 "value"
               ],
+              "additionalProperties": false
+            },
+            "expect": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/result"
+            }
+          },
+          "required": [
+            "op",
+            "arguments",
+            "expect"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "holdWriteLock"
+              ]
+            },
+            "arguments": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            },
+            "expect": {
+              "$ref": "https://j5ik2o.github.io/event-store-adapter/conformance/schema/common.schema.json#/$defs/result"
+            }
+          },
+          "required": [
+            "op",
+            "arguments",
+            "expect"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "releaseWriteLock"
+              ]
+            },
+            "arguments": {
+              "type": "object",
+              "properties": {},
               "additionalProperties": false
             },
             "expect": {

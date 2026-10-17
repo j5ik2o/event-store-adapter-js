@@ -1,6 +1,6 @@
 {
   "format": "scenarios",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "cases": [
     {
       "id": "core-replay-without-snapshot",
@@ -21,7 +21,10 @@
       "description": "存在しない集約、スナップショットなしの追記、包含境界と全封筒の読み取り。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -208,7 +211,10 @@
       "description": "ヘッドが進んでもスナップショットは古いままでよい。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -344,7 +350,10 @@
       "description": "省略したイベントとスナップショットの manifest は空文字列として返る。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -431,7 +440,10 @@
       "description": "値の前方一致は別の集約であり、保存や読み取りが混ざらない。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -567,7 +579,10 @@
       "description": "確定済みの番号で追記すると楽観ロックになり、封筒とスナップショットは変わらない。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -738,7 +753,10 @@
       "description": "確定済みの番号で追記すると楽観ロックになり、封筒とスナップショットは変わらない。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -908,7 +926,10 @@
       "description": "確定済みの番号で追記すると楽観ロックになり、封筒とスナップショットは変わらない。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -1100,7 +1121,10 @@
       "description": "ヘッドより2以上先の番号は契約違反であり、追記されない。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -1245,7 +1269,10 @@
       "description": "ヘッドがない集約への7番の追記は飛び番として拒む。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -1363,7 +1390,10 @@
       "description": "0番のイベントは作成を行わず拒む。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -1482,7 +1512,10 @@
       "description": "確定済みの番号で追記すると楽観ロックになり、封筒とスナップショットは変わらない。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -1654,7 +1687,10 @@
       "description": "確定済みの番号で追記すると楽観ロックになり、封筒とスナップショットは変わらない。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -1825,7 +1861,10 @@
       "description": "確定済みの番号で追記すると楽観ロックになり、封筒とスナップショットは変わらない。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -2018,7 +2057,10 @@
       "description": "ヘッドより2以上先の番号は契約違反であり、追記されない。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -2164,7 +2206,10 @@
       "description": "ヘッドがない集約への7番の追記は飛び番として拒む。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -2283,7 +2328,10 @@
       "description": "0番のイベントは作成を行わず拒む。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -2403,7 +2451,10 @@
       "description": "イベントとスナップショットの番号が異なる書き込みは全体が未確定になる。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -2496,7 +2547,10 @@
       "description": "イベントとスナップショットの番号が異なる書き込みは全体が未確定になる。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -2588,7 +2642,10 @@
       "description": "正常な6番までを確定した後、範囲外時刻の7番だけを拒み、ヘッドと既存イベントを保つ。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -2775,7 +2832,10 @@
       "description": "正常な6番までを確定した後、範囲外時刻の7番だけを拒み、ヘッドと既存イベントを保つ。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -2962,7 +3022,10 @@
       "description": "正常な6番までを確定した後、範囲外時刻の7番だけを拒み、ヘッドと既存イベントを保つ。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -3149,7 +3212,10 @@
       "description": "正常な6番までを確定した後、範囲外時刻の7番だけを拒み、ヘッドと既存イベントを保つ。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -3336,7 +3402,10 @@
       "description": "seq_nrの値域違反は確定前に拒む。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -3407,7 +3476,10 @@
       "description": "seq_nrの値域違反は確定前に拒む。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -3474,7 +3546,10 @@
       "description": "標準時刻型の精度に合う境界時刻を保存し、同じ時刻を読み取る。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "representation": {
         "time_precision": "nanoseconds"
@@ -3537,7 +3612,10 @@
       "description": "標準時刻型の精度に合う境界時刻を保存し、同じ時刻を読み取る。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "representation": {
         "time_precision": "nanoseconds"
@@ -3600,7 +3678,10 @@
       "description": "標準時刻型の精度に合う境界時刻を保存し、同じ時刻を読み取る。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "representation": {
         "time_precision": "milliseconds"
@@ -3663,7 +3744,10 @@
       "description": "標準時刻型の精度に合う境界時刻を保存し、同じ時刻を読み取る。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "representation": {
         "time_precision": "milliseconds"
@@ -3726,7 +3810,10 @@
       "description": "null・真偽値・文字列・数値・配列・オブジェクトをpayloadのルートとして往復する。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,

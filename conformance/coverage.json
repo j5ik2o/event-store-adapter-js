@@ -1,6 +1,6 @@
 {
   "format": "coverage",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "required_rules": [
     "T-1",
     "T-3",
@@ -47,7 +47,8 @@
     "DY-12",
     "DY-16",
     "DY-17",
-    "K-1"
+    "K-1",
+    "BT-D6a"
   ],
   "exclusions": [
     {
@@ -122,8 +123,8 @@
     },
     {
       "rule": "K-2",
-      "status": "no-target-profile",
-      "reason": "ハッシュを使う保存先がない。キーへの埋め込み方は、その保存先のプロファイルが定める。"
+      "status": "out-of-scope",
+      "reason": "SpannerとBigtableはハッシュを保存キーに使うが、キーへの埋め込み（主キーの列・行キーのバイト列）は生の行の形に寄るので、操作の場面で表せない。各言語の試験に任せる。DynamoDBはこのハッシュを保存キーに使わない。"
     },
     {
       "rule": "MEM-4",
@@ -159,6 +160,191 @@
       "rule": "MEM-11",
       "status": "core-scenarios",
       "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をメモリで実行して確かめる。メモリ固有の規則番号は場面に付けない。"
+    },
+    {
+      "rule": "SQ-1",
+      "status": "out-of-scope",
+      "reason": "接続の設定（SQLiteの版の下限、locking_mode・journal_mode・synchronous、shared cache、busyの待ち時間の既定値、ファイルの置き場）は操作の場面で表せないので、各言語の試験に任せる。busyの待ち時間はstore.lock_wait_millisecondsで明示する。"
+    },
+    {
+      "rule": "SQ-3",
+      "status": "core-scenarios",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSQLiteで実行して確かめる。SQLite固有の規則番号は場面に付けない。"
+    },
+    {
+      "rule": "SQ-4",
+      "status": "core-scenarios",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSQLiteで実行して確かめる。SQLite固有の規則番号は場面に付けない。"
+    },
+    {
+      "rule": "SQ-5",
+      "status": "core-scenarios",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSQLiteで実行して確かめる。SQLite固有の規則番号は場面に付けない。"
+    },
+    {
+      "rule": "SQ-6",
+      "status": "core-scenarios",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSQLiteで実行して確かめる。SQLite固有の規則番号は場面に付けない。"
+    },
+    {
+      "rule": "SQ-8",
+      "status": "core-scenarios",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSQLiteで実行して確かめる。SQLite固有の規則番号は場面に付けない。"
+    },
+    {
+      "rule": "SQ-9",
+      "status": "core-scenarios",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSQLiteで実行して確かめる。SQLite固有の規則番号は場面に付けない。"
+    },
+    {
+      "rule": "SQ-10",
+      "status": "core-scenarios",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSQLiteで実行して確かめる。SQLite固有の規則番号は場面に付けない。"
+    },
+    {
+      "rule": "SQ-12",
+      "status": "not-provided",
+      "reason": "変更フィードは最初の版で提供しない（SQ-20）。head_transitionを追記のトランザクションに含める義務は、フィードを提供するときだけ生じる。"
+    },
+    {
+      "rule": "SQ-14",
+      "status": "out-of-scope",
+      "reason": "全接続のjournal_modeとsynchronousの設定・確認は操作の場面で表せないので、各言語の試験に任せる。"
+    },
+    {
+      "rule": "SQ-15",
+      "status": "out-of-scope",
+      "reason": "接続から取得したSQLite本体の版の確認は操作の場面で表せないので、各言語の試験に任せる。"
+    },
+    {
+      "rule": "SQ-16",
+      "status": "out-of-scope",
+      "reason": "テーブル定義（STRICTの宣言の照合）は操作の場面で表せないので、各言語の試験に任せる。テーブルの形は各言語の試験で確かめる。"
+    },
+    {
+      "rule": "SQ-17",
+      "status": "out-of-scope",
+      "reason": "BEGIN IMMEDIATEをヘッドの照合の前に開始し、接続を操作間で共有しない義務は、同時に走る競合でしか観測できない。同時実行は共通のデータに入れず、各言語の試験に任せる。"
+    },
+    {
+      "rule": "SQ-18",
+      "status": "not-provided",
+      "reason": "変更フィードは最初の版で提供しない（SQ-20）。遷移の無期限の保持と、INSERT失敗時のロールバックは、フィードを提供するときだけ生じる。"
+    },
+    {
+      "rule": "SPN-1",
+      "reason": "接続の構成（同じデータベース、SERIALIZABLEの明示、strongの読み取り、リージョン構成）は操作の場面で表せないので、各言語の試験に任せる。",
+      "status": "out-of-scope"
+    },
+    {
+      "rule": "SPN-3",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSpannerで実行して確かめる。Spanner固有の規則番号は場面に付けない。",
+      "status": "core-scenarios"
+    },
+    {
+      "rule": "SPN-4",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSpannerで実行して確かめる。Spanner固有の規則番号は場面に付けない。",
+      "status": "core-scenarios"
+    },
+    {
+      "rule": "SPN-5",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSpannerで実行して確かめる。Spanner固有の規則番号は場面に付けない。",
+      "status": "core-scenarios"
+    },
+    {
+      "rule": "SPN-6",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSpannerで実行して確かめる。Spanner固有の規則番号は場面に付けない。",
+      "status": "core-scenarios"
+    },
+    {
+      "rule": "SPN-9",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSpannerで実行して確かめる。Spanner固有の規則番号は場面に付けない。",
+      "status": "core-scenarios"
+    },
+    {
+      "rule": "SPN-11",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSpannerで実行して確かめる。Spanner固有の規則番号は場面に付けない。",
+      "status": "core-scenarios"
+    },
+    {
+      "rule": "SPN-13",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をSpannerで実行して確かめる。Spanner固有の規則番号は場面に付けない。",
+      "status": "core-scenarios"
+    },
+    {
+      "rule": "SPN-10",
+      "reason": "結果の分割とストリームの再開は、SDKの応答の分割の形に寄るので操作の場面で表せない。各言語の試験に任せる。主キーの範囲と昇順の読み取りは、共通の場面をSpannerで実行して確かめる。",
+      "status": "out-of-scope"
+    },
+    {
+      "rule": "SPN-12",
+      "reason": "TTL方式の印の時刻はサーバーのCURRENT_TIMESTAMP()で、時計を差し込めず、期限を決定的に観測できない。各言語の試験に任せる。即時削除の方式は、共通の場面をSpannerで実行して確かめる。",
+      "status": "out-of-scope"
+    },
+    {
+      "rule": "SPN-14",
+      "reason": "変更フィードは最初の版で提供しない（SPN-17）。フィードを提供するときだけ生じる規則である。",
+      "status": "not-provided"
+    },
+    {
+      "rule": "BT-1",
+      "reason": "稼働中の操作を同じクラスタへ固定するapp profileは、配置の設定で利用者が守るもので、操作の場面で表せない。各言語の試験に任せる。",
+      "status": "out-of-scope"
+    },
+    {
+      "rule": "BT-2",
+      "reason": "列ファミリとGCの設定は生の行の形に寄るので操作の場面で表せない。各言語の試験に任せる。",
+      "status": "out-of-scope"
+    },
+    {
+      "rule": "BT-3",
+      "reason": "ハッシュの意図的な衝突は、キーの埋め込みの生の行の形に寄るので操作の場面で表せない。各言語の試験に任せる。",
+      "status": "out-of-scope"
+    },
+    {
+      "rule": "BT-4",
+      "reason": "seq_nrの8バイトの符号なしビッグエンディアンの行キーと範囲の作り方は、生の行の形に寄るので操作の場面で表せない。各言語の試験に任せる。",
+      "status": "out-of-scope"
+    },
+    {
+      "rule": "BT-5",
+      "reason": "保持の後に古い書き手が履歴を再コピーする場面は、別の書き手の割り込みと遅延が要るので操作の場面で表せない。各言語の試験に任せる。",
+      "status": "out-of-scope"
+    },
+    {
+      "rule": "BT-6",
+      "reason": "セル時刻と過去のセル版は生の行の形に寄るので操作の場面で表せない。各言語の試験に任せる。",
+      "status": "out-of-scope"
+    },
+    {
+      "rule": "BT-8",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をBigtableで実行して確かめる。Bigtable固有の規則番号は場面に付けない。",
+      "status": "core-scenarios"
+    },
+    {
+      "rule": "BT-9",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をBigtableで実行して確かめる。Bigtable固有の規則番号は場面に付けない。",
+      "status": "core-scenarios"
+    },
+    {
+      "rule": "BT-11",
+      "reason": "共通契約の場面（SP-2、R-1〜R-8、S-1〜S-4など）をBigtableで実行して確かめる。Bigtable固有の規則番号は場面に付けない。",
+      "status": "core-scenarios"
+    },
+    {
+      "rule": "BT-10",
+      "reason": "ReadRowsのセル・行の分割と再開は、SDKの応答の分割の形に寄るので操作の場面で表せない。各言語の試験に任せる。",
+      "status": "out-of-scope"
+    },
+    {
+      "rule": "BT-12",
+      "reason": "保持の後に古い書き手が履歴を再コピーする場面は、別の書き手の割り込みと遅延が要るので操作の場面で表せない。各言語の試験に任せる。",
+      "status": "out-of-scope"
+    },
+    {
+      "rule": "BT-14",
+      "reason": "変更フィードは最初の版で提供しない（BT-17）。フィードを提供するときだけ生じる規則である。",
+      "status": "not-provided"
     }
   ],
   "notes": [
@@ -195,8 +381,24 @@
       "reason": "hash.mdが収録を要求するFNV-1a 64の4件はK-1として対象に含める。変更フィード、購読側の再同期、旧配置の移行、公開APIの型や不変性、K-2のキー埋め込みはv1の対象外である。"
     },
     {
-      "topic": "ADR-0008の固定バイナリ封筒",
-      "reason": "ADR-0008とBigtable仕様は各言語のエンコード・復元検証を求めるが、適合テストデータへの入出力表の収録は求めていない。v1は共通契約とDynamoDBを中心とするため、Bigtable固有の固定バイナリ封筒は対象外のままとする。"
+      "topic": "Bigtableの固定バイナリ封筒",
+      "reason": "ADR-0008とBigtable仕様（4章、BT-D6a）が定める封筒の符号化と復元は、values/bigtable-envelope.jsonの値の表で確かめる。入力は封筒の各項目、期待値は16進のバイト列で、検証の道具のdata.pyが仕様から独立に符号化して照合する。正しい封筒のpayloadの復元の失敗（直列化エラー）は、シリアライザの結果なので値の表に含めない。"
+    },
+    {
+      "topic": "SQLite・Spanner・Bigtableの同時実行",
+      "reason": "2つの読み取りの間に別の接続が書く事例（R-8）と、本当に同時に走る競合は、SQLite・Spanner・Bigtableの共通のデータに入れない。実時間の競争は結果が非決定的で、保存先ごとに作る方法が異なるため、各言語の試験に任せる。共有した2つ目のストアでの直列の重複・古いseq_nrはW-7・W-8の場面で、SQLiteの書き込みのロックはholdWriteLockの場面で検査する。"
+    },
+    {
+      "topic": "SQLiteのテーブルの形",
+      "reason": "SQLiteのテーブルの形（テーブル・列・主キー・STRICT・config行の保存形式、SQ-2・SQ-16が照合する定義）は操作の場面で表せない。物理的な保存形式は適合テストデータの対象外とし、各言語の試験に任せる（ハブ #47 の決まったこと4）。データは論理的な設定の種まき（seed.configuration）で、記録した設定との食い違いだけを確かめる。"
+    },
+    {
+      "topic": "Spannerのテーブルの形",
+      "reason": "Spannerのテーブルの形（5つのテーブルの主キーと列、config行の保存形式、行削除ポリシーのDDL。SPN-2が照合する定義）は操作の場面で表せない。物理的な保存形式は適合テストデータの対象外とし、各言語の試験に任せる（ハブ #47 の決まったこと4）。データは論理的な設定の種まき（seed.configuration）で、記録した設定との食い違いだけを確かめる。行削除ポリシーの日数だけは、論理的な値としてseed.row_deletion_policy_daysに書く。"
+    },
+    {
+      "topic": "Bigtableの書き出し後の条件付き更新の不成立",
+      "reason": "bigtable.md 11章の表の「直前のイベントの書き出し後に、新しい条件付き更新が不成立」の行は、別の書き手が書き出しと条件付き更新の間に割り込む必要があり、実時間の競争になるので、共通のデータに入れない。各言語の試験に任せる。直前のイベントの書き出しの失敗、新しい末尾の書き出しの失敗、条件付き更新の応答の消失は、論理的な段階（journal-write-previous・journal-write-tail・commit）への差し込みで確かめる。"
     }
   ]
 }

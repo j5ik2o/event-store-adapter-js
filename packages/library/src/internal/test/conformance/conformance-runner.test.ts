@@ -46,8 +46,8 @@ const bindingFor = (
 
 describe("runConformance", () => {
   test.each([
-    ["memory", 12, 66, 78],
-    ["dynamodb", 12, 106, 118],
+    ["memory", 56, 67, 123],
+    ["dynamodb", 56, 106, 162],
   ] as const)(
     "reports %s with %i not-applicable and %i unverified of %i",
     async (backend, notApplicable, unverified, total) => {
@@ -125,9 +125,9 @@ describe("runConformance", () => {
     const report = await run("memory", new ConformanceMemoryBinding());
     expect(report.results.filter((r) => r.status === "failed")).toEqual([]);
     expect(report.counts).toEqual({
-      passed: 66,
+      passed: 67,
       failed: 0,
-      "not-applicable": 12,
+      "not-applicable": 56,
       unverified: 0,
       "not-representable": 0,
     });
@@ -139,8 +139,10 @@ describe("runConformance", () => {
       true,
     );
     expect(
-      report.notApplicableReasons.map((entry) => entry.count).sort(),
-    ).toEqual([4, 8]);
+      report.notApplicableReasons
+        .map((entry) => entry.count)
+        .sort((a, b) => a - b),
+    ).toEqual([4, 8, 10, 34]);
   });
 
   test("passes seed items and faults to createStore before creation", async () => {
@@ -185,13 +187,50 @@ describe("runConformance", () => {
       "MEM-9",
       "MEM-10",
       "MEM-11",
+      "SQ-1",
+      "SQ-3",
+      "SQ-4",
+      "SQ-5",
+      "SQ-6",
+      "SQ-8",
+      "SQ-9",
+      "SQ-10",
+      "SQ-12",
+      "SQ-14",
+      "SQ-15",
+      "SQ-16",
+      "SQ-17",
+      "SQ-18",
+      "SPN-1",
+      "SPN-3",
+      "SPN-4",
+      "SPN-5",
+      "SPN-6",
+      "SPN-9",
+      "SPN-11",
+      "SPN-13",
+      "SPN-10",
+      "SPN-12",
+      "SPN-14",
+      "BT-1",
+      "BT-2",
+      "BT-3",
+      "BT-4",
+      "BT-5",
+      "BT-6",
+      "BT-8",
+      "BT-9",
+      "BT-11",
+      "BT-10",
+      "BT-12",
+      "BT-14",
     ]);
     expect(report.implementationCommit).toBe("abc123");
     const summary = summarizeConformanceReport(report);
     expect(summary).toContain("abc123");
     expect(summary).toContain("W-5");
     expect(summary).toContain("R-7");
-    expect(summary).toContain("expected 1.2.0");
+    expect(summary).toContain("expected 1.3.0");
   });
 
   test("keeps per-backend status for the same case id", async () => {
@@ -235,4 +274,32 @@ describe("runConformance", () => {
       expect(summary).toContain(s);
     }
   });
+});
+
+test("reports a spanner-only scenario with unknown settings as not-applicable, not failed", async () => {
+  const synthetic = {
+    id: "spanner-only",
+    rules: ["SPN-1"],
+    source: "spanner/configuration.json",
+    format: "scenarios" as const,
+    body: {
+      id: "spanner-only",
+      backends: ["spanner"],
+      store: { transaction_retry_limit: 3 },
+      steps: [{ op: "holdWriteLock", arguments: {} }],
+    },
+  };
+  const report = await runConformance({
+    data: { ...data, cases: [synthetic as never] },
+    manifest,
+    backend: "memory",
+    implementationVersion: "0.0.0",
+    implementationCommit: null,
+    binding: bindingFor("memory"),
+  });
+  expect(report.results).toHaveLength(1);
+  expect(report.results[0]).toMatchObject({ status: "not-applicable" });
+  expect(report.results[0]?.reason).not.toBe("");
+  expect(report.counts.failed).toBe(0);
+  expect(report.requiredCaseIds).toEqual([]);
 });

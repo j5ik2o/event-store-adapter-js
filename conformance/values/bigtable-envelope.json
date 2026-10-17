@@ -1,0 +1,191 @@
+{
+  "format": "values",
+  "version": "1.3.0",
+  "cases": [
+    {
+      "id": "bigtable-envelope-event-empty",
+      "rules": [
+        "BT-D6a"
+      ],
+      "description": "manifestとpayloadが空のイベント封筒。",
+      "operation": "encodeBigtableEventEnvelope",
+      "input": {
+        "aid": "Order-9",
+        "seq_nr": 1,
+        "occurred_at_ns": "0",
+        "manifest": "",
+        "payload_hex": ""
+      },
+      "expect": {
+        "value": "0100074f726465722d39000000000000000100000000000000000000000000000000"
+      }
+    },
+    {
+      "id": "bigtable-envelope-event-bytes",
+      "rules": [
+        "BT-D6a"
+      ],
+      "description": "payloadがバイト列のイベント封筒。manifestの長さとpayloadの長さは別の欄に入る。",
+      "operation": "encodeBigtableEventEnvelope",
+      "input": {
+        "aid": "Order-9",
+        "seq_nr": 2,
+        "occurred_at_ns": "1000000000",
+        "manifest": "v1",
+        "payload_hex": "00010203feff"
+      },
+      "expect": {
+        "value": "0100074f726465722d390000000000000002000000003b9aca000000000276310000000600010203feff"
+      }
+    },
+    {
+      "id": "bigtable-envelope-event-utf8",
+      "rules": [
+        "BT-D6a"
+      ],
+      "description": "多バイトのUTF-8を含むaidとmanifestの長さはバイト数で数える。seq_nrは2^53-1、occurred_at_nsは-1。",
+      "operation": "encodeBigtableEventEnvelope",
+      "input": {
+        "aid": "注文-1",
+        "seq_nr": 9007199254740991,
+        "occurred_at_ns": "-1",
+        "manifest": "é",
+        "payload_hex": "ff"
+      },
+      "expect": {
+        "value": "010008e6b3a8e696872d31001fffffffffffffffffffffffffffff00000002c3a900000001ff"
+      }
+    },
+    {
+      "id": "bigtable-envelope-event-occurred-at-min",
+      "rules": [
+        "BT-D6a"
+      ],
+      "description": "occurred_at_nsの符号付き64bitの下端。",
+      "operation": "encodeBigtableEventEnvelope",
+      "input": {
+        "aid": "Order-9",
+        "seq_nr": 1,
+        "occurred_at_ns": "-9223372036854775808",
+        "manifest": "",
+        "payload_hex": ""
+      },
+      "expect": {
+        "value": "0100074f726465722d39000000000000000180000000000000000000000000000000"
+      }
+    },
+    {
+      "id": "bigtable-envelope-event-occurred-at-max",
+      "rules": [
+        "BT-D6a"
+      ],
+      "description": "occurred_at_nsの符号付き64bitの上端。",
+      "operation": "encodeBigtableEventEnvelope",
+      "input": {
+        "aid": "Order-9",
+        "seq_nr": 1,
+        "occurred_at_ns": "9223372036854775807",
+        "manifest": "",
+        "payload_hex": ""
+      },
+      "expect": {
+        "value": "0100074f726465722d3900000000000000017fffffffffffffff0000000000000000"
+      }
+    },
+    {
+      "id": "bigtable-envelope-snapshot-empty",
+      "rules": [
+        "BT-D6a"
+      ],
+      "description": "manifestとpayloadが空のスナップショット封筒。最も短い封筒で17バイト。",
+      "operation": "encodeBigtableSnapshotEnvelope",
+      "input": {
+        "seq_nr": 1,
+        "manifest": "",
+        "payload_hex": ""
+      },
+      "expect": {
+        "value": "0100000000000000010000000000000000"
+      }
+    },
+    {
+      "id": "bigtable-envelope-snapshot-utf8",
+      "rules": [
+        "BT-D6a"
+      ],
+      "description": "多バイトのUTF-8を含むmanifestとseq_nrの2^53-1を持つスナップショット封筒。",
+      "operation": "encodeBigtableSnapshotEnvelope",
+      "input": {
+        "seq_nr": 9007199254740991,
+        "manifest": "スナップ",
+        "payload_hex": "7b7d"
+      },
+      "expect": {
+        "value": "01001fffffffffffff0000000ce382b9e3838ae38383e38397000000027b7d"
+      }
+    },
+    {
+      "id": "bigtable-envelope-event-trailing-bytes",
+      "rules": [
+        "BT-D6a"
+      ],
+      "description": "イベント封筒の末尾に未使用のバイトがあると、復元は保存先エラーとなる。",
+      "operation": "decodeBigtableEnvelope",
+      "input": {
+        "kind": "event",
+        "bytes_hex": "0100074f726465722d3900000000000000010000000000000000000000000000000000"
+      },
+      "expect": {
+        "error": {
+          "category": "storage",
+          "message": {
+            "must_contain": [],
+            "must_not_contain": []
+          }
+        }
+      }
+    },
+    {
+      "id": "bigtable-envelope-event-length-mismatch",
+      "rules": [
+        "BT-D6a"
+      ],
+      "description": "イベント封筒のpayloadの長さの欄が実際のバイト数（4）と一致しない（5）と、復元は保存先エラーとなる。",
+      "operation": "decodeBigtableEnvelope",
+      "input": {
+        "kind": "event",
+        "bytes_hex": "0100074f726465722d3900000000000000010000000000000000000000000000000500000000"
+      },
+      "expect": {
+        "error": {
+          "category": "storage",
+          "message": {
+            "must_contain": [],
+            "must_not_contain": []
+          }
+        }
+      }
+    },
+    {
+      "id": "bigtable-envelope-event-unknown-version",
+      "rules": [
+        "BT-D6a"
+      ],
+      "description": "イベント封筒の先頭の形式の版番号が未知（0x02）だと、復元は保存先エラーとなる。",
+      "operation": "decodeBigtableEnvelope",
+      "input": {
+        "kind": "event",
+        "bytes_hex": "0200074f726465722d39000000000000000100000000000000000000000000000000"
+      },
+      "expect": {
+        "error": {
+          "category": "storage",
+          "message": {
+            "must_contain": [],
+            "must_not_contain": []
+          }
+        }
+      }
+    }
+  ]
+}
