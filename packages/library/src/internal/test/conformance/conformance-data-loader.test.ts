@@ -27,14 +27,14 @@ describe("loadConformanceData", () => {
     }
   });
 
-  test("loads 124 cases from the real data (30 values, 93 scenarios, 1 layout)", () => {
+  test("loads 169 cases from the real data (40 values, 128 scenarios, 1 layout)", () => {
     const data = loadConformanceData(root);
-    expect(data.version).toBe("1.2.0");
-    expect(data.cases).toHaveLength(124);
+    expect(data.version).toBe("1.3.0");
+    expect(data.cases).toHaveLength(169);
     const count = (f: string) =>
       data.cases.filter((c) => c.format === f).length;
-    expect(count("values")).toBe(30);
-    expect(count("scenarios")).toBe(93);
+    expect(count("values")).toBe(40);
+    expect(count("scenarios")).toBe(128);
     expect(count("layout")).toBe(1);
   });
 
@@ -51,7 +51,7 @@ describe("loadConformanceData", () => {
 
   test("fails when a file version is rewritten", () => {
     rewrite("values/aid.json", (t) =>
-      t.replace('"version": "1.2.0"', '"version": "2.0.0"'),
+      t.replace('"version": "1.3.0"', '"version": "2.0.0"'),
     );
     expect(() => loadConformanceData(copy as string)).toThrow();
   });
@@ -59,8 +59,8 @@ describe("loadConformanceData", () => {
   test("fails when a duplicate key is inserted", () => {
     rewrite("values/aid.json", (t) =>
       t.replace(
-        '"version": "1.2.0",',
-        '"version": "1.2.0", "version": "1.2.0",',
+        '"version": "1.3.0",',
+        '"version": "1.3.0", "version": "1.3.0",',
       ),
     );
     expect(() => loadConformanceData(copy as string)).toThrow();
@@ -70,7 +70,7 @@ describe("loadConformanceData", () => {
     const dir = makeCopy();
     const extra = {
       format: "scenarios",
-      version: "1.2.0",
+      version: "1.3.0",
       cases: [
         {
           id: "extra-time-case",
@@ -134,7 +134,7 @@ describe("loadConformanceData", () => {
       path.join(dir, "scenarios", "extra.json"),
       JSON.stringify({
         format: "scenarios",
-        version: "1.2.0",
+        version: "1.3.0",
         cases: [
           {
             id: "bad",
@@ -180,7 +180,7 @@ describe("loadConformanceData", () => {
       ["SP-1", "profile-documentation"],
       ["DY-18", "profile-documentation"],
       ["MEM-1", "profile-documentation"],
-      ["K-2", "no-target-profile"],
+      ["K-2", "out-of-scope"],
       ["MEM-4", "nondeterministic"],
       ["MEM-5", "core-scenarios"],
       ["MEM-7", "core-scenarios"],
@@ -188,6 +188,43 @@ describe("loadConformanceData", () => {
       ["MEM-9", "core-scenarios"],
       ["MEM-10", "core-scenarios"],
       ["MEM-11", "core-scenarios"],
+      ["SQ-1", "out-of-scope"],
+      ["SQ-3", "core-scenarios"],
+      ["SQ-4", "core-scenarios"],
+      ["SQ-5", "core-scenarios"],
+      ["SQ-6", "core-scenarios"],
+      ["SQ-8", "core-scenarios"],
+      ["SQ-9", "core-scenarios"],
+      ["SQ-10", "core-scenarios"],
+      ["SQ-12", "not-provided"],
+      ["SQ-14", "out-of-scope"],
+      ["SQ-15", "out-of-scope"],
+      ["SQ-16", "out-of-scope"],
+      ["SQ-17", "out-of-scope"],
+      ["SQ-18", "not-provided"],
+      ["SPN-1", "out-of-scope"],
+      ["SPN-3", "core-scenarios"],
+      ["SPN-4", "core-scenarios"],
+      ["SPN-5", "core-scenarios"],
+      ["SPN-6", "core-scenarios"],
+      ["SPN-9", "core-scenarios"],
+      ["SPN-11", "core-scenarios"],
+      ["SPN-13", "core-scenarios"],
+      ["SPN-10", "out-of-scope"],
+      ["SPN-12", "out-of-scope"],
+      ["SPN-14", "not-provided"],
+      ["BT-1", "out-of-scope"],
+      ["BT-2", "out-of-scope"],
+      ["BT-3", "out-of-scope"],
+      ["BT-4", "out-of-scope"],
+      ["BT-5", "out-of-scope"],
+      ["BT-6", "out-of-scope"],
+      ["BT-8", "core-scenarios"],
+      ["BT-9", "core-scenarios"],
+      ["BT-11", "core-scenarios"],
+      ["BT-10", "out-of-scope"],
+      ["BT-12", "out-of-scope"],
+      ["BT-14", "not-provided"],
     ]);
     expect(exclusions.every((e) => e.reason !== "")).toBe(true);
   });

@@ -11,7 +11,7 @@ import { createConformanceSchemaValidator } from "./conformance-schema-validator
 import { readConformanceText } from "./conformance-text-reader";
 import { parseEpochNanos, parseOccurredAtEpochNanos } from "./conformance-time";
 
-const SUPPORTED_VERSION = "1.2.0";
+const SUPPORTED_VERSION = "1.3.0";
 const NON_VALUE_KEYS = new Set(["payload", "aggregate", "binary_json"]);
 
 type JsonRecord = { readonly [key: string]: ConformanceJsonValue };
@@ -27,10 +27,13 @@ const expectedFormat = (file: string): string | undefined => {
   if (file === "manifest.json") return "manifest";
   if (parts[0] === "schema" && parts.length === 2 && isJson) return "schema";
   if (file === "dynamodb/layout.json") return "layout";
-  if (parts[0] === "dynamodb" && parts.length === 2 && isJson) {
-    return "scenarios";
-  }
-  if (parts[0] === "memory" && parts.length === 2 && isJson) {
+  if (
+    ["dynamodb", "memory", "sqlite", "spanner", "bigtable"].includes(
+      parts[0] ?? "",
+    ) &&
+    parts.length === 2 &&
+    isJson
+  ) {
     return "scenarios";
   }
   if (parts[0] === "values" && parts.length === 2 && isJson) return "values";

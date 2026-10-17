@@ -1,6 +1,6 @@
 {
   "format": "scenarios",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "cases": [
     {
       "id": "core-retention-zero",
@@ -11,7 +11,10 @@
       "description": "保持件数0では生成が設定エラーとなる。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": 0,
@@ -43,7 +46,10 @@
       "description": "現在のスナップショットとは別に、新しい保持件数分の履歴だけを残す。履歴読み取りの応答計画を差し込み、GSIの反映待ちによる差を除く。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": 1,
@@ -334,7 +340,10 @@
       "description": "現在のスナップショットとは別に、新しい保持件数分の履歴だけを残す。履歴読み取りの応答計画を差し込み、GSIの反映待ちによる差を除く。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": 2,
@@ -625,7 +634,10 @@
       "description": "保持件数なしでは現在だけを書き、履歴は作らない。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -740,7 +752,10 @@
       "description": "直列化または復元の失敗を直列化エラーとして区別する。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -839,7 +854,10 @@
       "description": "直列化または復元の失敗を直列化エラーとして区別する。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -938,7 +956,10 @@
       "description": "直列化または復元の失敗を直列化エラーとして区別する。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -1023,7 +1044,10 @@
       "description": "直列化または復元の失敗を直列化エラーとして区別する。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -1110,7 +1134,10 @@
       "description": "確定前の保存先失敗は保存先エラーで、イベントもスナップショットも読めない。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -1209,7 +1236,10 @@
       "description": "読み取りの保存先失敗を保存先エラーとして区別する。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -1286,7 +1316,10 @@
       "description": "読み取りの保存先失敗を保存先エラーとして区別する。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": null,
@@ -1366,7 +1399,10 @@
       "description": "保持フックを最終失敗させても追記は成功し、別経路で失敗を知らせ、次の保持フックが残りを片付ける。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": 1,
@@ -1589,7 +1625,10 @@
       "description": "保持対象の読み取りが最終失敗しても、追記結果は成功であり、次の保持フックで残りを片付ける。",
       "backends": [
         "memory",
-        "dynamodb"
+        "dynamodb",
+        "sqlite",
+        "spanner",
+        "bigtable"
       ],
       "store": {
         "retention_count": 1,

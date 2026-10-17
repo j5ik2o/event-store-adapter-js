@@ -7,7 +7,7 @@
       "const": "values"
     },
     "version": {
-      "const": "1.2.0"
+      "const": "1.3.0"
     },
     "cases": {
       "type": "array",
@@ -22,7 +22,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "pattern": "^(K|T|H|W|R|E|S|SP|DY|D|F|MEM)-[1-9][0-9]*$"
+              "pattern": "^((K|T|H|W|R|E|S|SP|DY|D|F|MEM|SQ|SPN|BT)-[1-9][0-9]*|BT-D6a)$"
             },
             "minItems": 1,
             "uniqueItems": true
@@ -35,7 +35,10 @@
               "buildAid",
               "validateOccurredAt",
               "validateSeqNr",
-              "fnv1a64"
+              "fnv1a64",
+              "encodeBigtableEventEnvelope",
+              "encodeBigtableSnapshotEnvelope",
+              "decodeBigtableEnvelope"
             ]
           },
           "input": {
@@ -104,6 +107,77 @@
                 },
                 "required": [
                   "utf8"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "aid": {
+                    "type": "string"
+                  },
+                  "seq_nr": {
+                    "type": "integer"
+                  },
+                  "occurred_at_ns": {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+$"
+                  },
+                  "manifest": {
+                    "type": "string"
+                  },
+                  "payload_hex": {
+                    "type": "string",
+                    "pattern": "^([0-9a-f]{2})*$"
+                  }
+                },
+                "required": [
+                  "aid",
+                  "seq_nr",
+                  "occurred_at_ns",
+                  "manifest",
+                  "payload_hex"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "seq_nr": {
+                    "type": "integer"
+                  },
+                  "manifest": {
+                    "type": "string"
+                  },
+                  "payload_hex": {
+                    "type": "string",
+                    "pattern": "^([0-9a-f]{2})*$"
+                  }
+                },
+                "required": [
+                  "seq_nr",
+                  "manifest",
+                  "payload_hex"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "event",
+                      "snapshot"
+                    ]
+                  },
+                  "bytes_hex": {
+                    "type": "string",
+                    "pattern": "^([0-9a-f]{2})*$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "bytes_hex"
                 ],
                 "additionalProperties": false
               }

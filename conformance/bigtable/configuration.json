@@ -1,0 +1,361 @@
+{
+  "format": "scenarios",
+  "version": "1.3.0",
+  "cases": [
+    {
+      "id": "bigtable-ttl-unsupported",
+      "rules": [
+        "BT-13"
+      ],
+      "description": "Bigtableの保存先は期限切れ方式を提供しないので、それを求める設定では生成が設定エラーとなる。",
+      "backends": [
+        "bigtable"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "ttl"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "bigtable-change-feed-unsupported",
+      "rules": [
+        "BT-17"
+      ],
+      "description": "Bigtableの保存先は最初の版で変更フィードを提供しないので、それを求める設定では生成が設定エラーとなる。",
+      "backends": [
+        "bigtable"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete",
+        "change_feed": true
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "bigtable-seeded-table-envelope-limit-mismatch",
+      "rules": [
+        "BT-16"
+      ],
+      "description": "journalとheadの設定で封筒の上限が異なる（1048576と2097152）と、生成が設定エラーとなる。",
+      "backends": [
+        "bigtable"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "seed": {
+        "configuration": {
+          "journal": {
+            "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+            "layout_version": 1,
+            "keep_snapshot_count": null,
+            "retention_mode": "delete",
+            "envelope_limit_bytes": 1048576
+          },
+          "head": {
+            "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+            "layout_version": 1,
+            "keep_snapshot_count": null,
+            "retention_mode": "delete",
+            "envelope_limit_bytes": 2097152
+          }
+        }
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "bigtable-seeded-keep-count-mismatch",
+      "rules": [
+        "E-1"
+      ],
+      "description": "両テーブルに記録した保持件数（2）とクライアントの保持件数（1）が異なると、生成が設定エラーとなる。",
+      "backends": [
+        "bigtable"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "seed": {
+        "configuration": {
+          "journal": {
+            "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+            "layout_version": 1,
+            "keep_snapshot_count": 2,
+            "retention_mode": "delete",
+            "envelope_limit_bytes": 1048576
+          },
+          "head": {
+            "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+            "layout_version": 1,
+            "keep_snapshot_count": 2,
+            "retention_mode": "delete",
+            "envelope_limit_bytes": 1048576
+          }
+        }
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "bigtable-seeded-envelope-limit-mismatch",
+      "rules": [
+        "BT-16"
+      ],
+      "description": "両テーブルに記録した封筒の上限（2097152）とクライアントの上限（1048576）が異なると、生成が設定エラーとなる。",
+      "backends": [
+        "bigtable"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "seed": {
+        "configuration": {
+          "journal": {
+            "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+            "layout_version": 1,
+            "keep_snapshot_count": null,
+            "retention_mode": "delete",
+            "envelope_limit_bytes": 2097152
+          },
+          "head": {
+            "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+            "layout_version": 1,
+            "keep_snapshot_count": null,
+            "retention_mode": "delete",
+            "envelope_limit_bytes": 2097152
+          }
+        }
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "bigtable-seeded-configuration-match",
+      "rules": [
+        "BT-16"
+      ],
+      "description": "両テーブルに記録した設定がクライアントの設定と一致すれば、生成が成功し、追記と読み取りができる。",
+      "backends": [
+        "bigtable"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          }
+        }
+      },
+      "seed": {
+        "configuration": {
+          "journal": {
+            "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+            "layout_version": 1,
+            "keep_snapshot_count": 1,
+            "retention_mode": "delete",
+            "envelope_limit_bytes": 1048576
+          },
+          "head": {
+            "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+            "layout_version": 1,
+            "keep_snapshot_count": 1,
+            "retention_mode": "delete",
+            "envelope_limit_bytes": 1048576
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 1,
+            "snapshot": "s1"
+          }
+        }
+      ],
+      "initialization": {
+        "expect": {
+          "result": "success"
+        }
+      }
+    },
+    {
+      "id": "bigtable-envelope-limit-above-maximum",
+      "rules": [
+        "BT-16"
+      ],
+      "description": "封筒の上限が最大（8388608）を超える（8388609）設定では、生成が設定エラーとなる。",
+      "backends": [
+        "bigtable"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete",
+        "envelope_limit_bytes": 8388609
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "bigtable-envelope-limit-below-minimum",
+      "rules": [
+        "BT-16"
+      ],
+      "description": "最小の封筒も収まらない上限（16）の設定では、生成が設定エラーとなる。",
+      "backends": [
+        "bigtable"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete",
+        "envelope_limit_bytes": 16
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    }
+  ]
+}

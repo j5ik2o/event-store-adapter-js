@@ -1,0 +1,499 @@
+{
+  "format": "scenarios",
+  "version": "1.3.0",
+  "cases": [
+    {
+      "id": "spanner-change-feed-unsupported",
+      "rules": [
+        "SPN-17"
+      ],
+      "description": "Spannerの保存先は最初の版で変更フィードを提供しないので、それを求める設定では生成が設定エラーとなる。",
+      "backends": [
+        "spanner"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete",
+        "change_feed": true
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "spanner-seeded-layout-version-mismatch",
+      "rules": [
+        "SPN-2"
+      ],
+      "description": "保存先に記録した配置の版（2）がクライアントの配置の版（1）と異なると、生成が設定エラーとなる。",
+      "backends": [
+        "spanner"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "seed": {
+        "configuration": {
+          "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+          "layout_version": 2,
+          "keep_snapshot_count": null,
+          "retention_mode": "delete",
+          "ttl_grace_days": null,
+          "change_feed_enabled": false
+        },
+        "row_deletion_policy_days": null
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "spanner-seeded-keep-count-mismatch",
+      "rules": [
+        "SPN-2"
+      ],
+      "description": "保存先に記録した保持件数（2）とクライアントの保持件数（1）が異なると、生成が設定エラーとなる。",
+      "backends": [
+        "spanner"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "seed": {
+        "configuration": {
+          "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+          "layout_version": 1,
+          "keep_snapshot_count": 2,
+          "retention_mode": "delete",
+          "ttl_grace_days": null,
+          "change_feed_enabled": false
+        },
+        "row_deletion_policy_days": null
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "spanner-seeded-retention-mode-mismatch",
+      "rules": [
+        "SPN-2"
+      ],
+      "description": "保存先に記録した保持方式（ttl）がクライアントの保持方式（delete）と異なると、生成が設定エラーとなる。",
+      "backends": [
+        "spanner"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "seed": {
+        "configuration": {
+          "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+          "layout_version": 1,
+          "keep_snapshot_count": null,
+          "retention_mode": "ttl",
+          "ttl_grace_days": 7,
+          "change_feed_enabled": false
+        },
+        "row_deletion_policy_days": 7
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "spanner-seeded-ttl-grace-config-mismatch",
+      "rules": [
+        "SPN-16"
+      ],
+      "description": "TTLの猶予の日数が、クライアント（7）と行削除ポリシー（7）では一致しても、記録した設定（8）と異なると、生成が設定エラーとなる。",
+      "backends": [
+        "spanner"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "ttl",
+        "ttl_grace_days": 7
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "seed": {
+        "configuration": {
+          "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+          "layout_version": 1,
+          "keep_snapshot_count": 1,
+          "retention_mode": "ttl",
+          "ttl_grace_days": 8,
+          "change_feed_enabled": false
+        },
+        "row_deletion_policy_days": 7
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "spanner-seeded-ttl-grace-policy-mismatch",
+      "rules": [
+        "SPN-16"
+      ],
+      "description": "TTLの猶予の日数が、クライアント（7）と記録した設定（7）では一致しても、行削除ポリシー（8）と異なると、生成が設定エラーとなる。",
+      "backends": [
+        "spanner"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "ttl",
+        "ttl_grace_days": 7
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "seed": {
+        "configuration": {
+          "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+          "layout_version": 1,
+          "keep_snapshot_count": 1,
+          "retention_mode": "ttl",
+          "ttl_grace_days": 7,
+          "change_feed_enabled": false
+        },
+        "row_deletion_policy_days": 8
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "spanner-seeded-ttl-grace-client-mismatch",
+      "rules": [
+        "SPN-16"
+      ],
+      "description": "TTLの猶予の日数が、記録した設定（7）と行削除ポリシー（7）では一致しても、クライアント（6）と異なると、生成が設定エラーとなる。",
+      "backends": [
+        "spanner"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "ttl",
+        "ttl_grace_days": 6
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "seed": {
+        "configuration": {
+          "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+          "layout_version": 1,
+          "keep_snapshot_count": 1,
+          "retention_mode": "ttl",
+          "ttl_grace_days": 7,
+          "change_feed_enabled": false
+        },
+        "row_deletion_policy_days": 7
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "spanner-seeded-change-feed-enabled",
+      "rules": [
+        "SPN-17"
+      ],
+      "description": "保存先に記録した change_feed_enabled が true のストアを開く生成は、設定エラーとなる。",
+      "backends": [
+        "spanner"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "seed": {
+        "configuration": {
+          "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+          "layout_version": 1,
+          "keep_snapshot_count": null,
+          "retention_mode": "delete",
+          "ttl_grace_days": null,
+          "change_feed_enabled": true
+        },
+        "row_deletion_policy_days": null
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "spanner-ttl-grace-days-not-positive",
+      "rules": [
+        "SPN-16"
+      ],
+      "description": "クライアントのTTLの猶予の日数が0以下（0）だと、生成が設定エラーとなる。",
+      "backends": [
+        "spanner"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "ttl",
+        "ttl_grace_days": 0
+      },
+      "fixtures": {
+        "events": {},
+        "snapshots": {}
+      },
+      "steps": [],
+      "initialization": {
+        "expect": {
+          "error": {
+            "category": "configuration",
+            "message": {
+              "must_contain": [],
+              "must_not_contain": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "spanner-seeded-configuration-match",
+      "rules": [
+        "SPN-2"
+      ],
+      "description": "保存先に記録した設定とクライアントの設定が一致すれば、生成が成功し、追記と読み取りができる。",
+      "backends": [
+        "spanner"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": {
+              "total": 1
+            },
+            "seq_nr": 1,
+            "manifest": ""
+          }
+        }
+      },
+      "seed": {
+        "configuration": {
+          "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+          "layout_version": 1,
+          "keep_snapshot_count": 1,
+          "retention_mode": "delete",
+          "ttl_grace_days": null,
+          "change_feed_enabled": false
+        },
+        "row_deletion_policy_days": null
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 1,
+            "snapshot": "s1"
+          }
+        }
+      ],
+      "initialization": {
+        "expect": {
+          "result": "success"
+        }
+      }
+    },
+    {
+      "id": "spanner-seeded-ttl-configuration-match",
+      "rules": [
+        "SPN-2",
+        "SPN-16"
+      ],
+      "description": "TTLの猶予の日数がクライアント・記録した設定・行削除ポリシーで一致すれば、期限切れ方式でも生成が成功し、追記できる。",
+      "backends": [
+        "spanner"
+      ],
+      "store": {
+        "retention_count": 1,
+        "retention_mode": "ttl",
+        "ttl_grace_days": 7
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "seed": {
+        "configuration": {
+          "store_id": "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+          "layout_version": 1,
+          "keep_snapshot_count": 1,
+          "retention_mode": "ttl",
+          "ttl_grace_days": 7,
+          "change_feed_enabled": false
+        },
+        "row_deletion_policy_days": 7
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        }
+      ],
+      "initialization": {
+        "expect": {
+          "result": "success"
+        }
+      }
+    }
+  ]
+}

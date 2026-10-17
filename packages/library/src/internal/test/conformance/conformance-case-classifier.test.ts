@@ -71,3 +71,53 @@ describe("classifyCase", () => {
     expect(boundary.status).toBe("unverified");
   });
 });
+
+const scenarioCase = (
+  backends: readonly string[],
+  extra: { readonly [key: string]: ConformanceJsonValue } = {},
+): ConformanceCase => ({
+  id: "s",
+  rules: ["SQ-7"],
+  source: "sqlite/write-lock.json",
+  format: "scenarios",
+  body: { id: "s", backends: [...backends], ...extra },
+});
+
+describe("classifyCase for the backends this language does not provide", () => {
+  const reason = "この言語は SQLite・Spanner・Bigtable の保存先を提供しない";
+
+  test.each(["memory", "dynamodb"] as const)(
+    "marks a scenario targeting only sqlite as not-applicable on %s",
+    (backend) => {
+      const r = classifyCase(
+        scenarioCase(["sqlite"], { store: { lock_wait_milliseconds: 100 } }),
+        backend,
+      );
+      expect(r).toEqual({ status: "not-applicable", reason });
+    },
+  );
+
+  test("keeps a scenario that also targets a provided backend unverified", () => {
+    const c = scenarioCase(["dynamodb", "sqlite"]);
+    expect(classifyCase(c, "dynamodb").status).toBe("unverified");
+  });
+
+  test("marks Bigtable envelope operations as not-applicable with a reason", () => {
+    for (const operation of [
+      "encodeBigtableEventEnvelope",
+      "encodeBigtableSnapshotEnvelope",
+      "decodeBigtableEnvelope",
+    ]) {
+      expect(classifyCase(valuesCase({ operation }), "memory")).toEqual({
+        status: "not-applicable",
+        reason: "この言語は Bigtable の保存先を提供しない",
+      });
+    }
+  });
+
+  test("does not mark an unknown values operation as not-applicable", () => {
+    expect(
+      classifyCase(valuesCase({ operation: "encodeUnknown" }), "memory").status,
+    ).toBe("unverified");
+  });
+});

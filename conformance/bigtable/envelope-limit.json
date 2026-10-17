@@ -1,0 +1,101 @@
+{
+  "format": "scenarios",
+  "version": "1.3.0",
+  "cases": [
+    {
+      "id": "bigtable-envelope-over-limit",
+      "rules": [
+        "BT-16"
+      ],
+      "description": "封筒の上限（1024）を超える追記は、書き込みの前に規則BT-16の契約違反として拒否され、何も確定しない。",
+      "backends": [
+        "bigtable"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete",
+        "envelope_limit_bytes": 1024
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": "",
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation",
+              "message": {
+                "must_contain": [
+                  "BT-16",
+                  "2"
+                ],
+                "must_not_contain": []
+              },
+              "rule": "BT-16"
+            }
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        }
+      ],
+      "generators": [
+        {
+          "target": "/fixtures/events/e2/payload",
+          "character": "x",
+          "byte_length": 2048
+        }
+      ]
+    }
+  ]
+}

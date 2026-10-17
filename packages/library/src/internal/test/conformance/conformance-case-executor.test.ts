@@ -1,10 +1,14 @@
 import * as path from "node:path";
+import { EventStore } from "../../../event-store";
+import { MemoryStorage } from "../../../memory-storage";
+import { inspectMemoryStorageRecords } from "../../memory-storage-records";
 import type { ConformanceCase } from "./conformance-case";
 import {
   executeConformanceCase,
   executeConformanceOperation,
 } from "./conformance-case-executor";
 import { loadConformanceData } from "./conformance-data-loader";
+import { ConformanceFaultRegistry } from "./conformance-fault-registry";
 import type { ConformanceHooks } from "./conformance-hooks";
 import { ConformanceMemoryBinding } from "./conformance-memory-binding";
 import type { ConformanceStore } from "./conformance-store";
@@ -158,13 +162,14 @@ const readFrom = (store: string | undefined, events: string[]) => ({
 });
 
 describe("MEM-2 stores created in the middle of a case", () => {
-  test.each(["memory-store-new-independent", "memory-store-shared"])(
-    "%s passes with the public memory binding",
-    async (id) => {
-      const result = await executeConformanceCase(caseOf(id), binding);
-      expect(result).toMatchObject({ status: "passed", reason: "" });
-    },
-  );
+  test.each([
+    "memory-store-new-independent",
+    "memory-store-shared",
+    "memory-store-shared-configuration",
+  ])("%s passes with the public memory binding", async (id) => {
+    const result = await executeConformanceCase(caseOf(id), binding);
+    expect(result).toMatchObject({ status: "passed", reason: "" });
+  });
 
   test("routes an operation to the store named by the step and defaults to primary", async () => {
     const result = await executeConformanceCase(
@@ -252,6 +257,99 @@ test("MEM-2 shares records when a fake store ignores storage new and is reported
     new SharingNewStorageBinding(),
   );
   expect(result.status).toBe("failed");
+});
+
+// 設定の共有を壊す偽の実装: shared を指定されても、保存先が持つ設定を使わず
+// 保持なしの既定の設定を持つ別の保存先を開く。記録は 2 つ目から見える
+class UnsharedConfigurationBinding extends ConformanceMemoryBinding {
+  override async createStore(
+    ...args: Parameters<ConformanceMemoryBinding["createStore"]>
+  ) {
+    const created = await super.createStore(...args);
+    let defaults: ReturnType<typeof MemoryStorage.create> | undefined;
+    const hooks: ConformanceHooks = {
+      ...created.hooks,
+      createStore: async (request) => {
+        if (request.storage !== "shared") {
+          return created.hooks.createStore?.(request) as never;
+        }
+        defaults = MemoryStorage.create();
+        if (defaults.type === "err") throw defaults.error;
+        const registry = new ConformanceFaultRegistry([]);
+        const opened = EventStore.createMemory({
+          storage: defaults.value,
+          eventSerializer: this.serializer(registry, "event"),
+          snapshotSerializer: this.serializer(registry, "snapshot"),
+        });
+        if (opened.type === "err") throw opened.error;
+        return { kind: "ok" as const, value: this.wrapStore(opened.value) };
+      },
+      readHistory: async (id) => {
+        if (defaults === undefined || defaults.type === "err") {
+          return created.hooks.readHistory?.(id) as never;
+        }
+        const physical = await inspectMemoryStorageRecords(defaults.value);
+        if (physical.type === "err") throw physical.error;
+        return {
+          active: (
+            physical.value.records.get(`${id.typeName}-${id.value}`)?.history ??
+            []
+          ).map((s) => BigInt(s.seqNr)),
+          marked: [],
+        };
+      },
+    };
+    return { ...created, hooks };
+  }
+}
+
+test("MEM-2 reports as failed a fake store whose shared second instance keeps its own default configuration", async () => {
+  const result = await executeConformanceCase(
+    caseOf("memory-store-shared-configuration"),
+    new UnsharedConfigurationBinding(),
+  );
+  expect(result.status).toBe("failed");
+  // 保持設定のない既定の保存先は履歴を残さないため、最初の追記の観測で失敗する
+  expect(result.failedOperation).toBe(2);
+});
+
+describe("steps and settings this runner does not know", () => {
+  const withBody = (body: Record<string, unknown>): ConformanceCase => ({
+    id: "u",
+    rules: ["MEM-1"],
+    source: "unit.json",
+    format: "scenarios",
+    body: {
+      id: "u",
+      backends: ["memory"],
+      fixtures: {},
+      steps: [],
+      ...body,
+    } as never,
+  });
+
+  test("fails a memory scenario that uses an unknown operation", async () => {
+    const result = await executeConformanceCase(
+      withBody({
+        steps: [
+          { op: "holdWriteLock", arguments: {}, expect: { result: "success" } },
+        ],
+      }),
+      binding,
+    );
+    expect(result.status).toBe("failed");
+  });
+
+  test("fails a memory scenario that uses a store setting it does not know", async () => {
+    const result = await executeConformanceCase(
+      withBody({ store: { lock_wait_milliseconds: 100 } }),
+      binding,
+    );
+    expect(result.status).toBe("failed");
+    expect(result.reason).toContain(
+      "unsupported store setting lock_wait_milliseconds",
+    );
+  });
 });
 
 // 保存した値を複製せず、封筒が持つペイロードの実体をそのまま返す偽の実装

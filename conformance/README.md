@@ -1,17 +1,26 @@
 # 適合テストデータ v1
 
-共通契約・DynamoDB プロファイル・メモリプロファイルの期待値を、言語に依存しない UTF-8 の JSON で配るデータである。データの版は `1.2.0` である。[共通契約](../docs/spec/core-contract.md)・[DynamoDB プロファイル](../docs/spec/storage/dynamodb.md)・[メモリプロファイル](../docs/spec/storage/memory.md)が規範であり、このデータは規則を追加しない。[ハッシュ仕様](../docs/spec/storage/hash.md)が収録を求める FNV-1a 64 の4件も含める。値30件、操作場面93件（共通42件・DynamoDB固有45件・メモリ固有6件）、配置1件の計124件で、60規則を対象とする。4つの仕様の文書が定義する73規則は、すべてがケースか `coverage.json` の対象外の理由を持つ。今回の検証はデータと道具だけを対象とし、言語実装や保存先には実行しない。
+共通契約・DynamoDB プロファイル・メモリプロファイル・SQLite プロファイル・Spanner プロファイル・Bigtable プロファイルの期待値を、言語に依存しない UTF-8 の JSON で配るデータである。データの版は `1.3.0` である。[共通契約](../docs/spec/core-contract.md)・[DynamoDB プロファイル](../docs/spec/storage/dynamodb.md)・[メモリプロファイル](../docs/spec/storage/memory.md)・[SQLite プロファイル](../docs/spec/storage/sqlite.md)・[Spanner プロファイル](../docs/spec/storage/spanner.md)・[Bigtable プロファイル](../docs/spec/storage/bigtable.md)が規範であり、このデータは規則を追加しない。[ハッシュ仕様](../docs/spec/storage/hash.md)が収録を求める FNV-1a 64 の4件と、Bigtable の封筒の固定バイナリ形式の値の表（BT-D6a）も含める。値40件、操作場面128件（共通42件・DynamoDB固有45件・メモリ固有7件・SQLite固有7件・Spanner固有14件・Bigtable固有12件・SQLite・Spanner・Bigtable に共通の共有1件）、配置1件の計169件で、75規則を対象とする。7つの仕様の文書が定義する124規則は、すべてがケースか `coverage.json` の対象外の理由を持つ。共通の場面は `memory`・`dynamodb`・`sqlite`・`spanner`・`bigtable` の5つの保存先を対象とする。今回の検証はデータと道具だけを対象とし、言語実装や保存先には実行しない。
 
 ## ファイルと形式
 
 | 場所 | 内容 | JSON Schema |
 |:--|:--|:--|
 | `values/` | aid・occurred_at・seq_nr・FNV-1a 64 の入力と期待値 | `schema/values.schema.json` |
+| `values/bigtable-envelope.json` | Bigtable の封筒（イベント・スナップショット）の符号化と復元の値の表（BT-D6a） | `schema/values.schema.json` |
 | `scenarios/core/` | 共通契約の操作列・保持・エラー | `schema/scenarios.schema.json` |
 | `dynamodb/`（layout 以外） | 設定・書き込み・読み取り・保持・項目検査の操作列 | `schema/scenarios.schema.json` |
 | `memory/configuration.json` | メモリの設定エラーの操作列（生成の結果だけを期待する） | `schema/scenarios.schema.json` |
 | `memory/stores.json` | メモリの2つ目のストアの生成（独立・共有）の操作列（MEM-2） | `schema/scenarios.schema.json` |
 | `memory/payload-isolation.json` | メモリのペイロードの書き換えの操作列（MEM-6） | `schema/scenarios.schema.json` |
+| `scenarios/stores/shared.json` | SQLite・Spanner・Bigtable で共有した2つ目のストアの操作列 | `schema/scenarios.schema.json` |
+| `sqlite/configuration.json` | SQLite の設定エラーの操作列（提供しない能力と、保存先に記録した設定との食い違い） | `schema/scenarios.schema.json` |
+| `sqlite/write-lock.json` | SQLite の書き込みのロックを別の接続が持ち続ける操作列（SQ-7） | `schema/scenarios.schema.json` |
+| `spanner/configuration.json` | Spanner の設定エラーの操作列（提供しない能力と、保存先に記録した設定との食い違い） | `schema/scenarios.schema.json` |
+| `spanner/commit.json` | Spanner のコミットの中断とやり直しの上限（SPN-7）、応答の消失（SPN-8）の操作列 | `schema/scenarios.schema.json` |
+| `bigtable/configuration.json` | Bigtable の設定エラーの操作列（提供しない能力、2つのテーブルの設定の食い違い、封筒の上限の設定） | `schema/scenarios.schema.json` |
+| `bigtable/envelope-limit.json` | Bigtable の封筒の上限を超える追記の操作列（BT-16） | `schema/scenarios.schema.json` |
+| `bigtable/journal-write.json` | Bigtable の journal の書き出しの失敗と条件付き更新の応答の消失の操作列（BT-7） | `schema/scenarios.schema.json` |
 | `dynamodb/layout.json` | 3 テーブル・GSI と項目の属性の期待値 | `schema/layout.schema.json` |
 | `coverage.json` | 網羅対象と対象外の理由 | `schema/coverage.schema.json` |
 | `manifest.json` | 版と配布ファイルの SHA-256 | `schema/manifest.schema.json` |
@@ -30,6 +39,9 @@ Schema は draft 2020-12 である。共通定義は `schema/common.schema.json`
 | `validateOccurredAt` | `iso8601`、エポックからの `epoch_nanoseconds`、エラー説明用の `event_seq_nr` | 標準時刻型へ変換した入力との同値 |
 | `validateSeqNr` | `seq_nr` と `context` | `expect.value` の整数 |
 | `fnv1a64` | `utf8` の文字列 | `expect.value` の固定16桁の16進数（`0x` 付き） |
+| `encodeBigtableEventEnvelope` | `aid`、`seq_nr`、`occurred_at_ns`（10進文字列）、`manifest`、`payload_hex`（小文字の16進） | `expect.value` の封筒の小文字の16進（BT-D6a） |
+| `encodeBigtableSnapshotEnvelope` | `seq_nr`、`manifest`、`payload_hex` | `expect.value` の封筒の小文字の16進（BT-D6a） |
+| `decodeBigtableEnvelope` | `kind`（`event` か `snapshot`）と `bytes_hex` | 形の崩れた封筒の復元は `error.category = storage` |
 
 `buildAid` の `user_string` は、利用者の `Display` などが返す別表現である。実行器はこの文字列を使う ID の試験用実装を用意し、ライブラリが型名と値から組み立てることを確かめる。型名・値・区切りを全部合わせた UTF-8 のバイト数で T-12 を判定する。多バイトケースは文字数で判定する実装を検出するためのものである。
 
@@ -37,7 +49,9 @@ Schema は draft 2020-12 である。共通定義は `schema/common.schema.json`
 
 `validateOccurredAt` は、型名 `ConformanceTime`・値がケースIDの集約で実行する。まず1番から `event_seq_nr - 1` 番までを、時刻 `1970-01-01T00:00:00.123000000Z` で順に確定する。その後、入力時刻を持つ `event_seq_nr` 番のイベントを `persistEvent` で書く。payload は空オブジェクト、manifest は空文字列とする。成功ケースは1番を読み戻して時刻を比較する。範囲外ケースは7番で契約違反を比較するので、飛び番の違反と重ならず、メッセージの7が T-13 の数字で偶然満たされることもない。`validateSeqNr` は封筒の構築やライブラリの値域検査フックを使い、実行器で同じ数式を計算するだけの検査にしてはならない。
 
-`fnv1a64` はハッシュを使うプロファイルの共有ハッシュ実装へ対応付ける。入力4件は hash.md の表そのものであり、aid の構築・検証を挟まない。出力は符号なし64bitとして比較する。固定16桁の表記は比較用であり、保存先のキーの形式を要求しない。DynamoDB はこのハッシュを保存キーに使わない。
+`fnv1a64` はハッシュを使うプロファイルの共有ハッシュ実装へ対応付ける。入力4件は hash.md の表そのものであり、aid の構築・検証を挟まない。出力は符号なし64bitとして比較する。固定16桁の表記は比較用であり、保存先のキーの形式を要求しない。DynamoDB はこのハッシュを保存キーに使わない。Spanner と Bigtable はこのハッシュをキーに使うが、キーへの埋め込みは生の行の形に寄るので、データには含めず各言語の試験に任せる（K-2）。
+
+`encodeBigtableEventEnvelope` と `encodeBigtableSnapshotEnvelope` は、Bigtable の封筒（[Bigtable プロファイル](../docs/spec/storage/bigtable.md) 4章、BT-D6a）の固定バイナリ形式を確かめる。実行器は、入力の項目から封筒を組み立てるライブラリの関数を呼び、返ったバイト列が `expect.value` と一致することを確かめる。続けて期待値のバイト列を復元し、入力の項目と一致することも確かめる。`payload_hex` は payload のバイト列で、シリアライザの出力そのものである。`aid` と `manifest` の長さは UTF-8 のバイト数で数える。`occurred_at_ns` は符号付き64bit、`seq_nr` は符号なし64bitのビッグエンディアンである。`decodeBigtableEnvelope` は、`bytes_hex` を復元すると保存先エラーになる封筒（未使用の末尾、長さの不一致、未知の形式の版番号）を表す。正しい封筒をこの操作に置くと、データの誤りとして拒否する。検証の道具は `tools/conformance/data.py` に、仕様から独立した符号化と復元を持ち、表の期待値を照合する。
 
 ### 時刻と番号の表現能力
 
@@ -57,9 +71,9 @@ Schema は draft 2020-12 である。共通定義は `schema/common.schema.json`
 
 各場面は独立したストアで実行する。場面の中で2つ目のストアが要るときは、`createStore` の操作で作る（「2つ目のストアとペイロードの書き換え（メモリ）」を参照）。DynamoDB のテーブル名・GSI 名は実行器が割り当て、同じ場面の3テーブルは同じリージョンに置く。ほかのケースの項目を使い回さない。実行器は宣言された方式の保持処理を決定的に実行するためのフックと、内部履歴・失敗通知・SDK 要求の検査フックを用意する。
 
-1. `backends` に実行する保存先があることを確認する。`requires = ["ttl"]` は TTL 方式を要求する。v1 の TTL 場面は DynamoDB だけを対象とする。
-2. `store` の設定でストアを生成する。`retention_count = null` は履歴を作らず現在だけを保存する。`delete` は古い履歴を削除し、`ttl` は印を付ける。`ttl_grace_seconds` は DynamoDB の猶予秒である。`change_feed = true` は変更フィードの提供を求める設定であり、省略時は求めない。名前はデータ上の共通名であり、実装の設定 API へ対応付ける。
-3. `seed.items` があれば、ストア生成前にテスト用の権限でその項目を入れる。値の型とバイナリの扱いは後述の属性検査と同じである。設定項目が seed にない場合は、通常の生成手順で初期化する。
+1. `backends` に実行する保存先があることを確認する。`requires = ["ttl"]` は TTL 方式を要求する。TTL の印付けを観測する場面は DynamoDB だけを対象とする。Spanner の TTL 方式の印の時刻はサーバーの `CURRENT_TIMESTAMP()` で、時計を差し込めず、期限を決定的に観測できないので、場面に含めない（SPN-12）。
+2. `store` の設定でストアを生成する。`retention_count = null` は履歴を作らず現在だけを保存する。`delete` は古い履歴を削除し、`ttl` は印を付ける。`ttl_grace_seconds` は DynamoDB の猶予秒である。`change_feed = true` は変更フィードの提供を求める設定であり、省略時は求めない。`lock_wait_milliseconds` は SQLite のロック待ち（SQ-1 の busy の待ち時間）をミリ秒で指定し、`backends` が `["sqlite"]` だけの場面に置ける。書き込みのロックを持ち続ける場面は、短い値を明示する。`transaction_retry_limit` は Spanner の中断（ABORTED）のやり直しの上限で、初回を数えない（`backends` が `["spanner"]` だけの場面に置ける）。`ttl_grace_days` は Spanner の TTL の猶予の日数で、`ttl_grace_seconds` とは別である（`backends` が `["spanner"]` だけの場面に置ける。Spanner の `retention_mode = ttl` の場面は必ず指定する）。`envelope_limit_bytes` は Bigtable の封筒の上限のバイト数で、省略時は既定の 1048576 である（`backends` が `["bigtable"]` だけの場面に置ける）。名前はデータ上の共通名であり、実装の設定 API へ対応付ける。
+3. `seed.items` があれば、ストア生成前にテスト用の権限でその項目を入れる。値の型とバイナリの扱いは後述の属性検査と同じである。設定項目が seed にない場合は、通常の生成手順で初期化する。`seed.configuration` があれば、前の初期化が保存先に記録した設定を、プロファイルの config の項目名で書いたものとして、ストアの生成より前に記録する。SQLite の項目名は `store_id`（小文字の UUID）・`layout_version`・`keep_snapshot_count`（null か正の整数）・`retention_mode`・`change_feed_enabled`（0 か 1）である。Spanner の項目名は SQLite の項目に `ttl_grace_days`（ttl のときだけ正の日数、それ以外は null）を足したもので、`change_feed_enabled` は真偽値である。Spanner の `seed` は、snapshot_history の行削除ポリシーの日数を `row_deletion_policy_days`（日数か、ポリシーがなければ null）として、`configuration` と並べて必ず書く。Bigtable の `seed.configuration` は、`journal` と `head` の2つのテーブルの設定を別々に書く。各テーブルの項目名は `store_id`・`layout_version`・`keep_snapshot_count`（null か正の整数）・`retention_mode`（`delete`）・`envelope_limit_bytes` である。実行器は、保存先の通常の初期化の経路か試験用の権限でこれを記録する。生の行や SDK の形は書かず、`seed.items` と同じ場面には置けない。`seed.configuration` を使う場面は、生成の結果（`initialization`）を観測する。
 4. `initialization` があれば生成結果を検査する。生成失敗のケースは操作列を持たない。生成前の障害は先に登録する。
 5. `generators` があれば後述の手順で文字列を展開する。`fixtures.events` と `fixtures.snapshots` を読み、各操作の直前に参照された封筒を構築する。キーは場面内だけで有効な参照名である。manifest 省略時の期待値は空文字列である。無効な入力の封筒の構築中に生じた規則違反も、対応する操作の失敗として捕捉する。実行器自身の事前検査でライブラリの検査を代替してはならない。
 6. `steps` を配列順に、並行実行せずに実行する。引数の `event`・`snapshot` は fixture の参照、`aggregate_id` と `seq_nr` は値である。書き込みは1操作で1イベントを追記する。
@@ -67,12 +81,18 @@ Schema は draft 2020-12 である。共通定義は `schema/common.schema.json`
 
 `memory/configuration.json` の場面は、メモリの保存先が提供しない期限切れ方式（`retention_mode = ttl`）と変更フィード（`change_feed = true`）を求める設定が、生成時に `configuration` の分類で失敗することを期待する。言語の設定 API で要求そのものを表せない実装（設定の型に期限切れ方式や変更フィードの項目がないなど）は、理由を付けて「表現不能」と報告してよい。扱いは `signed_seq_nr` と同じである。要求を表せるのに設定エラーにならなければ失敗である。
 
-### 2つ目のストアとペイロードの書き換え（メモリ）
+`sqlite/configuration.json` の `sqlite-ttl-unsupported`（SQ-11）と `sqlite-change-feed-unsupported`（SQ-20）も、SQLite の保存先が提供しない期限切れ方式と変更フィードを求める設定が、生成時に `configuration` の分類で失敗することを期待する。「表現不能」の扱いは上と同じである。この扱いは、提供しない能力を求める設定のケース（上の2ケースと、次の段落の3ケース）だけに適用し、`seed.configuration` を使う食い違いの場面（記録した保持件数・配置の版・`change_feed_enabled` が設定と異なる場合）には広げない。食い違いの場面は、要求を表せるので、生成が `configuration` の分類で失敗しなければ失敗である。一致する場面は生成が成功する。
 
-`memory/stores.json`（MEM-2）と `memory/payload-isolation.json`（MEM-6）の場面だけが、次の操作を使う。どちらも `backends` は `["memory"]` だけで、`rules` に MEM-2 または MEM-6 を持つ。
+`spanner/configuration.json` の `spanner-change-feed-unsupported`（SPN-17）、`bigtable/configuration.json` の `bigtable-ttl-unsupported`（BT-13）と `bigtable-change-feed-unsupported`（BT-17）も、保存先が提供しない能力を求める設定が、生成時に `configuration` の分類で失敗することを期待する。Spanner は期限切れ方式を提供するので、期限切れ方式の設定は能力の不足として扱わない。「表現不能」の扱いは上と同じである。
+
+Spanner の `seed.configuration` を使う場面は、配置の版・保持件数・保持方式の食い違い（SPN-2）、TTL の猶予の日数がクライアント・記録した設定・行削除ポリシーの間で一致しない場合（SPN-16）、記録した `change_feed_enabled` が真の場合（SPN-17）で、生成が `configuration` の分類で失敗することを期待する。クライアントの猶予の日数が0以下の場面は、種まきなしで同じ分類を期待する（SPN-16）。Bigtable の `seed.configuration` を使う場面は、journal と head の設定の食い違い（2 章の照合。判断の番号 BT-D1 は網羅の対象でないので、データでは食い違う項目の規則を付ける。`bigtable-seeded-table-envelope-limit-mismatch` は封筒の上限が食い違うので BT-16）、クライアントとの保持件数の食い違い（2章。BT の番号付きの規則がないので、DynamoDB の設定エラーの場面と同じく E-1 を付ける）、クライアントとの封筒の上限の食い違い（BT-16）で、生成が `configuration` の分類で失敗することを期待する。封筒の上限が最大（8388608）を超える設定と、最小の封筒も収まらない設定（16）も、生成が `configuration` の分類で失敗する（BT-16）。一致する場面はどれも生成が成功する。
+
+### 2つ目のストアとペイロードの書き換え（メモリ）、共有したストア（SQLite・Spanner・Bigtable）
+
+`memory/stores.json`（MEM-2）と `memory/payload-isolation.json`（MEM-6）の場面は、次の操作を使う。どちらも `backends` は `["memory"]` だけで、`rules` に MEM-2 または MEM-6 を持つ。`scenarios/stores/shared.json` の場面は、`createStore` の `storage = shared` と `store` だけを使い、`backends` はSQLite・Spanner・Bigtable（`sqlite`・`spanner`・`bigtable`）だけで、`rules` は共通契約の番号（W-7・W-8 など）にする。共有するのは、SQLite では同じファイル、Spanner では同じデータベースと同じ接頭辞、Bigtable では同じインスタンスと同じテーブルである。共有した2つ目のストアで、1つ目のストアが書いた集約を読め、古い seq_nr や重複した seq_nr を追記すると楽観ロックになる。`storage = new` は、メモリの場面だけに使える。SQLite・Spanner・Bigtable の場面で使うとデータの誤りとして拒否する。
 
 - **1つ目のストア**: 予約名 `primary` である。`store` を省略した操作は `primary` に対する操作で、既存の場面の意味は変わらない。
-- **`createStore`**: 場面の途中で2つ目のストアを生成する。`arguments.name` が新しいストアの参照名で、`primary` と、すでに生成した名前は使えない。`arguments.storage` が `new` なら、空の独立したストアを新しい保存先として生成する。`shared` なら、`arguments.shared_with` が指す生成済みのストアの保存先を明示的に共有して生成し、全記録・設定・排他制御を共有する。期待は `result = success` だけである。
+- **`createStore`**: 場面の途中で2つ目のストアを生成する。`arguments.name` が新しいストアの参照名で、`primary` と、すでに生成した名前は使えない。`arguments.storage` が `new` なら、空の独立したストアを新しい保存先として生成する。`shared` なら、`arguments.shared_with` が指す生成済みのストアの保存先を明示的に共有して生成し、全記録・設定・排他制御を共有する。`shared` で生成するとき、メモリでは、実行器は2つ目のストアに設定を別に渡さず、保存先が持つ設定（1つ目のストアの `store`）を共有インスタンスに使わせる（MEM-D11）。2つ目のストアに同じ設定を渡して生成すると、設定の共有を確かめたことにならない。SQLite・Spanner・Bigtable では、保存先に記録した設定とクライアントの設定を照合するので、実行器は場面の `store` と同じ設定を渡す。`memory-store-shared-configuration` は、共有したストアが履歴の保持件数も共有することを、スナップショット付きの追記を重ねた後の履歴で確かめる。期待は `result = success` だけである。
 - **`store`**: 永続化・読み取りの操作が任意に持つ。生成済みのストアの参照名で、その操作を実行するストアを指す。生成前の参照名は使えない。
 - 独立の場面は、`createStore` より前に別のストアへ書き、新しく生成したストアで同じ集約を読む。この読み取りは「なし」または空の列を返す。何も書かずに2つ目を読むだけの場面は、空振りの成功になるのでデータの誤りとして拒否する。
 - 言語の API で名前を付けて保存先を作れる実装は、同じ名前を付けただけの2つ目の保存先が、独立の場面と同じ結果になる（記録を共有しない）ことを確かめる。名前を付ける API がない実装は、この点を確かめなくてよい。
@@ -84,6 +104,34 @@ Schema は draft 2020-12 である。共通定義は `schema/common.schema.json`
 言語の型や API で、この書き換えそのものを表せない実装（値が所有権ごと渡されて書き込み後に触れない、ペイロードの型が書き換えできないなど）は、`memory/payload-isolation.json` の対応するケースを、理由を付けて「表現不能」と報告してよい。扱いは `signed_seq_nr` と同じである。この扱いは `memory/payload-isolation.json` の2ケースだけに適用し、ほかのケースには広げない。書き換えを表せるのに保存済みの値が変われば失敗である。
 
 `store.retry_limit` は設定照合の再要求回数の上限であり、初回要求は数えない。実装の上限が回数ではなく待ち時間なら、実行器が同じ未処理応答の列で上限到達を再現する。指数バックオフを待つ試験は、要求列と待ち時間を観測する時計のフックで実時間を短縮してよい。
+
+### 書き込みのロックを持ち続ける操作（SQLite）
+
+`holdWriteLock` と `releaseWriteLock` は、`sqlite/write-lock.json`（SQ-7）の場面だけが使う。`backends` は `["sqlite"]` だけで、`rules` に SQ-7 を持ち、`store.lock_wait_milliseconds` を指定する。`arguments` は空のオブジェクト、`store` は持たず、期待は `result = success` だけである。ロックは、ストアではなくファイル全体に1つだけある。
+
+- **`holdWriteLock`**: 実行器が、ストアの接続とは別の接続を同じファイルに開き、BEGIN IMMEDIATE で書き込みのロックを取って持ち続ける。
+- **`releaseWriteLock`**: 持っているロックを放す（ROLLBACK などで別の接続のトランザクションを閉じる）。
+- ロックを持つ間の追記は、`lock_wait_milliseconds` を超えて待った後、楽観ロックではなく `storage` の分類で失敗し、何も確定しない。ロックを放した後に同じ追記が成功し、読み直せる。
+- 持っていないロックを放す場面、すでに持っているロックをもう一度持つ場面、ロックを放さないまま終わる場面、ロックを持つ間に保存先エラーを期待する追記がない場面は、データの誤りとして拒否する。この操作を、`backends` が `["sqlite"]` だけでない場面で使うことも拒否する。
+
+### 中断からのやり直し（Spanner）
+
+`transaction-aborted` の障害は、`spanner/commit.json`（SPN-7）の場面だけが使う。`backends` は `["spanner"]` だけで、`rules` に SPN-7 を持ち、`store.transaction_retry_limit` を指定する。`phase` は `commit`、`injection` は `replace-request`、`repeat` は `mode = count` で、`repeat.count` が中断を返す回数である。SDK が中断を受けてトランザクションを再実行するときの、同じ封筒と同じ seq_nr での再実行を確かめる。
+
+- 中断の回数が `transaction_retry_limit` 以下なら、追記は成功し、同じ封筒が採番し直されずに1件だけ読める。
+- 中断の回数が上限を超えると、保存先の分類のエラーになり、何も確定しない。同じ追記を送り直すと成功する。
+- この障害の種類を、`backends` が `["spanner"]` だけでない場面で使うことは、データの誤りとして拒否する。
+
+### Bigtable の書き出しと封筒の上限
+
+`journal-write-previous` と `journal-write-tail` の段階は、`bigtable/journal-write.json`（BT-7）の場面だけが使う。`backends` は `["bigtable"]` だけで、`rules` に BT-7 を持ち、`kind = storage-error`、`injection = replace-request` で差し込む。
+
+- **`journal-write-previous`**: ヘッドの条件付き更新の前に、取得した直前のイベントを journal へ書き出す処理である。ヘッドがない最初の追記には存在しないので、その追記へ差し込むことはデータの誤りとして拒否する。失敗した追記は保存先の分類のエラーになり、ヘッドは進まず、読み取りはそれまでのイベントを返す。同じ追記を送り直すと成功する。
+- **`journal-write-tail`**: 条件付き更新が成功した後に、新しい末尾のイベントを journal へ書き出す処理である。失敗しても追記は成功し、失敗は `observe.notifications` の `journal-write-failure` として知らされる。読み取りはそのイベントまで返す。次の追記の後も、すべてのイベントが欠けずに読める。
+- 条件付き更新の応答の消失は、`commit` の `replace-response` で表す。保存先の分類のエラーになり、同じ封筒を送り直すと楽観ロックになる。
+- 「直前のイベントの書き出しの後に、新しい条件付き更新が不成立」の行は、別の書き手の割り込みが要るので場面に含めない。
+
+`bigtable/envelope-limit.json`（BT-16）は、`store.envelope_limit_bytes` を超える封筒の追記が、書き込みの前に規則 BT-16 の契約違反として拒否され、何も確定しないことを確かめる。上限を超えたかは、固定部分（イベント27バイト、スナップショット17バイト）と、aid・manifest のバイト数と、空白なしの JSON の payload のバイト数の和（封筒の大きさの下限）で判定する。言語ごとの直列化の差で結果が変わらないよう、データは上限を大きく超える payload を `generators` で作る。
 
 ### 操作結果
 
@@ -133,13 +181,15 @@ D-7 の400KBと DY-11 の1MBは、DynamoDB の2進単位である。項目上限
 |:--|:--|
 | `serialize-event` / `serialize-snapshot` | payload / 集約状態の直列化 |
 | `deserialize-event` / `deserialize-snapshot` | 読み取ったバイナリからの復元 |
-| `commit` | 書き込み要求、DynamoDB では TransactWriteItems |
+| `commit` | 書き込み要求、DynamoDB では TransactWriteItems、SQLite では COMMIT、Spanner では読み書きトランザクションのコミット、Bigtable ではヘッドの条件付き更新（CheckAndMutateRow） |
+| `journal-write-previous` | Bigtable で、ヘッドを進める前に直前のイベントを journal へ書き出す処理（`bigtable` だけの場面） |
+| `journal-write-tail` | Bigtable で、条件付き更新が成功した後に新しい末尾のイベントを journal へ書き出す処理（`bigtable` だけの場面） |
 | `read-events` / `read-snapshot` | 各読み取りの保存先応答 |
 | `retention-query` | 保持対象を選ぶ履歴読み取り |
 | `retention-delete` / `retention-mark` | 超過履歴の削除 / 印付け |
 | `configuration-read` / `configuration-create` | 設定項目の照合 / 条件付き作成 |
 
-`kind = serialization-error` はシリアライザの対応段階を失敗させる。既定の JSON シリアライザが正常な JSON で自然に失敗することを期待しない。`storage-error` は保存先・保持フックのその段階の最終失敗を返す。`details.scope = final-retention-failure` のときは、候補選択後、削除が行われる前に保持全体を失敗させる。共通場面の `retention-query` の応答計画は、メモリでは論理履歴のフック、DynamoDB では SDK のフックへ対応付ける。
+`kind = serialization-error` はシリアライザの対応段階を失敗させる。既定の JSON シリアライザが正常な JSON で自然に失敗することを期待しない。`transaction-aborted` は、Spanner のコミットがトランザクションの中断（ABORTED）で終わる障害である（次の「中断からのやり直し（Spanner）」を参照）。`storage-error` は保存先・保持フックのその段階の最終失敗を返す。`details.scope = final-retention-failure` のときは、候補選択後、削除が行われる前に保持全体を失敗させる。共通場面の `retention-query` の応答計画（`history_pages` など、DynamoDB の通信の形に寄ったもの）は、メモリ・`sqlite`・`spanner`・`bigtable` では論理的な履歴のフック、DynamoDB では SDK のフックへ対応付ける。
 
 すべての障害で `injection` を指定し、副作用の有無を区別する。
 
@@ -148,9 +198,9 @@ D-7 の400KBと DY-11 の1MBは、DynamoDB の2進単位である。項目上限
 | `replace-request` | 対象の処理・要求を呼ばず、差し込みの失敗や応答を返す。書き込みは何も確定しない |
 | `replace-response` | 対象の処理・要求を送った後、ライブラリへ渡す応答を差し替える。送った要求の副作用は残る |
 
-シリアライザにも同じ区別を適用する。v1 の書き込み失敗と保持失敗は `replace-request` なので、その要求の変更は確定しない。`install_items` がある生成競合だけは、別の実行器が先に書いた項目を確定させる。BatchWriteItem の `unprocessed_first_n` も `replace-request` とし、実行器は未処理と宣言した項目を除く要求だけを実際に処理して応答を組み立てる。
+シリアライザにも同じ区別を適用する。Spanner と Bigtable の `commit` の応答の消失（`replace-response`）を除き、書き込み失敗と保持失敗は `replace-request` なので、その要求の変更は確定しない。`install_items` がある生成競合だけは、別の実行器が先に書いた項目を確定させる。BatchWriteItem の `unprocessed_first_n` も `replace-request` とし、実行器は未処理と宣言した項目を除く要求だけを実際に処理して応答を組み立てる。
 
-`kind = sdk-error` は、SDK 自体の自動再試行を無効にし、ライブラリへ指定した失敗を返す。`details.code` と `cancellation_reasons` から SDK の例外を組み立てる。送信後の通信失敗など、確定状態が決まらない場面には、参照モデルでの推測を避けるため `replace-response` と書く。`TransactionCanceledException` は要求を確定させず、`replace-request` で差し込む。
+`kind = sdk-error` は、SDK 自体の自動再試行を無効にし、ライブラリへ指定した失敗を返す。`details.code` と `cancellation_reasons` から SDK の例外を組み立てる。送信後の通信失敗など、要求が確定した後に応答を失う場面には `replace-response` と書く。`commit` の応答の消失では、参照モデルはその書き込みを確定したものとして扱い、ライブラリへは成否不明の保存先エラーが返る（SPN-8、BT-7）。確定した追記を失敗として返しても、同じ封筒を送り直すと W-7 により楽観ロックになる。保持の削除・印付けの応答の失敗は確定状態が仕様から決まらないため、参照モデルは推測せず、その操作と以後の状態依存操作を飛ばす。`TransactionCanceledException` は要求を確定させず、`replace-request` で差し込む。
 
 `cancellation_reasons` はトランザクションの各項目に1要素を持つ。書き込みの対象名は `journal`、`head`、`current-snapshot`、`history-snapshot` の順で、存在するアクションだけを列挙する。設定作成では `configuration:journal`、`configuration:snapshot`、`configuration:head` を列挙する。失敗していない項目の code は文字列 `None` とする。実行器は対象名を実際の要求内のアクションに照合し、SDK の CancellationReasons を実際のアクション順へ並べ直す。この配列順をライブラリの要求順として強制するものではない。
 
@@ -177,7 +227,7 @@ D-7 の400KBと DY-11 の1MBは、DynamoDB の2進単位である。項目上限
 
 `observe.history` は、その集約の履歴だけを調べる。`active` は印のない履歴、`marked` は seq_nr とエポック秒の期限の組、`absent` は存在してはならない履歴である。active と marked の集合をそれぞれ完全一致で比較する。現在のスナップショットと設定項目は履歴に数えない。メモリでは内部の論理履歴を検査する。印付き履歴をそのまま残す TTL の試験は DynamoDB だけにある。
 
-`observe.notifications` は指定操作の保持失敗を別経路で知らせたかを検査する。`retention-failure` はコールバック・ログなどの観測を共通化した分類であり、公開の通知 API は固定しない。空配列ならその操作に失敗通知がないことである。同じ最終失敗についてログが複数ある場合は、1つの失敗通知へ正規化してよい。
+`observe.notifications` は指定操作の保持失敗を別経路で知らせたかを検査する。`retention-failure` はコールバック・ログなどの観測を共通化した分類であり、公開の通知 API は固定しない。`journal-write-failure` は、Bigtable で条件付き更新が成功した後の新しい末尾の書き出しに失敗し、それを同じく別経路で知らせたことを表す（BT-7 の手順 5）。空配列ならその操作に失敗通知がないことである。同じ最終失敗についてログが複数ある場合は、1つの失敗通知へ正規化してよい。
 
 `observe.requests` は指定 API・段階の要求に対する条件である。式は構造化した属性操作・条件で指定する。実行器は SDK の式と属性名・値の束縛を解析し、属性名へ解決した構造を比較する。空白、節の順序、条件の AND の順序は比較しない。`update.set` は設定する属性と `value_binding`、`update.remove` は取り除く属性、`condition` は属性の存在・不在を表す。`key_condition.all` は AND の条件の集合であり、`operator = eq/gte` と `argument` を操作の aggregate_id・seq_nr へ束縛する。TTL の `#ttl` と `expression_attribute_names` の対応は予約語回避の観測として明示する。`expires` は Unix エポック秒であり、ttl の `value_binding = expires` が参照する値である。条件に含めていない設定値や SDK の自動付与属性は要求しない。`initial_batch_sizes` は未処理項目の再送を除いた削除バッチの件数であり、再送は別に検査する。`no_requests_in_phases` はその操作で送ってはならない要求段階、`request_count` は段階ごとの正確な回数、`minimum_request_count` は最低回数である。`classify-condition-failure-read` は条件不成立の分類のためだけの追加読み取りを指す。
 
@@ -218,7 +268,7 @@ uv run --project tools/conformance --locked python tools/conformance/validate.py
 uv run --project tools/conformance --locked python -m unittest discover -s tools/conformance -p 'test_*.py'
 ```
 
-規則番号はローカルの `docs/spec/core-contract.md`、`docs/spec/storage/dynamodb.md`、`docs/spec/storage/memory.md`、`docs/spec/storage/hash.md` の定義から収集する。削除済みの番号や本文で言及しただけの番号を、有効なケースの規則として認めない。コピー先で仕様を別の位置に置く場合は `--root` と `--spec-root` でそれぞれ指定する。後者は core-contract.md、storage/dynamodb.md、storage/memory.md、storage/hash.md があるディレクトリである。検証器は、この4つの文書が定義するすべての規則が、ケースか `coverage.json` の対象外の理由を持つことを検査する。ケースも理由もない規則は未網羅として拒否する。
+規則番号はローカルの `docs/spec/core-contract.md`、`docs/spec/storage/dynamodb.md`、`docs/spec/storage/memory.md`、`docs/spec/storage/hash.md`、`docs/spec/storage/sqlite.md`、`docs/spec/storage/spanner.md`、`docs/spec/storage/bigtable.md` の定義から収集する。SQLite・Spanner・Bigtable の規則は行の頭が `- **必須 SQ-n**`（推奨・任意も同様。SPN-n・BT-n も同じ形）のものだけで、草案の SQ-13・SPN-15・BT-15 と判断の番号（SQ-D・SPN-D・BT-D）は含めない。ただし Bigtable の判断 BT-D6a だけは、封筒の値の表の `rules` に使うため、有効な規則として網羅の対象に加える（DynamoDB の D-n と同じ扱いである）。削除済みの番号や本文で言及しただけの番号を、有効なケースの規則として認めない。コピー先で仕様を別の位置に置く場合は `--root` と `--spec-root` でそれぞれ指定する。後者は core-contract.md、storage/dynamodb.md、storage/memory.md、storage/hash.md、storage/sqlite.md、storage/spanner.md、storage/bigtable.md があるディレクトリである。検証器は、この7つの文書が定義するすべての規則が、ケースか `coverage.json` の対象外の理由を持つことを検査する。ケースも理由もない規則は未網羅として拒否する。
 
 データを変更したときは、次の順に再生成・照合する。網羅表の生成モードは manifest の照合を行わないので、最後の照合まで実行する必要がある。
 
@@ -234,9 +284,9 @@ uv run --project tools/conformance --locked python tools/conformance/validate.py
 
 `tools/conformance/reference_model.py` は、集約ごとのヘッド番号、ジャーナル、現在のスナップショット、履歴とTTL期限を状態として操作列を再生する。モデルは期待値を状態の更新に使わない。成功・エラー分類・規則番号・読み取りの全封筒・保持履歴・失敗通知を、独立に計算した結果と比較する。時刻の値域や項目サイズの明らかな超過、確定前の失敗、取り消し理由、履歴ページ、BatchGetItem の応答差し替えも扱う。
 
-送信後の書き込み失敗や保持の更新・削除応答の失敗では確定状態が仕様から決まらないため、その操作と以後の状態依存操作を理由付きで飛ばす。v1 の93場面では、この理由で飛ばす操作はない。SDK要求の実測、物理属性の型、メッセージの実際の文言はモデルの対象外であり、場面ごとに実行器へ委ねる検査として明示する。項目サイズは既存ケースの属性値だけで上限超過を確かめ、厳密な境界のサイズ計算は扱わない。
+`commit` の応答の消失（`replace-response`）は、差し込みの約束（送った要求の副作用は残る）に従い、書き込みを確定したものとして扱う。保持の更新・削除応答の失敗では確定状態が仕様から決まらないため、その操作と以後の状態依存操作を理由付きで飛ばす。現在の128場面では、この理由で飛ばす操作はない。Spanner のやり直しの上限、Bigtable の封筒の上限、Bigtable の書き出しの失敗の意味（新しい末尾の書き出しの失敗は追記の成功を変えない）、Spanner・Bigtable の記録した設定の食い違いも、モデルが独立に計算して期待と比較する。SDK要求の実測、物理属性の型、メッセージの実際の文言はモデルの対象外であり、場面ごとに実行器へ委ねる検査として明示する。項目サイズは既存ケースの属性値だけで上限超過を確かめ、厳密な境界のサイズ計算は扱わない。
 
-T-13 の値域は整数のナノ秒で検査する。言語の時刻型へ変換した後の丸め・往復は実行器の検査であり、モデルが丸め方向を決めることはない。FNV-1a 64 の表は仕様の計算で別途照合する。ADR-0008 と Bigtable 仕様は入出力表の収録を求めていないため、固定バイナリ封筒は v1 の対象外とし、coverage.json に理由を記録する。
+T-13 の値域は整数のナノ秒で検査する。言語の時刻型へ変換した後の丸め・往復は実行器の検査であり、モデルが丸め方向を決めることはない。FNV-1a 64 の表は仕様の計算で別途照合する。Bigtable の封筒の固定バイナリ形式（ADR-0008、BT-D6a）は values/bigtable-envelope.json の値の表に収録し、`tools/conformance/data.py` が仕様の4章から独立に符号化・復元して期待値を照合する。
 
 単体試験では、`core-gap-event` の分類を optimistic-lock へ変える、`dynamodb-retention-ttl-once` の期限を1へ変える、失敗後のヘッドを進める、読み取りの先頭を落とす、共有したストアの同じ seq_nr の書き込みを成功に変える、書き換えの後の読み直しの期待を書き換え後の値に変えるなどの誤期待が拒否されることを確かめる。モデルの検査に通ったことは、言語実装の適合を意味しない。
 

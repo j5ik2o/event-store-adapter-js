@@ -1,4 +1,7 @@
-import type { ConformanceBackend } from "./conformance-backend";
+import {
+  type ConformanceBackend,
+  targetsOnlyUnprovidedBackends,
+} from "./conformance-backend";
 import type { ConformanceCase } from "./conformance-case";
 import type { ConformanceJsonValue } from "./conformance-json-value";
 import type { ConformanceStatus } from "./conformance-status";
@@ -7,6 +10,12 @@ export type CaseClassification = {
   status: ConformanceStatus;
   reason: string;
 };
+
+const BIGTABLE_ENVELOPE_OPERATIONS: readonly string[] = [
+  "encodeBigtableEventEnvelope",
+  "encodeBigtableSnapshotEnvelope",
+  "decodeBigtableEnvelope",
+];
 
 type JsonRecord = { readonly [key: string]: ConformanceJsonValue };
 
@@ -54,6 +63,21 @@ export function classifyCase(
   const representation = isRecord(body.representation)
     ? body.representation
     : {};
+  if (targetsOnlyUnprovidedBackends(body.backends)) {
+    return {
+      status: "not-applicable",
+      reason: "この言語は SQLite・Spanner・Bigtable の保存先を提供しない",
+    };
+  }
+  if (
+    c.format === "values" &&
+    BIGTABLE_ENVELOPE_OPERATIONS.includes(String(body.operation))
+  ) {
+    return {
+      status: "not-applicable",
+      reason: "この言語は Bigtable の保存先を提供しない",
+    };
+  }
   if (body.operation === "fnv1a64") {
     return {
       status: "not-applicable",

@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import { aggregateIdInputOf } from "./conformance-aggregate-id-input";
+import type { ConformanceCase } from "./conformance-case";
 import { loadConformanceData } from "./conformance-data-loader";
 import { storeCreationOf } from "./conformance-store-creation";
 
@@ -67,5 +68,45 @@ describe("aggregateIdInputOf", () => {
     expect(() =>
       aggregateIdInputOf(find("dynamodb-config-unprocessed-keys")),
     ).toThrow();
+  });
+});
+
+describe("storeCreationOf unknown entries", () => {
+  const caseWith = (body: Record<string, unknown>): ConformanceCase => ({
+    id: "x",
+    rules: ["MEM-1"],
+    source: "unit.json",
+    format: "scenarios",
+    body: { id: "x", backends: ["memory"], ...body } as never,
+  });
+
+  test("rejects a store setting this runner does not interpret", () => {
+    expect(() =>
+      storeCreationOf(caseWith({ store: { lock_wait_milliseconds: 100 } })),
+    ).toThrow("unsupported store setting lock_wait_milliseconds");
+  });
+
+  test("rejects a seed entry this runner does not interpret", () => {
+    expect(() =>
+      storeCreationOf(caseWith({ seed: { configuration: {} } })),
+    ).toThrow("unsupported seed entry configuration");
+  });
+
+  test("accepts every store setting and seed entry used by the provided backends", () => {
+    expect(() =>
+      storeCreationOf(
+        caseWith({
+          store: {
+            retention_count: 1,
+            retention_mode: "ttl",
+            ttl_grace_seconds: 5,
+            layout_version: 1,
+            retry_limit: 2,
+            change_feed: true,
+          },
+          seed: { items: [] },
+        }),
+      ),
+    ).not.toThrow();
   });
 });
