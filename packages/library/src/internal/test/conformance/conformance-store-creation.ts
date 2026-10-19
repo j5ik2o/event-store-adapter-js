@@ -19,7 +19,34 @@ const arrayAt = (
   return Array.isArray(v) ? (v as readonly ConformanceJsonValue[]) : [];
 };
 
+const KNOWN_STORE_KEYS: readonly string[] = [
+  "retention_count",
+  "retention_mode",
+  "ttl_grace_seconds",
+  "layout_version",
+  "retry_limit",
+  "change_feed",
+];
+const KNOWN_SEED_KEYS: readonly string[] = ["items"];
+
+// 解釈できない項目を黙って無視すると、設定が効いていない成功を見逃す
+const rejectUnknownKeys = (
+  value: ConformanceJsonValue | undefined,
+  known: readonly string[],
+  label: string,
+): void => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return;
+  }
+  const unknown = Object.keys(value).find((key) => !known.includes(key));
+  if (unknown !== undefined) {
+    throw new Error(`unsupported ${label} ${unknown}`);
+  }
+};
+
 export function storeCreationOf(c: ConformanceCase): ConformanceStoreCreation {
+  rejectUnknownKeys(jsonAt(c.body, "store"), KNOWN_STORE_KEYS, "store setting");
+  rejectUnknownKeys(jsonAt(c.body, "seed"), KNOWN_SEED_KEYS, "seed entry");
   const retentionCount = jsonAt(c.body, "store", "retention_count");
   const retentionMode = jsonAt(c.body, "store", "retention_mode");
   const ttlGraceSeconds = jsonAt(c.body, "store", "ttl_grace_seconds");

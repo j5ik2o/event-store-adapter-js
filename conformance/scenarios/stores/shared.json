@@ -1,0 +1,252 @@
+{
+  "format": "scenarios",
+  "version": "1.3.0",
+  "cases": [
+    {
+      "id": "store-shared-persistent",
+      "rules": [
+        "W-7",
+        "W-8"
+      ],
+      "description": "1つ目の保存先を明示的に共有して生成した2つ目のストアは、全記録・ヘッド・排他制御を共有する。共有するのは、SQLiteでは同じファイル、Spannerでは同じデータベースと同じ接頭辞、Bigtableでは同じインスタンスと同じテーブルである。一方で書いた集約は他方から読め、2つ目のストアで同じ seq_nr やヘッド以下の seq_nr を追記すると楽観ロックで失敗する。1つ目のストアがヘッドを進めた後に2つ目のストアで次の seq_nr を追記でき、その結果を1つ目のストアから読めるので、インスタンスごとに古いヘッドを持つ実装は通らない。",
+      "backends": [
+        "sqlite",
+        "spanner",
+        "bigtable"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "source": "primary"
+            }
+          },
+          "e1-other": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "source": "second"
+            }
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "source": "primary"
+            }
+          },
+          "e2-other": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "source": "second"
+            }
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "source": "second"
+            }
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "createStore",
+          "arguments": {
+            "name": "second",
+            "storage": "shared",
+            "shared_with": "primary"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "store": "second",
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "store": "second",
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 1,
+            "snapshot": null
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1-other"
+          },
+          "store": "second",
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "1"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2-other"
+          },
+          "store": "second",
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "2"
+                ],
+                "must_not_contain": [
+                  "CREDENTIAL_SENTINEL",
+                  "https://storage.invalid/private",
+                  "SDK_RAW_SENTINEL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "store": "second",
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e3"
+          },
+          "store": "second",
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2",
+              "e3"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 3,
+            "snapshot": null
+          }
+        }
+      ]
+    }
+  ]
+}

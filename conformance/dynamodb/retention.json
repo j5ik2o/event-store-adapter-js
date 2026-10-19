@@ -1,6 +1,6 @@
 {
   "format": "scenarios",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "cases": [
     {
       "id": "dynamodb-retention-delete-paginated-batch",

@@ -1,0 +1,369 @@
+{
+  "format": "scenarios",
+  "version": "1.3.0",
+  "cases": [
+    {
+      "id": "bigtable-previous-event-write-failure",
+      "rules": [
+        "BT-7"
+      ],
+      "description": "ヘッドを進める前の直前のイベントの書き出しに失敗すると追記は保存先エラーとなり、ヘッドは進まず、読み取りはそれまでのイベントを返す。同じ追記を送り直すと成功する。",
+      "backends": [
+        "bigtable"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "error": {
+              "category": "storage",
+              "message": {
+                "must_contain": [],
+                "must_not_contain": []
+              }
+            }
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 2,
+          "phase": "journal-write-previous",
+          "kind": "storage-error",
+          "details": {
+            "message": "STORAGE_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "bigtable-new-tail-write-failure",
+      "rules": [
+        "BT-7"
+      ],
+      "description": "条件付き更新が成功した後の新しい末尾の書き出しに失敗しても追記は成功し、失敗は通知される。読み取りはそのイベントまで返す。次の追記の後も、すべてのイベントが欠けずに読める。",
+      "backends": [
+        "bigtable"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          },
+          "e2": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 2,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 2
+            },
+            "manifest": ""
+          },
+          "e3": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 3,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 3
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e2"
+          },
+          "expect": {
+            "result": "success"
+          },
+          "observe": {
+            "notifications": [
+              "journal-write-failure"
+            ]
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2"
+            ]
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e3"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1",
+              "e2",
+              "e3"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 2,
+          "phase": "journal-write-tail",
+          "kind": "storage-error",
+          "details": {
+            "message": "STORAGE_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-request"
+        }
+      ]
+    },
+    {
+      "id": "bigtable-cas-response-lost",
+      "rules": [
+        "BT-7",
+        "W-7"
+      ],
+      "description": "ヘッドの条件付き更新の応答を失うと成否不明の保存先エラーとなる。同じ封筒を送り直すと確定済みなので楽観ロックとなり、読み取りではそのイベントが1件だけ返る。",
+      "backends": [
+        "bigtable"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "error": {
+              "category": "storage",
+              "message": {
+                "must_contain": [],
+                "must_not_contain": []
+              }
+            }
+          }
+        },
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "error": {
+              "category": "optimistic-lock",
+              "message": {
+                "must_contain": [
+                  "Order-9",
+                  "1"
+                ],
+                "must_not_contain": []
+              }
+            }
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        }
+      ],
+      "faults": [
+        {
+          "operation": 1,
+          "phase": "commit",
+          "kind": "storage-error",
+          "details": {
+            "message": "STORAGE_SENTINEL"
+          },
+          "repeat": {
+            "mode": "count",
+            "count": 1
+          },
+          "injection": "replace-response"
+        }
+      ]
+    }
+  ]
+}
