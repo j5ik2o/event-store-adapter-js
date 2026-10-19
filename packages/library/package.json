@@ -13,6 +13,11 @@
       "types": "./dist/index.d.ts",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./spanner": {
+      "types": "./dist/spanner.d.ts",
+      "require": "./dist/spanner.js",
+      "default": "./dist/spanner.js"
     }
   },
   "files": [
@@ -49,6 +54,7 @@
   "license": "MIT",
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
+    "@google-cloud/spanner": "^9.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
@@ -64,5 +70,13 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.413.0"
+  },
+  "peerDependencies": {
+    "@google-cloud/spanner": "^8.7.1 || ^9.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@google-cloud/spanner": {
+      "optional": true
+    }
   }
 }

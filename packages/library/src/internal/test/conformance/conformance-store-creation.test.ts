@@ -88,8 +88,8 @@ describe("storeCreationOf unknown entries", () => {
 
   test("rejects a seed entry this runner does not interpret", () => {
     expect(() =>
-      storeCreationOf(caseWith({ seed: { configuration: {} } })),
-    ).toThrow("unsupported seed entry configuration");
+      storeCreationOf(caseWith({ seed: { unknown_entry: {} } })),
+    ).toThrow("unsupported seed entry unknown_entry");
   });
 
   test("accepts every store setting and seed entry used by the provided backends", () => {
@@ -103,10 +103,60 @@ describe("storeCreationOf unknown entries", () => {
             layout_version: 1,
             retry_limit: 2,
             change_feed: true,
+            transaction_retry_limit: 3,
+            ttl_grace_days: 7,
           },
-          seed: { items: [] },
+          seed: {
+            items: [],
+            configuration: {},
+            row_deletion_policy_days: 7,
+          },
         }),
       ),
     ).not.toThrow();
+  });
+});
+
+describe("storeCreationOf for spanner", () => {
+  test("reads transaction_retry_limit", () => {
+    expect(
+      storeCreationOf(find("spanner-aborted-retry-within-limit")).config,
+    ).toMatchObject({ transactionRetryLimit: 3 });
+  });
+
+  test("reads ttl_grace_days", () => {
+    expect(
+      storeCreationOf(find("spanner-seeded-ttl-grace-client-mismatch")).config,
+    ).toMatchObject({ retentionMode: "ttl", ttlGraceDays: 6 });
+  });
+
+  test("reads seed.configuration and seed.row_deletion_policy_days without rejecting them", () => {
+    const creation = storeCreationOf(
+      find("spanner-seeded-ttl-configuration-match"),
+    );
+    expect(creation.seedConfiguration).toEqual({
+      store_id: "5f0c8b8e-3c1a-4d7e-9a4b-2f6d1c0e7a11",
+      layout_version: 1,
+      keep_snapshot_count: 1,
+      retention_mode: "ttl",
+      ttl_grace_days: 7,
+      change_feed_enabled: false,
+    });
+    expect(creation.rowDeletionPolicyDays).toBe(7);
+  });
+
+  test("keeps a null row_deletion_policy_days as null", () => {
+    expect(
+      storeCreationOf(find("spanner-seeded-configuration-match"))
+        .rowDeletionPolicyDays,
+    ).toBeNull();
+  });
+
+  test("omits the spanner settings for a case that does not declare them", () => {
+    const creation = storeCreationOf(find("dynamodb-config-unprocessed-keys"));
+    expect("transactionRetryLimit" in creation.config).toBe(false);
+    expect("ttlGraceDays" in creation.config).toBe(false);
+    expect(creation.seedConfiguration).toBeUndefined();
+    expect(creation.rowDeletionPolicyDays).toBeUndefined();
   });
 });

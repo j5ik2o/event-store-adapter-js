@@ -403,3 +403,44 @@ describe("MEM-6 payload isolation", () => {
     expect(result).toMatchObject({ status: "passed", reason: "" });
   });
 });
+
+describe("fnv1a64 values operation", () => {
+  const withHash = (hash: (utf8: string) => bigint) => {
+    const bound = Object.create(binding) as ConformanceMemoryBinding & {
+      fnv1a64: (utf8: string) => bigint;
+    };
+    bound.fnv1a64 = hash;
+    return bound;
+  };
+  const reference: Readonly<Record<string, bigint>> = {
+    a: BigInt("0xaf63dc4c8601ec8c"),
+    "01H42K4ABWQ5V2XQEP3A48VE0Z": BigInt("0xadb103af5fe2a91a"),
+  };
+
+  test.each(["hash-fnv1a64-1", "hash-fnv1a64-2"])(
+    "%s passes when the binding computes the reference value",
+    async (id) => {
+      const result = await executeConformanceCase(
+        caseOf(id),
+        withHash((utf8) => reference[utf8]),
+      );
+      expect(result).toMatchObject({ status: "passed", reason: "" });
+    },
+  );
+
+  test("fails when the binding computes a different value", async () => {
+    const result = await executeConformanceCase(
+      caseOf("hash-fnv1a64-1"),
+      withHash(() => BigInt(0)),
+    );
+    expect(result.status).toBe("failed");
+  });
+
+  test("fails, not passes, when the binding has no fnv1a64", async () => {
+    const result = await executeConformanceCase(
+      caseOf("hash-fnv1a64-1"),
+      binding,
+    );
+    expect(result.status).toBe("failed");
+  });
+});

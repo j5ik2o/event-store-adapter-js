@@ -66,3 +66,23 @@ test("until-operation-finishes requires a real application and remains active fo
   registry.begin(2);
   expect(registry.take("retention-delete")).toBeUndefined();
 });
+
+const injected = (phase: string, injection: string) => ({
+  ...fault(phase),
+  kind: "transaction-aborted",
+  injection,
+});
+
+test("take selects a fault by injection when one is given and keeps phase-only selection otherwise", () => {
+  const registry = new ConformanceFaultRegistry([
+    injected("commit", "replace-response"),
+    injected("commit", "replace-request"),
+  ]);
+  expect(registry.take("commit", "replace-request")?.index).toBe(1);
+  expect(registry.take("commit", "replace-request")).toBeUndefined();
+  expect(registry.take("commit", "replace-response")?.index).toBe(0);
+  const phaseOnly = new ConformanceFaultRegistry([
+    injected("commit", "replace-response"),
+  ]);
+  expect(phaseOnly.take("commit")?.index).toBe(0);
+});
