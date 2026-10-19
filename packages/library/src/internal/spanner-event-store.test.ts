@@ -250,6 +250,22 @@ describe("create", () => {
     });
   });
 
+  test("a config table missing a column is a configuration error", async () => {
+    const prefix = await emulator.createStore(plain);
+    const [operation] = await emulator.database.updateSchema([
+      `ALTER TABLE ${prefix}_config DROP COLUMN ttl_grace_days`,
+    ]);
+    await operation.promise();
+    const created = await SpannerEventStore.create({
+      database: emulator.database,
+      tablePrefix: prefix,
+    });
+    expect(created).toMatchObject({
+      type: "err",
+      error: { type: "configuration-error", fieldName: "tablePrefix" },
+    });
+  });
+
   test("a database that fails to answer is a storage error", async () => {
     const created = await SpannerEventStore.create({
       database: {

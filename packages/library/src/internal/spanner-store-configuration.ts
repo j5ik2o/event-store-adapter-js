@@ -249,14 +249,19 @@ export async function verifySpannerStoreConfiguration(
             .map((row) => String(row.COLUMN_NAME)),
         ]),
       ) as Record<LogicalTable, string[]>;
-      // config が欠けていれば読めないので、列の照合の結果として設定エラーにする。
-      const configRows =
-        columns.config.length === 0
-          ? []
-          : await spannerRows(
-              snapshot,
-              `SELECT store_id, layout_version, keep_snapshot_count, retention_mode, ttl_grace_days, change_feed_enabled FROM \`${tables.config}\` WHERE singleton = 1`,
-            );
+      // config の列が欠けていれば読めないので、列の照合の結果として設定エラーにする。
+      const configComplete = EXPECTED.config.columns.every((expected) =>
+        columns.config.some(
+          (found) =>
+            found.name === expected.name && found.type === expected.type,
+        ),
+      );
+      const configRows = !configComplete
+        ? []
+        : await spannerRows(
+            snapshot,
+            `SELECT store_id, layout_version, keep_snapshot_count, retention_mode, ttl_grace_days, change_feed_enabled FROM \`${tables.config}\` WHERE singleton = 1`,
+          );
       const policy = policyRows[0]?.ROW_DELETION_POLICY_EXPRESSION;
       return reconcileSpannerStoreConfiguration(
         {
