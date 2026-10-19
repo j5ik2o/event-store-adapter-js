@@ -3,7 +3,7 @@
 [![CI](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/event-store-adapter-js.svg)](https://badge.fury.io/js/event-store-adapter-js)
 
-Event sourcing with Memory and DynamoDB. This library follows [common contract v5](https://github.com/j5ik2o/event-store-adapter/blob/main/docs/spec/README.md); its major version 5 matches the contract revision.
+Event sourcing with Memory, DynamoDB and Spanner. This library follows [common contract v5](https://github.com/j5ik2o/event-store-adapter/blob/main/docs/spec/README.md); its major version 5 matches the contract revision.
 
 [日本語](./README.ja.md)
 
@@ -77,6 +77,33 @@ const store = unwrap(opened);
 
 The caller owns the AWS client. Snapshot retention runs after a successful snapshot write; event-only DynamoDB writes send no retention requests. Retention failure preserves the successful write and is reported through the logger and `onRetentionFailure`. For TTL use `mode: { type: "ttl", graceSeconds: 3600 }` and enable the snapshot table's `ttl` attribute.
 
+## Spanner
+
+Spanner lives in a separate entry point, `event-store-adapter-js/spanner`. Install the Spanner SDK yourself; it is an optional peer dependency (`^8.7.1 || ^9.0.0`), and the main entry point `event-store-adapter-js` does not load the Spanner SDK.
+
+```shell
+npm install event-store-adapter-js @google-cloud/spanner
+```
+
+Create the five tables and the configuration row with the procedure in [SPANNER_DATABASE_SCHEMA.md](docs/SPANNER_DATABASE_SCHEMA.md) before opening the store. `SpannerEventStore.create` never runs DDL; it only verifies the tables and the configuration row.
+
+```typescript
+import { SpannerEventStore } from "event-store-adapter-js/spanner";
+
+const opened = await SpannerEventStore.create({
+  database: spannerDatabase,
+  tablePrefix: "esa",
+  retention: { count: 3, mode: "delete" },
+  transactionRetryLimit: 5,
+  onRetentionFailure: (failure) => console.error(failure.kind, failure.cause),
+});
+const store = unwrap(opened);
+```
+
+`database` is a `Database` of `@google-cloud/spanner` and `tablePrefix` derives the five table names. The caller owns the `Database` and closes it. The result is `Result<EventStore, EventStoreError>`; a missing or mismatched table or configuration is a `configuration-error`. `retention` is `{ count, mode }` with a positive integer `count`; the mode is `"delete"` (the default) or `{ type: "ttl", graceDays }` with a positive integer number of days. `transactionRetryLimit` is the maximum number of re-runs after an ABORTED transaction; the default is 5 and the first attempt is not counted. Snapshot retention runs after a successful snapshot write, and a retention failure is reported through the logger and `onRetentionFailure`.
+
+This version provides no change feed. Passing `changeFeed` is a `configuration-error`, and the configuration row records `change_feed_enabled` as `FALSE`.
+
 ## Serializers and Memory storage
 
 The default `PayloadSerializer.json()` handles JSON values only. A custom synchronous `PayloadSerializer<P>` implements `serialize(payload): Uint8Array` and `deserialize(bytes, manifest): P`. Serialize the payload alone and restore domain classes or brands in `deserialize`. See the [domain serializers](../examples/src/domain/user-account-serializers.ts) in the runnable examples.
@@ -93,7 +120,7 @@ Memory supports deletion retention, including cleanup on a later event-only writ
 
 ## Migration and development
 
-Read the [JavaScript migration guide](docs/MIGRATION_GUIDE.md) before moving existing records into new tables. Spanner and the old shard, version, converter and serializer APIs are outside this entry point.
+Read the [JavaScript migration guide](docs/MIGRATION_GUIDE.md) before moving existing records into new tables. The old shard, version, converter and serializer APIs are outside this entry point. Spanner is provided by `event-store-adapter-js/spanner`; the main entry point does not load the Spanner SDK. To move data from the v4 Spanner adapter, see the Spanner section of the migration guide.
 
 From the repository root:
 
@@ -108,7 +135,7 @@ pnpm run example:memory
 pnpm run example:dynamodb
 ```
 
-DynamoDB tests and examples use DynamoDB Local 3.3.1 through Testcontainers and require Docker. Package tests also pack, install, type-check and execute the library from an independent external project. Conformance results are saved under the library's `coverage/conformance` directory; set `CONFORMANCE_REPORT_DIR` to choose another output directory.
+DynamoDB tests and examples use DynamoDB Local 3.3.1 through Testcontainers and require Docker. Spanner tests use the Cloud Spanner emulator through Testcontainers and also require Docker. Package tests also pack, install, type-check and execute the library from an independent external project. Conformance results are saved under the library's `coverage/conformance` directory; set `CONFORMANCE_REPORT_DIR` to choose another output directory.
 
 ## License
 

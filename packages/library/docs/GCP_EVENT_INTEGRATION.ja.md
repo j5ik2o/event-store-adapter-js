@@ -1,7 +1,7 @@
 # GCPにおけるイベント駆動連携の選択肢
 
 このドキュメントは、`DynamoDB Streams + Lambda` に近い後段処理を GCP 上で実現する場合の選択肢を整理した設計メモです。
-対象日時は `2026-03-12` 時点です。現在のパッケージでは Spanner adapter と `EventStore.createSpanner(...)` を提供していません。Firestore adapter も未提供です。利用可能な API は [現在の README](../README.ja.md) を参照してください。
+対象日時は `2026-03-12` 時点です。Spanner は `event-store-adapter-js/spanner` の入口で提供します。この版は変更フィード（Change Streams）を提供しません。Firestore adapter は未提供です。利用可能な API は [現在の README](../README.ja.md) を参照してください。
 
 ## 結論
 
@@ -63,6 +63,8 @@
 | イベント保存 | `journal` テーブル |
 | 最新スナップショット | `snapshot` テーブル |
 | 後段トリガー | `Change Streams -> Dataflow -> Pub/Sub or Cloud Run functions` |
+
+上の表は設計上の候補です。ライブラリの今の版のテーブル構成は [SPANNER_DATABASE_SCHEMA.ja.md](SPANNER_DATABASE_SCHEMA.ja.md) を参照してください。Change Streams を使う構成は、この版では提供しません。ライブラリは変更フィードを求める設定を設定エラーにします。
 
 向いているケース:
 
@@ -133,12 +135,12 @@
 
 ## このライブラリに対する示唆
 
-GCP 対応の検討では、候補は次の 2 つでした。以下は設計上の候補であり、現在のパッケージが提供する adapter ではありません。
+GCP 対応の検討では、候補は次の 2 つでした。Spanner は提供済みで、Firestore は設計上の候補です。
 
 | 候補 | 判断 |
 |:--|:--|
-| Firestore adapter | 実装量優先なら候補。現在は未実装 |
-| Spanner adapter | `DynamoDB Streams` に近い構成を重視する候補。過去版の `EventStore.createSpanner(...)` は現在の公開 API に含みません |
+| Firestore adapter | 実装量優先なら候補。未提供 |
+| Spanner adapter | `DynamoDB Streams` に近い構成を重視する候補。`event-store-adapter-js/spanner` の `SpannerEventStore.create(...)` で提供済み。変更フィードはこの版では提供しない |
 
 `Bigtable` 向けアダプタは、少なくとも最初の GCP 対応としては推奨しません。
 

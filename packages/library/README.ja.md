@@ -3,7 +3,7 @@
 [![CI](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/event-store-adapter-js.svg)](https://badge.fury.io/js/event-store-adapter-js)
 
-MemoryとDynamoDBのイベントストアです。[共通契約 v5](https://github.com/j5ik2o/event-store-adapter/blob/main/docs/spec/README.md) に従います。メジャーの番号 5 は、共通契約の版と同じです。
+Memory、DynamoDB、Spannerのイベントストアです。[共通契約 v5](https://github.com/j5ik2o/event-store-adapter/blob/main/docs/spec/README.md) に従います。メジャーの番号 5 は、共通契約の版と同じです。
 
 [English](./README.md)
 
@@ -77,6 +77,33 @@ const store = unwrap(opened);
 
 AWSクライアントは呼び出し側で管理します。snapshot書き込み成功後に保持処理を行い、DynamoDBのevent-only書き込みでは保持要求を送りません。保持失敗でも確定済み書き込みは成功し、loggerと `onRetentionFailure` へ通知します。TTL方式は `mode: { type: "ttl", graceSeconds: 3600 }` とし、snapshot表の `ttl` を有効化してください。
 
+## Spanner
+
+Spannerは別の入口 `event-store-adapter-js/spanner` で提供します。Spannerの SDK は利用者が導入してください。任意のpeer依存（`^8.7.1 || ^9.0.0`）です。元の入口 `event-store-adapter-js` は Spanner の SDK を読み込みません。
+
+```shell
+npm install event-store-adapter-js @google-cloud/spanner
+```
+
+ストアを生成する前に、[SPANNER_DATABASE_SCHEMA.ja.md](docs/SPANNER_DATABASE_SCHEMA.ja.md) の手順で、5つのテーブルと設定の行を作ってください。`SpannerEventStore.create` はDDLを実行せず、テーブルと設定の行を照合するだけです。
+
+```typescript
+import { SpannerEventStore } from "event-store-adapter-js/spanner";
+
+const opened = await SpannerEventStore.create({
+  database: spannerDatabase,
+  tablePrefix: "esa",
+  retention: { count: 3, mode: "delete" },
+  transactionRetryLimit: 5,
+  onRetentionFailure: (failure) => console.error(failure.kind, failure.cause),
+});
+const store = unwrap(opened);
+```
+
+`database` は `@google-cloud/spanner` の `Database` で、`tablePrefix` から5つのテーブル名を導きます。`Database` は呼び出し側が管理し、閉じるのも呼び出し側です。結果は `Result<EventStore, EventStoreError>` で、テーブルや設定の欠けと食い違いは `configuration-error` になります。`retention` は `{ count, mode }` で、`count` は正の整数です。modeは `"delete"`（既定）または `{ type: "ttl", graceDays }`（正の整数の日数）です。`transactionRetryLimit` はABORTEDになったトランザクションの再実行の上限で、既定は5、最初の試行は数えません。スナップショットの保持処理は、スナップショットの書き込みが成功した後に行い、保持の失敗はloggerと `onRetentionFailure` へ通知します。
+
+この版は変更フィードを提供しません。`changeFeed` を指定すると `configuration-error` になり、設定の行は `change_feed_enabled` を `FALSE` で記録します。
+
 ## SerializerとMemoryの共有
 
 既定の `PayloadSerializer.json()` はJSON値だけを扱います。任意の同期 `PayloadSerializer<P>` は `serialize(payload): Uint8Array` と `deserialize(bytes, manifest): P` を実装します。payloadだけを直列化し、クラスやbrandは `deserialize` で復元してください。実例の [domain serializer](../examples/src/domain/user-account-serializers.ts) を参照できます。
@@ -93,7 +120,7 @@ Memoryは削除方式の保持に対応し、保持失敗で残った履歴は�
 
 ## 移行と開発
 
-既存データを新しい表へ移す際は [JavaScript移行ガイド](docs/MIGRATION_GUIDE.ja.md) を参照してください。Spannerと旧shard・version・converter・serializer APIはこの公開入口に含みません。
+既存データを新しい表へ移す際は [JavaScript移行ガイド](docs/MIGRATION_GUIDE.ja.md) を参照してください。旧shard・version・converter・serializer APIはこの公開入口に含みません。Spannerは `event-store-adapter-js/spanner` の入口で提供し、元の入口は Spanner の SDK を読み込みません。v4のSpannerアダプタからデータを移すには、移行ガイドのSpannerの節を参照してください。
 
 リポジトリのrootで実行します。
 
@@ -108,7 +135,7 @@ pnpm run example:memory
 pnpm run example:dynamodb
 ```
 
-DynamoDB試験と実例はTestcontainersからDynamoDB Local 3.3.1を起動するためDockerが必要です。package試験はpack成果物を独立した外部プロジェクトへ導入し、型検査と実行も行います。全適合の結果はlibraryの `coverage/conformance` へ保存します。`CONFORMANCE_REPORT_DIR` で保存先を指定できます。
+DynamoDB試験と実例はTestcontainersからDynamoDB Local 3.3.1を起動するためDockerが必要です。Spanner試験もTestcontainersからCloud Spannerエミュレーターを起動するため、Dockerが必要です。package試験はpack成果物を独立した外部プロジェクトへ導入し、型検査と実行も行います。全適合の結果はlibraryの `coverage/conformance` へ保存します。`CONFORMANCE_REPORT_DIR` で保存先を指定できます。
 
 ## ライセンス
 

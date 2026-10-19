@@ -27,14 +27,15 @@ test("packed package type-checks and executes from an independent external proje
     assert.ok(files.includes("package/dist/spanner.js"));
     assert.ok(files.includes("package/dist/spanner.d.ts"));
     assert.ok(!files.some((file) => /\/next\/|shard-|default-serializer|\/dist\/(aggregate|event|types|event-serializer|snapshot-serializer)\.(js|d\.ts)$/.test(file)));
-    for (const [file, unavailable, readme] of [
-      ["package/docs/SPANNER_DATABASE_SCHEMA.md", /does not provide a Spanner adapter or `EventStore\.createSpanner/, "package/README.md"],
-      ["package/docs/SPANNER_DATABASE_SCHEMA.ja.md", /Spanner adapter と `EventStore\.createSpanner\(\.\.\.\)` を提供していません/, "package/README.ja.md"],
-      ["package/docs/GCP_EVENT_INTEGRATION.ja.md", /Spanner adapter と `EventStore\.createSpanner\(\.\.\.\)` を提供していません/, "package/README.ja.md"],
+    for (const [file, guidance, readme, sdkNotLoaded] of [
+      ["package/docs/SPANNER_DATABASE_SCHEMA.md", [/event-store-adapter-js\/spanner/, /SpannerEventStore\.create/], "package/README.md", /does not load the Spanner SDK/],
+      ["package/docs/SPANNER_DATABASE_SCHEMA.ja.md", [/event-store-adapter-js\/spanner/, /SpannerEventStore\.create/], "package/README.ja.md", /Spanner の SDK を読み込みません/],
+      ["package/docs/GCP_EVENT_INTEGRATION.ja.md", [/event-store-adapter-js\/spanner/, /変更フィード（Change Streams）を提供しません/], "package/README.ja.md", /Spanner の SDK を読み込みません/],
     ]) {
       assert.ok(files.includes(file));
       const document = run("tar", ["-xOzf", archive, file], directory);
-      assert.match(document, unavailable);
+      for (const pattern of guidance) assert.match(document, pattern);
+      assert.doesNotMatch(document, /does not provide a Spanner adapter|Spanner adapter と `EventStore\.createSpanner\(\.\.\.\)` を提供していません/);
       assert.doesNotMatch(document, /現在[^\n]*実装済み/);
       const links = [...document.matchAll(/\[[^\]]+\]\((\.\.\/README(?:\.ja)?\.md)\)/g)];
       assert.ok(links.length > 0, `${file} must link to the current README`);
@@ -43,7 +44,8 @@ test("packed package type-checks and executes from an independent external proje
         assert.ok(files.includes(readme));
         const currentReadme = run("tar", ["-xOzf", archive, readme], directory);
         assert.match(currentReadme, /Spanner/);
-        assert.match(currentReadme, /outside this entry point|この公開入口に含みません/);
+        assert.match(currentReadme, /event-store-adapter-js\/spanner/);
+        assert.match(currentReadme, sdkNotLoaded);
       }
     }
     const nodeVersion = require("@types/node/package.json").version;
