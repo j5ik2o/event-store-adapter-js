@@ -10,9 +10,9 @@ import type { SnapshotEnvelope } from "../snapshot-envelope";
 import type { validateDynamoDBEventStoreInput } from "./dynamodb-event-store-input-validation";
 import { dynamoDBItemSize } from "./dynamodb-item-size";
 import { classifyDynamoDBPersistEventError } from "./dynamodb-persist-event-error";
-import { notifyDynamoDBRetentionFailure } from "./dynamodb-retention-failure-notification";
 import type { DynamoDBRetentionHooks } from "./dynamodb-retention-hooks";
 import { retainDynamoDBSnapshots } from "./dynamodb-snapshot-retention";
+import { notifyRetentionFailure } from "./retention-failure-notification";
 import {
   validateEvent,
   validateEventAndSnapshot,
@@ -205,7 +205,7 @@ async function persistDynamoDBEvent<PE, PS>(
         hooks,
       );
     } catch (cause) {
-      await notifyDynamoDBRetentionFailure(
+      await notifyRetentionFailure(
         aid,
         cause,
         settings.logger,

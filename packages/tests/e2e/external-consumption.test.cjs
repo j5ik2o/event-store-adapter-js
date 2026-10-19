@@ -24,7 +24,9 @@ test("packed package type-checks and executes from an independent external proje
     const files = run("tar", ["-tzf", archive], directory).trim().split("\n");
     assert.ok(files.includes("package/dist/index.js"));
     assert.ok(!files.some((file) => /\/internal\/test\/|\.test\.(js|d\.ts)$/.test(file)));
-    assert.ok(!files.some((file) => /\/next\/|spanner|shard-|default-serializer|\/dist\/(aggregate|event|types|event-serializer|snapshot-serializer)\.(js|d\.ts)$/.test(file)));
+    assert.ok(files.includes("package/dist/spanner.js"));
+    assert.ok(files.includes("package/dist/spanner.d.ts"));
+    assert.ok(!files.some((file) => /\/next\/|shard-|default-serializer|\/dist\/(aggregate|event|types|event-serializer|snapshot-serializer)\.(js|d\.ts)$/.test(file)));
     for (const [file, unavailable, readme] of [
       ["package/docs/SPANNER_DATABASE_SCHEMA.md", /does not provide a Spanner adapter or `EventStore\.createSpanner/, "package/README.md"],
       ["package/docs/SPANNER_DATABASE_SCHEMA.ja.md", /Spanner adapter と `EventStore\.createSpanner\(\.\.\.\)` を提供していません/, "package/README.ja.md"],

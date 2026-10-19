@@ -9,6 +9,8 @@ export type ConformanceStoreCreation = {
   faults: readonly ConformanceJsonValue[];
   fixtures?: ConformanceJsonValue;
   clockEpochSeconds?: number;
+  seedConfiguration?: ConformanceJsonValue;
+  rowDeletionPolicyDays?: number | null;
 };
 
 const arrayAt = (
@@ -26,8 +28,14 @@ const KNOWN_STORE_KEYS: readonly string[] = [
   "layout_version",
   "retry_limit",
   "change_feed",
+  "transaction_retry_limit",
+  "ttl_grace_days",
 ];
-const KNOWN_SEED_KEYS: readonly string[] = ["items"];
+const KNOWN_SEED_KEYS: readonly string[] = [
+  "items",
+  "configuration",
+  "row_deletion_policy_days",
+];
 
 // 解釈できない項目を黙って無視すると、設定が効いていない成功を見逃す
 const rejectUnknownKeys = (
@@ -52,6 +60,18 @@ export function storeCreationOf(c: ConformanceCase): ConformanceStoreCreation {
   const ttlGraceSeconds = jsonAt(c.body, "store", "ttl_grace_seconds");
   const retryLimit = jsonAt(c.body, "store", "retry_limit");
   const changeFeed = jsonAt(c.body, "store", "change_feed");
+  const transactionRetryLimit = jsonAt(
+    c.body,
+    "store",
+    "transaction_retry_limit",
+  );
+  const ttlGraceDays = jsonAt(c.body, "store", "ttl_grace_days");
+  const seedConfiguration = jsonAt(c.body, "seed", "configuration");
+  const rowDeletionPolicyDays = jsonAt(
+    c.body,
+    "seed",
+    "row_deletion_policy_days",
+  );
   return {
     config: {
       retentionCount:
@@ -60,6 +80,10 @@ export function storeCreationOf(c: ConformanceCase): ConformanceStoreCreation {
       ...(typeof ttlGraceSeconds === "number" ? { ttlGraceSeconds } : {}),
       ...(typeof retryLimit === "number" ? { retryLimit } : {}),
       ...(changeFeed === true ? { changeFeed: true } : {}),
+      ...(typeof transactionRetryLimit === "number"
+        ? { transactionRetryLimit }
+        : {}),
+      ...(typeof ttlGraceDays === "number" ? { ttlGraceDays } : {}),
     },
     seedItems: arrayAt(c.body, "seed", "items"),
     faults: arrayAt(c.body, "faults"),
@@ -67,5 +91,9 @@ export function storeCreationOf(c: ConformanceCase): ConformanceStoreCreation {
     clockEpochSeconds: jsonAt(c.body, "clock", "epoch_seconds") as
       | number
       | undefined,
+    ...(seedConfiguration === undefined ? {} : { seedConfiguration }),
+    ...(rowDeletionPolicyDays === undefined
+      ? {}
+      : { rowDeletionPolicyDays: rowDeletionPolicyDays as number | null }),
   };
 }

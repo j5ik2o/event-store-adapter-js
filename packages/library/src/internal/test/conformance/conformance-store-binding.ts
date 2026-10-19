@@ -16,6 +16,8 @@ export interface ConformanceStoreBinding<E, S> {
   ): ConformanceOutcome<string>;
   buildEvent(d: ConformanceEventInput): ConformanceOutcome<E>;
   buildSnapshot(d: ConformanceSnapshotInput): ConformanceOutcome<S>;
+  /** ハッシュを使う保存先だけが持つ。値の表の fnv1a64 を実行する。 */
+  fnv1a64?(utf8: string): bigint;
   validateSeqNrValue(
     seqNr: bigint,
     context?: "event" | "value",

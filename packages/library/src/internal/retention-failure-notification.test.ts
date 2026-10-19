@@ -1,6 +1,6 @@
 import type { Logger } from "../logger";
 import type { RetentionFailure } from "../retention-failure";
-import { notifyDynamoDBRetentionFailure } from "./dynamodb-retention-failure-notification";
+import { notifyRetentionFailure } from "./retention-failure-notification";
 
 test("logs a retention failure and sends the same failure to the additional callback", async () => {
   const cause = new Error("delete failed");
@@ -12,7 +12,7 @@ test("logs a retention failure and sends the same failure to the additional call
     warn: jest.fn(),
     error,
   };
-  await notifyDynamoDBRetentionFailure("Order-1", cause, logger, callback);
+  await notifyRetentionFailure("Order-1", cause, logger, callback);
   expect(error).toHaveBeenCalledTimes(1);
   expect(callback).toHaveBeenCalledTimes(1);
   const failure = error.mock.calls[0][0] as RetentionFailure;
@@ -28,7 +28,7 @@ test("uses console when the logger and callback are omitted", async () => {
   const log = jest.spyOn(console, "error").mockImplementation(() => {});
   try {
     await expect(
-      notifyDynamoDBRetentionFailure("Order-1", "failure"),
+      notifyRetentionFailure("Order-1", "failure"),
     ).resolves.toBeUndefined();
     expect(log).toHaveBeenCalledWith({
       kind: "retention-failure",
@@ -56,7 +56,7 @@ test.each(["throw", "reject"])(
     const fallback = jest.spyOn(console, "error").mockImplementation(() => {});
     try {
       await expect(
-        notifyDynamoDBRetentionFailure(
+        notifyRetentionFailure(
           "Order-1",
           "retention failed",
           {
@@ -85,7 +85,7 @@ test.each(["throw", "reject"])(
 test("records callback rejection with the logger and protects failure of every notification path", async () => {
   const cause = new Error("callback failed");
   const error = jest.fn();
-  await notifyDynamoDBRetentionFailure(
+  await notifyRetentionFailure(
     "Order-1",
     "retention failed",
     {
@@ -105,14 +105,9 @@ test("records callback rejection with the logger and protects failure of every n
   });
   try {
     await expect(
-      notifyDynamoDBRetentionFailure(
-        "Order-1",
-        "retention failed",
-        undefined,
-        () => {
-          throw cause;
-        },
-      ),
+      notifyRetentionFailure("Order-1", "retention failed", undefined, () => {
+        throw cause;
+      }),
     ).resolves.toBeUndefined();
   } finally {
     unavailable.mockRestore();

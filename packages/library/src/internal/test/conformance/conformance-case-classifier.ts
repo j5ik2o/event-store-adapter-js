@@ -66,7 +66,7 @@ export function classifyCase(
   if (targetsOnlyUnprovidedBackends(body.backends)) {
     return {
       status: "not-applicable",
-      reason: "この言語は SQLite・Spanner・Bigtable の保存先を提供しない",
+      reason: "この言語は SQLite・Bigtable の保存先を提供しない",
     };
   }
   if (
@@ -78,10 +78,10 @@ export function classifyCase(
       reason: "この言語は Bigtable の保存先を提供しない",
     };
   }
-  if (body.operation === "fnv1a64") {
+  if (body.operation === "fnv1a64" && backend !== "spanner") {
     return {
       status: "not-applicable",
-      reason: "最初のメジャーにハッシュを使う保存先がない（段階5で実行する）",
+      reason: "ハッシュを使う保存先（Spanner）だけが実行する",
     };
   }
   if (representation.time_precision === "nanoseconds") {

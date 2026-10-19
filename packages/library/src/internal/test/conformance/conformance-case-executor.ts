@@ -158,16 +158,30 @@ export async function executeConformanceCase(
       const result =
         body.operation === "buildAid"
           ? binding.buildAggregateId(aggregateIdInputOf(c))
-          : body.operation === "validateSeqNr"
-            ? binding.validateSeqNrValue(
-                integerOf(input.seq_nr),
-                textOf(input.context) as "event" | "value",
-              )
-            : (() => {
-                throw new Error(
-                  `unsupported value operation ${String(body.operation)}`,
+          : body.operation === "fnv1a64"
+            ? (() => {
+                assert.ok(
+                  binding.fnv1a64,
+                  "fnv1a64 must be connected to the library hash",
                 );
-              })();
+                return {
+                  kind: "ok" as const,
+                  value: `0x${binding
+                    .fnv1a64(textOf(input.utf8))
+                    .toString(16)
+                    .padStart(16, "0")}`,
+                };
+              })()
+            : body.operation === "validateSeqNr"
+              ? binding.validateSeqNrValue(
+                  integerOf(input.seq_nr),
+                  textOf(input.context) as "event" | "value",
+                )
+              : (() => {
+                  throw new Error(
+                    `unsupported value operation ${String(body.operation)}`,
+                  );
+                })();
       expected = expectation;
       actual = result;
       if (expectation.error !== undefined)

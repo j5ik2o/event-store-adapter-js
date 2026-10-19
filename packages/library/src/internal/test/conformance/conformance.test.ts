@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DynamoDBLocal } from "../dynamodb-local";
-import { CONFORMANCE_BACKENDS } from "./conformance-backend";
 import { selectConformanceCases } from "./conformance-case-selector";
 import { loadConformanceData } from "./conformance-data-loader";
 import { ConformanceDynamoDBBinding } from "./conformance-dynamodb-binding";
@@ -22,7 +21,10 @@ const implementationVersion: string = JSON.parse(
 const data = loadConformanceData(root);
 const manifest = verifyConformanceManifest(root);
 
-describe.each(CONFORMANCE_BACKENDS)("conformance (%s)", (backend) => {
+// spanner はエミュレーターを使う別ファイル（conformance-spanner.test.ts）で実行する
+const BACKENDS = ["memory", "dynamodb"] as const;
+
+describe.each(BACKENDS)("conformance (%s)", (backend) => {
   let report: ConformanceReport;
   let local: DynamoDBLocal | undefined;
   beforeAll(async () => {
@@ -133,7 +135,7 @@ describe.each(CONFORMANCE_BACKENDS)("conformance (%s)", (backend) => {
       "not-applicable": 10,
     });
     const unprovidedRules = Object.keys(report.ruleCounts).filter((rule) =>
-      /^(SQ|SPN|BT)-/.test(rule),
+      /^(SQ|BT)-/.test(rule),
     );
     expect(unprovidedRules.length).toBeGreaterThan(0);
     for (const rule of unprovidedRules) {
@@ -155,18 +157,18 @@ describe.each(CONFORMANCE_BACKENDS)("conformance (%s)", (backend) => {
     expect(report.counts).toEqual({
       passed: backend === "memory" ? 67 : 106,
       failed: 0,
-      "not-applicable": 56,
+      "not-applicable": 41,
       unverified: 0,
       "not-representable": 0,
     });
     expect(report.backendNotApplicable).toHaveLength(
-      backend === "memory" ? 46 : 7,
+      backend === "memory" ? 61 : 22,
     );
     expect(
       report.notApplicableReasons
         .map((entry) => entry.count)
         .sort((a, b) => a - b),
-    ).toEqual([4, 8, 10, 34]);
+    ).toEqual([4, 8, 10, 19]);
     expect(
       report.results
         .filter((r) => r.status === "not-applicable")

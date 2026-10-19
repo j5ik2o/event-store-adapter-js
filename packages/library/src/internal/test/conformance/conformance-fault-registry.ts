@@ -23,13 +23,14 @@ export class ConformanceFaultRegistry {
     this.operation = operation;
   }
 
-  take(phase: string) {
+  take(phase: string, injection?: string) {
     const index = this.entries.findIndex(({ declaration, fired }) => {
       const fault = recordOf(declaration);
       const repeat = recordOf(fault.repeat);
       return (
         Number(integerOf(fault.operation)) === this.operation &&
         fault.phase === phase &&
+        (injection === undefined || fault.injection === injection) &&
         (repeat.mode === "until-operation-finishes" ||
           fired < Number(integerOf(repeat.count)))
       );

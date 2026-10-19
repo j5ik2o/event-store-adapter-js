@@ -20,7 +20,7 @@ async function logNotificationFailure(
   }
 }
 
-export async function notifyDynamoDBRetentionFailure(
+export async function notifyRetentionFailure(
   aggregateId: string,
   cause: unknown,
   logger: Logger = console,

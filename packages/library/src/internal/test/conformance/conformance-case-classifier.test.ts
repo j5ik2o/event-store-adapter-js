@@ -13,10 +13,19 @@ const valuesCase = (body: {
 });
 
 describe("classifyCase", () => {
-  test("marks fnv1a64 as not-applicable with a reason", () => {
-    const r = classifyCase(valuesCase({ operation: "fnv1a64" }), "memory");
-    expect(r.status).toBe("not-applicable");
-    expect(r.reason).not.toBe("");
+  test.each(["memory", "dynamodb"] as const)(
+    "marks fnv1a64 as not-applicable with a reason on %s",
+    (backend) => {
+      const r = classifyCase(valuesCase({ operation: "fnv1a64" }), backend);
+      expect(r.status).toBe("not-applicable");
+      expect(r.reason).not.toBe("");
+    },
+  );
+
+  test("keeps fnv1a64 as unverified on spanner, which uses the hash", () => {
+    expect(
+      classifyCase(valuesCase({ operation: "fnv1a64" }), "spanner").status,
+    ).toBe("unverified");
   });
 
   test("marks nanosecond precision as not-applicable with a reason", () => {
@@ -84,7 +93,7 @@ const scenarioCase = (
 });
 
 describe("classifyCase for the backends this language does not provide", () => {
-  const reason = "この言語は SQLite・Spanner・Bigtable の保存先を提供しない";
+  const reason = "この言語は SQLite・Bigtable の保存先を提供しない";
 
   test.each(["memory", "dynamodb"] as const)(
     "marks a scenario targeting only sqlite as not-applicable on %s",
@@ -96,6 +105,21 @@ describe("classifyCase for the backends this language does not provide", () => {
       expect(r).toEqual({ status: "not-applicable", reason });
     },
   );
+
+  test.each(["memory", "dynamodb", "spanner"] as const)(
+    "marks a scenario targeting sqlite and bigtable as not-applicable on %s",
+    (backend) => {
+      expect(
+        classifyCase(scenarioCase(["sqlite", "bigtable"]), backend),
+      ).toEqual({ status: "not-applicable", reason });
+    },
+  );
+
+  test("does not treat a spanner-only scenario as an unprovided backend any more", () => {
+    expect(classifyCase(scenarioCase(["spanner"]), "spanner").status).toBe(
+      "unverified",
+    );
+  });
 
   test("keeps a scenario that also targets a provided backend unverified", () => {
     const c = scenarioCase(["dynamodb", "sqlite"]);
