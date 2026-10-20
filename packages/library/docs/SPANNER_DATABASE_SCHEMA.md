@@ -158,11 +158,13 @@ DDL changes while the store is in use, and data changes that bypass the library,
 
 Changing `keep_snapshot_count` is a maintenance procedure that you run outside the library, with every client stopped. The library does not provide a tool for it.
 
+TTL mode requires `retention.count`, so in TTL mode the new count must also be a positive integer. Changing a TTL store to no history (`NULL`), and changing `retention_mode`, are not covered by this procedure.
+
 1. Stop every client of the store and confirm that in-flight writes, reads and retention work have finished. Record the old and new settings and your progress somewhere you can resume from.
-2. For each `aid` that has history rows, use a SERIALIZABLE read-write transaction to read the rows with `expired_at IS NULL` in descending `seq_nr` order. With a new count of `n`, keep the newest `n`; with no history (`NULL`), every unmarked row is a target. In delete mode, `DELETE` the target rows. In TTL mode, set `expired_at` to `CURRENT_TIMESTAMP()` only on target rows whose `expired_at IS NULL`; rows that are already marked, and their times, stay unchanged. Split large clean-ups into several transactions and select the targets again in each one. Do not touch `esa_journal`, `esa_head` or `esa_snapshot_current`.
+2. For each `aid` that has history rows, use a SERIALIZABLE read-write transaction to read the rows with `expired_at IS NULL` in descending `seq_nr` order. With a new count of `n`, keep the newest `n`; with no history (`NULL`, delete mode only), every unmarked row is a target. In delete mode, `DELETE` the target rows. In TTL mode, set `expired_at` to `CURRENT_TIMESTAMP()` only on target rows whose `expired_at IS NULL`; rows that are already marked, and their times, stay unchanged. Split large clean-ups into several transactions and select the targets again in each one. Do not touch `esa_journal`, `esa_head` or `esa_snapshot_current`.
 3. After every aggregate is processed, update `keep_snapshot_count` in `esa_config`. In TTL mode, the marking must be complete, but you do not wait for the physical deletion. Then restart the clients so that each one verifies the new setting.
 
-If the procedure fails part-way, keep the clients stopped and run it again with the same target recorded in step 1. Rows that were already deleted or marked are not processed again, and their expiry is not postponed. There is no rollback of the whole store. When you increase the count, or set a count where there was none, rows that were deleted, marked or never kept are not restored or created afterwards; the new setting applies from the next snapshot write.
+If the procedure fails part-way, keep the clients stopped and run it again with the same target recorded in step 1. Rows that were already deleted or marked are not processed again, and their expiry is not postponed. There is no rollback of the whole store. When you increase the count, or set a count where there was none (delete mode only), rows that were deleted, marked or never kept are not restored or created afterwards; the new setting applies from the next snapshot write.
 
 ## v4 (4.x) Cloud Spanner schema (migration source)
 

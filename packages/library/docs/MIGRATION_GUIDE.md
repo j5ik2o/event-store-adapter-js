@@ -115,7 +115,16 @@ Steps:
    ```sql
    SELECT aggregate_id, sequence_number
    FROM journal
-   WHERE MOD(UNIX_MICROS(occurred_at), 1000) <> 0;
+   WHERE occurred_at <> TIMESTAMP_TRUNC(occurred_at, MILLISECOND);
+   ```
+
+   Keys under more than one shard. The checks above count all shards together. If a replaced shard selector put the rows of one `aggregate_id` under several `shard_id` values, those rows may belong to different aggregates whose `asString()` is equal, and the counts above would mix them. This query returns such keys. Treat each one as reported unless step 4 confirms that all its rows restore to one type name and value:
+
+   ```sql
+   SELECT aggregate_id, COUNT(DISTINCT shard_id) AS shard_count
+   FROM journal
+   GROUP BY aggregate_id
+   HAVING COUNT(DISTINCT shard_id) > 1;
    ```
 
    Snapshot numbers beyond the last event. A snapshot must not have a number above the aggregate's maximum event number:
@@ -133,14 +142,14 @@ Steps:
 
    Do not migrate an aggregate that any check reports. Do not renumber events to hide a gap or a duplicate; v5 requires numbers to start at 1 and stay contiguous, so such an aggregate must be resolved at its source.
 
-4. Restore the type name and the value from the old data, not from the key string. Read each event with the v4 serializer and converter that wrote it, and take `event.aggregateId.typeName` and `event.aggregateId.value`. Check that `event.aggregateId.asString()` equals the stored `aggregate_id`. Do not split `aggregate_id` at a `-` to guess them. If you used a custom way to derive the key, or the data lacks the information needed, do not migrate that aggregate.
+4. Restore the type name and the value from the old data, not from the key string. Read each event with the v4 serializer and converter that wrote it, and take `event.aggregateId.typeName` and `event.aggregateId.value`. Check that `event.aggregateId.asString()` equals the stored `aggregate_id`, and that every row with the same `aggregate_id` restores to the same type name and value; if they do not, do not migrate that key. Do not split `aggregate_id` at a `-` to guess them. If you used a custom way to derive the key, or the data lacks the information needed, do not migrate that aggregate.
    - A v4 type name may contain `-`, which v5 does not allow. Replace it through a mapping table that you provide, and apply it to every aggregate of that type.
    - Build each new ID with `AggregateId.of`. An `aid` whose UTF-8 size exceeds 1024 bytes is returned as a `contract-violation` error; resolve it before writing.
    - Check that two different old keys never produce the same new `aid`. After the type-name mapping, collisions are possible.
 5. Convert each event. The v4 payload holds the whole event (`{ type, data }` with the default serializer), with its metadata inside. Take out only the domain value to use as the v5 payload. v4 stored no manifest, so you decide it to match the new payload shape. With the default serializer, `type` held `event.typeName`.
 6. Convert the time. The v4 `TIMESTAMP` has millisecond precision. Pass it to v5 as a `Date`; v5 stores it as nanoseconds (`INT64`) computed from the epoch milliseconds, with zero below the millisecond. The precision that v4 never stored is not recovered, and the result is not evidence that the original time had nanosecond precision.
-7. Decide the snapshot number. The latest v4 row (`sequence_number = 0`) records no event number, and after an event-only write its `payload` is older than the latest event. Decide the number only from information that you have confirmed. One example is a retained copy (`sequence_number > 0`) whose `payload` bytes are equal to those of the latest row, when exactly one copy matches. Another is a number that your domain guarantees. Check that the number is at most the maximum event number. If you cannot decide it, do not migrate the snapshot: migrate the events only. Do not migrate `version`. The retained copies are not moved to `esa_snapshot_history`; v5 builds history by its own rule on each later snapshot write.
-8. Write with the v5 API. Open the store with `SpannerEventStore.create` and use the `rewrite` helper of the [DynamoDB procedure](#rewrite-and-verify) in the confirmed order, one aggregate at a time. Step 3 confirmed that the old numbers start at 1 and are contiguous, so the helper's `index + 1` equals the old number; nothing is renumbered. An aggregate's snapshot belongs to the record whose number you decided in step 7. The last write of an aggregate creates the v5 head with the maximum number and that event's envelope. Pass a serializer pair to `SpannerEventStore.create` if the payload is a domain object.
+7. Decide the snapshot number. The latest v4 row (`sequence_number = 0`) records no event number, and after an event-only write its `payload` is older than the latest event. Decide the number only from information that you have confirmed. One example is a retained copy (`sequence_number > 0`) whose `payload` bytes are equal to those of the latest row, when exactly one copy matches. Another is a number that your domain guarantees. Check that the number is at most the maximum event number. If you cannot decide it, do not migrate the snapshot: migrate the events only. Do not migrate `version`. The retained copies are not moved to `esa_snapshot_history`; v5 builds history by its own rule on each snapshot write, including the snapshot written in step 8.
+8. Write with the v5 API. Open the store with `SpannerEventStore.create` and use the `rewrite` helper of the [DynamoDB procedure](#rewrite-and-verify) in the confirmed order, one aggregate at a time. Step 3 confirmed that the old numbers start at 1 and are contiguous, so the helper's `index + 1` equals the old number; nothing is renumbered. An aggregate's snapshot belongs to the record whose number you decided in step 7. Each write updates the v5 head; after the last write of an aggregate, it holds the maximum number and that event's envelope. Pass a serializer pair to `SpannerEventStore.create` if the payload is a domain object.
 9. Read the data back and compare. For each aggregate, confirm the event count and that the numbers are contiguous from 1, that `headSeqNr` equals the maximum number, the snapshot number, manifest, payload, occurrence time and restored domain state. Restore from the snapshot number + 1, or 1 without a snapshot.
 10. This version provides no change feed. If a downstream process or read model depended on the v4 data, decide how to rebuild it before switching over.
 11. Switch the application to the new prefix. Keep the v4 tables until you have confirmed that they can be cleaned up.
