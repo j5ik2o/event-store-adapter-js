@@ -1,3 +1,12 @@
 export { SpannerEventStore } from "./spanner-event-store";
 export type { SpannerEventStoreInput } from "./spanner-event-store-input";
+export { migrateV4Spanner } from "./spanner-migration";
+export type { SpannerMigrationFailure } from "./spanner-migration-failure";
+export type { SpannerMigrationInput } from "./spanner-migration-input";
+export type { SpannerMigrationJournalRow } from "./spanner-migration-journal-row";
+export type { SpannerMigrationRejection } from "./spanner-migration-rejection";
+export type { SpannerMigrationReport } from "./spanner-migration-report";
+export type { SpannerMigrationRestoredEvent } from "./spanner-migration-restored-event";
+export type { SpannerMigrationSnapshotRow } from "./spanner-migration-snapshot-row";
+export type { SpannerMigrationSnapshotRows } from "./spanner-migration-snapshot-rows";
 export type { SpannerSnapshotRetention } from "./spanner-snapshot-retention";

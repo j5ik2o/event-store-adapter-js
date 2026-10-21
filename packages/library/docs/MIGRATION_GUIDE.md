@@ -1,6 +1,6 @@
 # JavaScript migration to the envelope API
 
-This guide covers applications using the old JavaScript 4.x API with the old two-table DynamoDB layout or the old two-table Spanner layout. The new public API reads the new layouts only: three DynamoDB tables, or the five Spanner tables of the `event-store-adapter-js/spanner` entry point. The DynamoDB procedure comes first; for Spanner, see [Spanner 4.x to the v5 Spanner](#spanner-4x-to-the-v5-spanner). This is a caller-managed export and rewrite procedure, not a migration tool; Rust migration tools do not handle this JavaScript layout.
+This guide covers applications using the old JavaScript 4.x API with the old two-table DynamoDB layout or the old two-table Spanner layout. The new public API reads the new layouts only: three DynamoDB tables, or the five Spanner tables of the `event-store-adapter-js/spanner` entry point. The DynamoDB procedure comes first; for Spanner, see [Spanner 4.x to the v5 Spanner](#spanner-4x-to-the-v5-spanner). The DynamoDB procedure is a caller-managed export and rewrite procedure, not a migration tool. The Spanner layout has a migration function, `migrateV4Spanner`. Rust migration tools do not handle this JavaScript layout.
 
 ## Prepare and export
 
@@ -79,80 +79,73 @@ After verification, switch the application to the new entry point and new tables
 
 ## Spanner 4.x to the v5 Spanner
 
-This section moves data written by the v4 Spanner adapter (the `journal` and `snapshot` tables, see the [v4 schema](SPANNER_DATABASE_SCHEMA.md#v4-4x-cloud-spanner-schema-migration-source)) into the five v5 tables. It is a caller-managed procedure, not a migration tool. Read the conventions of the v4 adapter in commit `a443ef9` (`packages/library/src/internal/spanner-event-store.ts`) where this section says to confirm something. Anything that the v4 contract does not determine is for you to confirm; do not guess it.
+This section moves data written by the v4 Spanner adapter (the `journal` and `snapshot` tables, see the [v4 schema](SPANNER_DATABASE_SCHEMA.md#v4-4x-cloud-spanner-schema-migration-source)) into the five v5 tables with `migrateV4Spanner` from `event-store-adapter-js/spanner`. The function reads both v4 tables, checks every row, and writes only if nothing is rejected. Read the conventions of the v4 adapter in commit `a443ef9` (`packages/library/src/internal/spanner-event-store.ts`) when you write the restore functions.
 
 What the v4 adapter wrote:
 
-- `aggregate_id` is the result of `aggregateId.asString()`. Its format was chosen by the application, so the type name and the value cannot be recovered from the string alone. `shard_id` was chosen by the shard selector, which the application could replace, so the same `aggregate_id` may exist under more than one `shard_id`.
+- `aggregate_id` is the result of `aggregateId.asString()`. Its format was chosen by the application, so the type name and the value cannot be recovered from the string alone. The function never splits it at `-`. `shard_id` was chosen by the shard selector, which the application could replace, so the same `aggregate_id` may exist under more than one `shard_id`.
 - `payload` is the output of the event serializer. The default serializer wrote the whole event as JSON: `{ "type": event.typeName, "data": event }`. There is no manifest column.
 - `occurred_at` is a `TIMESTAMP` written from `Date.toISOString()`, so it has millisecond precision.
 - `sequence_number` is the number carried by the event. v4 did not check that the numbers are contiguous. Its primary key prevents duplicates only within one `shard_id`.
-- In `snapshot`, the row with `sequence_number = 0` is the latest snapshot. It has no column that says which event it was taken at. An event-only write advanced `version` without replacing `payload`. Rows with `sequence_number > 0` are retained copies, written with the number of the event at that time.
+- In `snapshot`, the row with `sequence_number = 0` is the latest snapshot. It has no column that says which event it was taken at. An event-only write advanced `version` without replacing `payload`. Rows with `sequence_number > 0` are retained copies. `version` and the retained copies are not moved to v5.
 
 Steps:
 
-1. Stop every v4 writer. Keep the v4 tables, the exact v4 package version and your converters and serializers available for reading.
-2. Create the five v5 tables under a **new prefix**, following the initialization procedure of [SPANNER_DATABASE_SCHEMA.md](SPANNER_DATABASE_SCHEMA.md): run the DDL, confirm that the tables are empty, then write the configuration row.
-3. Check the old tables before moving anything. These queries are examples. Run each one over the whole table, not per shard.
+1. Stop every v4 writer. Keep the v4 tables, the exact v4 package version and your converters and serializers available for reading. The function does not change the v4 tables.
+2. Create the five v5 tables under a **new prefix** and write the configuration row, following the initialization procedure of [SPANNER_DATABASE_SCHEMA.md](SPANNER_DATABASE_SCHEMA.md). The function never creates tables or the configuration row. It rejects a target that is not initialized, a target that already has rows, and v4 table names that overlap the target tables.
+3. Write `restoreEvent`. It receives one v4 journal row (`aggregateId`, `shardId`, `sequenceNumber`, `payload`, `occurredAt`) and returns the type name, the value, the manifest and the v5 payload, or a reason string if the row cannot be restored. Use the v4 serializer and converter that wrote the row. The v4 manifest does not exist, so you decide it to match the new payload shape.
 
-   Missing numbers and duplicates. An aggregate is sound only if its numbers run from 1 to the maximum with no gap and no duplicate, counting all shards together. This query returns the aggregates that are not:
+   ```ts
+   import { migrateV4Spanner } from "event-store-adapter-js/spanner";
 
-   ```sql
-   SELECT aggregate_id,
-          COUNT(*) AS row_count,
-          COUNT(DISTINCT sequence_number) AS distinct_numbers,
-          MIN(sequence_number) AS min_number,
-          MAX(sequence_number) AS max_number
-   FROM journal
-   GROUP BY aggregate_id
-   HAVING MIN(sequence_number) <> 1
-       OR COUNT(*) <> COUNT(DISTINCT sequence_number)
-       OR COUNT(*) <> MAX(sequence_number);
+   const restoreEvent = (row) => {
+     // v4 default serializer: { type, data } where data is the whole event
+     const stored = JSON.parse(new TextDecoder().decode(row.payload));
+     const event = v4Converter(stored.data); // your v4 converter
+     if (event.aggregateId.asString() !== row.aggregateId) {
+       return { type: "err", error: "aggregate_id does not match the event" };
+     }
+     return {
+       type: "ok",
+       value: {
+         typeName: event.aggregateId.typeName,
+         value: event.aggregateId.value,
+         manifest: stored.type,
+         payload: toDomainValue(event), // only the domain value, without metadata
+       },
+     };
+   };
    ```
 
-   Timestamps finer than a millisecond. The v4 adapter cannot have written these, so such a row is a data problem; stop and find out where it came from:
+4. Prepare `typeNameMapping` (a `Map`) if a v4 type name contains `-`, which v5 does not allow. The function replaces only type names that contain `-`, using the map. It rejects a type name that has no entry, a replacement that still contains `-`, a new `aid` over 1024 bytes in UTF-8, and two different `aggregate_id` values that become the same new `aid`.
+5. Optionally write `restoreSnapshot`. It is called once for each aggregate that has v4 snapshot rows, with `{ aggregateId, maxSeqNr, latest, retained }`, and returns a v5 `SnapshotEnvelope` or `undefined` to move no snapshot. The latest v4 row (`sequence_number = 0`) records no event number, and after an event-only write its `payload` is older than the latest event. Decide the number only from information that you have confirmed. One example is a retained copy whose `payload` bytes equal those of the latest row, when exactly one copy matches. The number must be at least 1 and at most `maxSeqNr`. Without this function, or when it returns `undefined`, only the events of that aggregate are moved.
+6. Run the function:
 
-   ```sql
-   SELECT aggregate_id, sequence_number
-   FROM journal
-   WHERE occurred_at <> TIMESTAMP_TRUNC(occurred_at, MILLISECOND);
+   ```ts
+   const result = await migrateV4Spanner({
+     database,
+     v4Tables: { journal: "journal", snapshot: "snapshot" },
+     target: { tablePrefix: "esa_v5" }, // same input as SpannerEventStore.create, without database
+     typeNameMapping: new Map([["order-item", "OrderItem"]]),
+     restoreEvent,
+     restoreSnapshot,
+   });
    ```
 
-   Keys under more than one shard. The checks above count all shards together. If a replaced shard selector put the rows of one `aggregate_id` under several `shard_id` values, those rows may belong to different aggregates whose `asString()` is equal, and the counts above would mix them. This query returns such keys. Treat each one as reported unless step 4 confirms that all its rows restore to one type name and value:
+7. Read the result. It is a `Result`; on success the value is a report:
+   - `aggregates`, `events` and `snapshots` are the numbers moved.
+   - `eventsOnlyAggregates` lists the v4 `aggregate_id` values moved without a snapshot. Decide whether that is acceptable before switching.
 
-   ```sql
-   SELECT aggregate_id, COUNT(DISTINCT shard_id) AS shard_count
-   FROM journal
-   GROUP BY aggregate_id
-   HAVING COUNT(DISTINCT shard_id) > 1;
-   ```
+   On failure, `error.type` tells what happened:
+   - `rejected`: the check rejected the data and **nothing was written**. `rejections` lists `table`, `aggregateId`, `shardId`, `sequenceNumber` and `reason` for every rejected item: a missing or duplicate `sequence_number`, rows of one `aggregate_id` that restore to different type names or values, a timestamp finer than a millisecond, a row refused by `restoreEvent`, an unusable type name or `aid`, a snapshot number above the maximum or without an event, and a target that is not ready. Fix the cause at its source and run again. Do not renumber events to hide a gap or a duplicate.
+   - `error`: a storage failure, with the counts written so far in `progress`.
+   - `verification-failed`: the data was written but reading it back differs from the plan; `mismatches` lists each aggregate and reason.
 
-   Snapshot numbers beyond the last event. A snapshot must not have a number above the aggregate's maximum event number:
+   The function reads the v4 tables and the target state in one strong read-only transaction, so the check and the write use the same data. After writing, it reads every aggregate back through the public API and compares the event count, that the numbers are contiguous from 1, that `headSeqNr` equals the maximum number, and the snapshot number.
+8. This version provides no change feed. If a downstream process or read model depended on the v4 data, decide how to rebuild it before switching over.
+9. Switch the application to the new prefix only after the function returned a successful report. Keep the v4 tables until you have confirmed that they can be cleaned up.
 
-   ```sql
-   SELECT s.aggregate_id, s.sequence_number
-   FROM snapshot AS s
-   LEFT JOIN (
-     SELECT aggregate_id, MAX(sequence_number) AS max_number
-     FROM journal
-     GROUP BY aggregate_id
-   ) AS j ON j.aggregate_id = s.aggregate_id
-   WHERE j.max_number IS NULL OR s.sequence_number > j.max_number;
-   ```
-
-   Do not migrate an aggregate that any check reports. Do not renumber events to hide a gap or a duplicate; v5 requires numbers to start at 1 and stay contiguous, so such an aggregate must be resolved at its source.
-
-4. Restore the type name and the value from the old data, not from the key string. Read each event with the v4 serializer and converter that wrote it, and take `event.aggregateId.typeName` and `event.aggregateId.value`. Check that `event.aggregateId.asString()` equals the stored `aggregate_id`, and that every row with the same `aggregate_id` restores to the same type name and value; if they do not, do not migrate that key. Do not split `aggregate_id` at a `-` to guess them. If you used a custom way to derive the key, or the data lacks the information needed, do not migrate that aggregate.
-   - A v4 type name may contain `-`, which v5 does not allow. Replace it through a mapping table that you provide, and apply it to every aggregate of that type.
-   - Build each new ID with `AggregateId.of`. An `aid` whose UTF-8 size exceeds 1024 bytes is returned as a `contract-violation` error; resolve it before writing.
-   - Check that two different old keys never produce the same new `aid`. After the type-name mapping, collisions are possible.
-5. Convert each event. The v4 payload holds the whole event (`{ type, data }` with the default serializer), with its metadata inside. Take out only the domain value to use as the v5 payload. v4 stored no manifest, so you decide it to match the new payload shape. With the default serializer, `type` held `event.typeName`.
-6. Convert the time. The v4 `TIMESTAMP` has millisecond precision. Pass it to v5 as a `Date`; v5 stores it as nanoseconds (`INT64`) computed from the epoch milliseconds, with zero below the millisecond. The precision that v4 never stored is not recovered, and the result is not evidence that the original time had nanosecond precision.
-7. Decide the snapshot number. The latest v4 row (`sequence_number = 0`) records no event number, and after an event-only write its `payload` is older than the latest event. Decide the number only from information that you have confirmed. One example is a retained copy (`sequence_number > 0`) whose `payload` bytes are equal to those of the latest row, when exactly one copy matches. Another is a number that your domain guarantees. Check that the number is at most the maximum event number. If you cannot decide it, do not migrate the snapshot: migrate the events only. Do not migrate `version`. The retained copies are not moved to `esa_snapshot_history`; v5 builds history by its own rule on each snapshot write, including the snapshot written in step 8.
-8. Write with the v5 API. Open the store with `SpannerEventStore.create` and use the `rewrite` helper of the [DynamoDB procedure](#rewrite-and-verify) in the confirmed order, one aggregate at a time. Step 3 confirmed that the old numbers start at 1 and are contiguous, so the helper's `index + 1` equals the old number; nothing is renumbered. An aggregate's snapshot belongs to the record whose number you decided in step 7. Each write updates the v5 head; after the last write of an aggregate, it holds the maximum number and that event's envelope. Pass a serializer pair to `SpannerEventStore.create` if the payload is a domain object.
-9. Read the data back and compare. For each aggregate, confirm the event count and that the numbers are contiguous from 1, that `headSeqNr` equals the maximum number, the snapshot number, manifest, payload, occurrence time and restored domain state. Restore from the snapshot number + 1, or 1 without a snapshot.
-10. This version provides no change feed. If a downstream process or read model depended on the v4 data, decide how to rebuild it before switching over.
-11. Switch the application to the new prefix. Keep the v4 tables until you have confirmed that they can be cleaned up.
+Partial migration and recovery: the function writes each event with its own transaction through the public API, one aggregate at a time in ascending order of the new `aid`. If a storage failure (`error`) or a failed read-back (`verification-failed`) happens after writing has started, the target keeps the rows already written; the function does not roll them back. The check runs before any write, so a `rejected` result leaves the target untouched. To recover from a partial migration, do not reuse the target as it is, because it now has rows and will be rejected. Drop and recreate the five tables, or create them under another new prefix, initialize them again, and run the function again with the same input. The v4 tables are unchanged, so you can repeat this.
 
 ## API changes
 
