@@ -138,7 +138,7 @@ Steps:
 
    On failure, `error.type` tells what happened:
    - `rejected`: the check rejected the data and **nothing was written**. `rejections` lists `table`, `aggregateId`, `shardId`, `sequenceNumber` and `reason` for every rejected item: a missing or duplicate `sequence_number`, rows of one `aggregate_id` that restore to different type names or values, a timestamp finer than a millisecond, a row refused by `restoreEvent`, an unusable type name or `aid`, a snapshot number above the maximum or without an event, a snapshot row whose aggregate has no journal rows, and a target that is not ready. Fix the cause at its source and run again. Do not renumber events to hide a gap or a duplicate.
-   - `error`: a storage failure, with the counts written so far in `progress`.
+   - `error`: a failed configuration check, a failure reading the source tables, or a storage failure on the target, with the counts written so far in `progress`.
    - `verification-failed`: the data was written but reading it back differs from the plan; `mismatches` lists each aggregate and reason.
 
    The function reads the v4 tables and the target state in one strong read-only transaction, so the check and the write use the same data. After writing, it reads every aggregate back through the public API and compares the event count, that the numbers are contiguous from 1, that `headSeqNr` equals the maximum number, and the snapshot number.
