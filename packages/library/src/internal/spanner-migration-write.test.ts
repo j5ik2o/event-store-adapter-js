@@ -133,6 +133,66 @@ describe("verifySpannerMigration", () => {
     ]);
   });
 
+  test("reports a missing latest snapshot result for every aggregate", async () => {
+    const store = storeOf({
+      getEventsByIdSinceSeqNr: async (id) =>
+        Result.ok([event(id.value, 1), event(id.value, 2)]),
+      getLatestSnapshotById: async () => Result.ok(undefined),
+    });
+    const result = await verifySpannerMigration(store, plan);
+    if (result.type === "err") throw new Error("unexpected err");
+    expect(result.value.map((m) => m.reason)).toEqual([
+      "expected headSeqNr 2 but read undefined",
+      "expected snapshot seqNr 2 but read undefined",
+      "expected headSeqNr 2 but read undefined",
+    ]);
+  });
+
+  test("reports a missing snapshot when the head is present", async () => {
+    const store = storeOf({
+      getEventsByIdSinceSeqNr: async (id) =>
+        Result.ok([event(id.value, 1), event(id.value, 2)]),
+      getLatestSnapshotById: async () => Result.ok({ headSeqNr: 2 }),
+    });
+    const result = await verifySpannerMigration(store, plan);
+    if (result.type === "err") throw new Error("unexpected err");
+    expect(result.value).toEqual([
+      {
+        aggregateId: "Order-1",
+        reason: "expected snapshot seqNr 2 but read undefined",
+      },
+    ]);
+  });
+
+  test("reports a snapshot that the plan does not contain", async () => {
+    const store = storeOf({
+      getEventsByIdSinceSeqNr: async (id) =>
+        Result.ok([event(id.value, 1), event(id.value, 2)]),
+      getLatestSnapshotById: async () => Result.ok({ headSeqNr: 2, snapshot }),
+    });
+    const result = await verifySpannerMigration(store, plan);
+    if (result.type === "err") throw new Error("unexpected err");
+    expect(result.value).toEqual([
+      {
+        aggregateId: "Order-2",
+        reason: "expected snapshot seqNr undefined but read 2",
+      },
+    ]);
+  });
+
+  test("returns a storage error when the latest snapshot read fails", async () => {
+    const failure = EventStoreError.storage("snapshot read failed");
+    const store = storeOf({
+      getEventsByIdSinceSeqNr: async (id) =>
+        Result.ok([event(id.value, 1), event(id.value, 2)]),
+      getLatestSnapshotById: async () => Result.err(failure),
+    });
+    expect(await verifySpannerMigration(store, plan)).toMatchObject({
+      type: "err",
+      error: failure,
+    });
+  });
+
   test("returns a storage error when the read itself fails", async () => {
     const failure = EventStoreError.storage("read failed");
     const store = storeOf({

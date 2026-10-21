@@ -79,7 +79,7 @@ exportと書直し結果のイベント件数、連続番号、終端head番号�
 
 ## Spanner 4.x から v5 の Spanner へ
 
-この節は、v4 の Spanner アダプタが書いたデータ（`journal` と `snapshot` の 2 テーブル。[v4 の構成](SPANNER_DATABASE_SCHEMA.ja.md#v4-4x-の-cloud-spanner-のテーブル構成移行の元) を参照）を、`event-store-adapter-js/spanner` の `migrateV4Spanner` で v5 の 5 テーブルへ移す手順です。この関数は v4 の 2 テーブルを読み、全行を検査し、拒む理由が 1 件もないときだけ書きます。復元の関数を書くときは、コミット `a443ef9` の v4 アダプタ（`packages/library/src/internal/spanner-event-store.ts`）の契約を読んでください。
+この節は、v4 の Spanner アダプタが書いたデータ（`journal` と `snapshot` の 2 テーブル。[v4 の構成](SPANNER_DATABASE_SCHEMA.ja.md#v44xの-cloud-spanner-のテーブル構成移行の元) を参照）を、`event-store-adapter-js/spanner` の `migrateV4Spanner` で v5 の 5 テーブルへ移す手順です。この関数は v4 の 2 テーブルを読み、全行を検査し、拒む理由が 1 件もないときだけ書きます。復元の関数を書くときは、コミット `a443ef9` の v4 アダプタ（`packages/library/src/internal/spanner-event-store.ts`）の契約を読んでください。
 
 v4 のアダプタが書いていたもの:
 
@@ -137,11 +137,13 @@ v4 のアダプタが書いていたもの:
    - `eventsOnlyAggregates` は、スナップショットを移さずにイベントだけを移した v4 の `aggregate_id` の一覧です。切り替える前に、それでよいかを判断してください。
 
    失敗のときは、`error.type` で分かります。
-   - `rejected`: 検査が拒み、**何も書いていません**。`rejections` に、拒んだ項目ごとに `table`、`aggregateId`、`shardId`、`sequenceNumber`、`reason` が入ります。拒む理由は、番号の欠番や重複、1 つの `aggregate_id` の行が別の型名や値に復元される場合、ミリ秒より細かい時刻、`restoreEvent` が拒んだ行、使えない型名や `aid`、最大値を超える、またはイベントのないスナップショット番号、移行先が使えない状態、です。原因を元のデータで直して、もう一度実行してください。欠番や重複を隠すために、イベントの番号を振り直さないでください。
+   - `rejected`: 検査が拒み、**何も書いていません**。`rejections` に、拒んだ項目ごとに `table`、`aggregateId`、`shardId`、`sequenceNumber`、`reason` が入ります。拒む理由は、番号の欠番や重複、1 つの `aggregate_id` の行が別の型名や値に復元される場合、ミリ秒より細かい時刻、`restoreEvent` が拒んだ行、使えない型名や `aid`、最大値を超える、またはイベントのないスナップショット番号、journal に行がない集約の snapshot の行、移行先が使えない状態、です。原因を元のデータで直して、もう一度実行してください。欠番や重複を隠すために、イベントの番号を振り直さないでください。
    - `error`: 保存先の失敗です。それまでに書いた件数が `progress` に入ります。
    - `verification-failed`: 書いたあとの読み戻しが計画と食い違いました。`mismatches` に集約と理由が入ります。
 
    関数は、v4 の 2 テーブルと移行先の状態を 1 つの strong の読み取り専用トランザクションで読むので、検査と書き込みは同じデータを使います。書いた後は、集約ごとに公開 API で読み戻し、イベントの数、番号が 1 から連続していること、`headSeqNr` が最大値と等しいこと、スナップショットの番号を照合します。
+
+   v4 の 2 テーブルを 1 つの strong の読み取りで全件メモリに読み、payload を複製します。そのため、v4 のテーブルの payload の合計のおよそ 2 倍以上のメモリが必要です。
 8. この版には変更フィードがありません。v4 のデータに依存する下流の処理や読み取りモデルがある場合は、切り替える前に作り直す方法を決めてください。
 9. 関数が成功の報告を返してから、アプリケーションを新しい接頭辞へ切り替えます。v4 のテーブルは、片付けてよいと確かめるまで残します。
 

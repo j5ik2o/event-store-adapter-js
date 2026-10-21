@@ -33,13 +33,6 @@ type Serializers<PE, PS> = Readonly<{
   snapshotSerializer: PayloadSerializer<PS>;
 }>;
 
-type ParsedJournal = Readonly<{
-  aggregateId: string;
-  shardId: string;
-  seq: number | undefined;
-  row: SpannerMigrationJournalRow | undefined;
-}>;
-
 type Restoration<PE> =
   | Readonly<{
       type: "refused";
@@ -74,7 +67,7 @@ const group = <T>(
 function parseJournalRow(
   raw: Record<string, unknown>,
   table: string,
-): Result<ParsedJournal, SpannerMigrationRejection> {
+): Result<SpannerMigrationJournalRow, SpannerMigrationRejection> {
   const aggregateId = raw.aggregate_id;
   const shard = spannerStoredInteger(
     raw.shard_id,
@@ -121,18 +114,15 @@ function parseJournalRow(
   if (millis.type === "err" || !(payload instanceof Uint8Array)) {
     return Result.err({ ...withSeq, reason: "invalid occurred_at or payload" });
   }
-  return Result.ok({
-    aggregateId,
-    shardId,
-    seq: sequenceNumber,
-    row: Object.freeze({
+  return Result.ok(
+    Object.freeze({
       aggregateId,
       shardId,
       sequenceNumber,
       payload: new Uint8Array(payload),
       occurredAt: new Date(Number(millis.value)),
     }),
-  });
+  );
 }
 
 function parseSnapshotRow(
@@ -193,8 +183,8 @@ type RestoredAggregate<PE> = Readonly<{
     restored: SpannerMigrationRestoredEvent<PE>;
   }>[];
   maxSeqNr: number;
-  /** 復元された型名と値が 1 種類だけか。 */
-  unique: boolean;
+  /** 復元された型名と値が 1 種類だけのときの、その値。 */
+  representative: SpannerMigrationRestoredEvent<PE> | undefined;
   rejections: readonly SpannerMigrationRejection[];
 }>;
 
@@ -206,7 +196,10 @@ type IdentifiedAggregate<PE> = RestoredAggregate<PE> &
 
 type EventsBuilt<PE> = Readonly<{
   a: IdentifiedAggregate<PE>;
-  events: readonly EventEnvelope<PE>[] | undefined;
+  /** 拒む理由のない集約だけが持つ。 */
+  built:
+    | Readonly<{ id: AggregateId; events: readonly EventEnvelope<PE>[] }>
+    | undefined;
   rejections: readonly SpannerMigrationRejection[];
 }>;
 
@@ -220,16 +213,20 @@ const isRestoredEvent = (
 
 /** 段階 1: 利用者の復元関数で各行を復元し、集約ごとに型名・値・番号の連続を検査する。 */
 function restoreAggregates<PE, PS>(
-  byAggregate: ReadonlyMap<string, readonly ParsedJournal[]>,
+  byAggregate: ReadonlyMap<string, readonly SpannerMigrationJournalRow[]>,
   input: SpannerMigrationInput<PE, PS>,
   journalTable: string,
 ): readonly RestoredAggregate<PE>[] {
   return [...byAggregate.entries()].map(([aggregateId, rows]) => {
-    const restored = rows.flatMap((p): Restoration<PE>[] => {
-      if (p.row === undefined) return [];
-      const row = p.row;
+    const restored = rows.flatMap((row): Restoration<PE>[] => {
       try {
-        const result = input.restoreEvent(row);
+        // 利用者の関数には発生時刻の写しを渡し、内部で持つ Date を書き換えられないようにする。
+        const result = input.restoreEvent(
+          Object.freeze({
+            ...row,
+            occurredAt: new Date(row.occurredAt.getTime()),
+          }),
+        );
         if (result.type === "err") {
           return [
             {
@@ -301,8 +298,8 @@ function restoreAggregates<PE, PS>(
     );
 
     // 全 shard を合わせて、復元された型名と値が 1 種類だけであること。
-    const kinds = new Set(
-      ok.map(({ restored: e }) => JSON.stringify([e.typeName, e.value])),
+    const kinds = new Map(
+      ok.map(({ restored: e }) => [JSON.stringify([e.typeName, e.value]), e]),
     );
     const kindRejections =
       kinds.size > 1
@@ -316,18 +313,23 @@ function restoreAggregates<PE, PS>(
         : [];
 
     // seq が 1 から最大値まで欠けず、重複しないこと。
-    const seqs = rows.flatMap((p) => (p.seq === undefined ? [] : [p.seq]));
+    const seqs = rows.map((row) => row.sequenceNumber);
     const maxSeqNr = seqs.reduce((a, b) => Math.max(a, b), 0);
     const seqCounts = new Map<number, number>();
     for (const seq of seqs) seqCounts.set(seq, (seqCounts.get(seq) ?? 0) + 1);
-    const duplicateRejections = rows.flatMap((p) =>
-      p.seq !== undefined && (seqCounts.get(p.seq) ?? 0) > 1
+    const duplicated = new Set(
+      [...seqCounts.entries()].flatMap(([seq, count]) =>
+        count > 1 ? [seq] : [],
+      ),
+    );
+    const duplicateRejections = rows.flatMap((row) =>
+      duplicated.has(row.sequenceNumber)
         ? [
             {
               table: journalTable,
               aggregateId,
-              shardId: p.shardId,
-              sequenceNumber: p.seq,
+              shardId: row.shardId,
+              sequenceNumber: row.sequenceNumber,
               reason: "duplicate sequence_number",
             },
           ]
@@ -337,7 +339,7 @@ function restoreAggregates<PE, PS>(
     const gapRejections = [...seqCounts.keys()]
       .sort((x, y) => x - y)
       .flatMap((seq, i, distinct) => {
-        const previous = i === 0 ? 0 : (distinct[i - 1] ?? 0);
+        const previous = i === 0 ? 0 : distinct[i - 1];
         return seq - previous > 1
           ? [
               {
@@ -354,7 +356,7 @@ function restoreAggregates<PE, PS>(
       aggregateId,
       ok,
       maxSeqNr,
-      unique: kinds.size === 1,
+      representative: kinds.size === 1 ? [...kinds.values()][0] : undefined,
       rejections: [
         ...restoreRejections,
         ...kindRejections,
@@ -372,10 +374,11 @@ function assignAggregateIds<PE, PS>(
   journalTable: string,
 ): Readonly<{
   withIds: readonly IdentifiedAggregate<PE>[];
-  collisionRejections: readonly SpannerMigrationRejection[];
+  collisionRejections: readonly (SpannerMigrationRejection &
+    Readonly<{ aggregateId: string }>)[];
 }> {
   const withIds = aggregates.map((a): IdentifiedAggregate<PE> => {
-    const first = a.unique ? a.ok[0]?.restored : undefined;
+    const first = a.representative;
     if (first === undefined) return { ...a, id: undefined, aidRejection: [] };
     const fail = (reason: string): IdentifiedAggregate<PE> => ({
       ...a,
@@ -441,7 +444,7 @@ function buildEvents<PE>(
       !collidingIds.has(a.aggregateId) &&
       a.id !== undefined;
     if (!clean || a.id === undefined)
-      return { a, events: undefined, rejections: [] };
+      return { a, built: undefined, rejections: [] };
     const id = a.id;
     const built = [...a.ok]
       .sort((x, y) => x.row.sequenceNumber - y.row.sequenceNumber)
@@ -463,7 +466,9 @@ function buildEvents<PE>(
         if (envelope.type === "err")
           return Result.err(reject(envelope.error.message));
         try {
-          serializer.serialize(envelope.value.payload);
+          const serialized = serializer.serialize(envelope.value.payload);
+          if (!(serialized instanceof Uint8Array))
+            throw new TypeError("serializer.serialize must return Uint8Array");
         } catch (cause) {
           return Result.err(
             reject(`payload could not be serialized: ${reasonOf(cause)}`),
@@ -473,7 +478,10 @@ function buildEvents<PE>(
       });
     return {
       a,
-      events: built.flatMap((b) => (b.type === "ok" ? [b.value] : [])),
+      built: {
+        id,
+        events: built.flatMap((b) => (b.type === "ok" ? [b.value] : [])),
+      },
       rejections: built.flatMap((b) => (b.type === "err" ? [b.error] : [])),
     };
   });
@@ -557,15 +565,6 @@ function planSnapshots<PE, PS>(
     }
     let envelope: ReturnType<typeof SnapshotEnvelope.create<PS>>;
     try {
-      const seqNr = (returned as { seqNr?: unknown }).seqNr;
-      if (typeof seqNr === "number" && seqNr > c.a.maxSeqNr) {
-        return refused(
-          `snapshot seqNr ${seqNr} exceeds the aggregate maximum ${c.a.maxSeqNr}`,
-        );
-      }
-      if (typeof seqNr === "number" && seqNr < 1) {
-        return refused(`snapshot seqNr ${seqNr} has no corresponding event`);
-      }
       envelope = SnapshotEnvelope.create<PS>(returned);
     } catch (cause) {
       return refused(
@@ -573,8 +572,20 @@ function planSnapshots<PE, PS>(
       );
     }
     if (envelope.type === "err") return refused(envelope.error.message);
+    // 範囲は、実際に書く値（作った封筒の seqNr）で検査する。
+    const seqNr = envelope.value.seqNr;
+    if (seqNr > c.a.maxSeqNr) {
+      return refused(
+        `snapshot seqNr ${seqNr} exceeds the aggregate maximum ${c.a.maxSeqNr}`,
+      );
+    }
+    if (seqNr < 1) {
+      return refused(`snapshot seqNr ${seqNr} has no corresponding event`);
+    }
     try {
-      serializer.serialize(envelope.value.aggregate);
+      const serialized = serializer.serialize(envelope.value.aggregate);
+      if (!(serialized instanceof Uint8Array))
+        throw new TypeError("serializer.serialize must return Uint8Array");
     } catch (cause) {
       return refused(`snapshot could not be serialized: ${reasonOf(cause)}`);
     }
@@ -609,11 +620,7 @@ export function planSpannerMigration<PE, PS>(
     input,
     journalTable,
   );
-  const collidingIds = new Set(
-    collisionRejections.flatMap((r) =>
-      r.aggregateId === undefined ? [] : [r.aggregateId],
-    ),
-  );
+  const collidingIds = new Set(collisionRejections.map((r) => r.aggregateId));
   const candidates = buildEvents(
     withIds,
     collidingIds,
@@ -629,6 +636,19 @@ export function planSpannerMigration<PE, PS>(
       serializers.snapshotSerializer,
     );
 
+  const aggregatePlans = withSnapshots.flatMap((c) =>
+    c.built === undefined
+      ? []
+      : [
+          {
+            v4AggregateId: c.a.aggregateId,
+            id: c.built.id,
+            events: c.built.events,
+            snapshot: c.snapshot,
+          },
+        ],
+  );
+
   const rejections: readonly SpannerMigrationRejection[] = [
     ...rowRejections,
     ...withIds.flatMap((a) => [...a.rejections, ...a.aidRejection]),
@@ -641,23 +661,10 @@ export function planSpannerMigration<PE, PS>(
   if (rejections.length > 0) return Result.err(rejections);
 
   return Result.ok(
-    withSnapshots
-      .flatMap((c) =>
-        c.events === undefined || c.a.id === undefined
-          ? []
-          : [
-              {
-                v4AggregateId: c.a.aggregateId,
-                id: c.a.id,
-                events: c.events,
-                snapshot: c.snapshot,
-              },
-            ],
-      )
-      .sort((x, y) => {
-        const a = `${x.id.typeName}-${x.id.value}`;
-        const b = `${y.id.typeName}-${y.id.value}`;
-        return a < b ? -1 : a > b ? 1 : 0;
-      }),
+    [...aggregatePlans].sort((x, y) => {
+      const a = `${x.id.typeName}-${x.id.value}`;
+      const b = `${y.id.typeName}-${y.id.value}`;
+      return a < b ? -1 : 1;
+    }),
   );
 }

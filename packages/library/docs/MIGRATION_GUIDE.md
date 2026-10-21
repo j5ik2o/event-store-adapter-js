@@ -137,11 +137,13 @@ Steps:
    - `eventsOnlyAggregates` lists the v4 `aggregate_id` values moved without a snapshot. Decide whether that is acceptable before switching.
 
    On failure, `error.type` tells what happened:
-   - `rejected`: the check rejected the data and **nothing was written**. `rejections` lists `table`, `aggregateId`, `shardId`, `sequenceNumber` and `reason` for every rejected item: a missing or duplicate `sequence_number`, rows of one `aggregate_id` that restore to different type names or values, a timestamp finer than a millisecond, a row refused by `restoreEvent`, an unusable type name or `aid`, a snapshot number above the maximum or without an event, and a target that is not ready. Fix the cause at its source and run again. Do not renumber events to hide a gap or a duplicate.
+   - `rejected`: the check rejected the data and **nothing was written**. `rejections` lists `table`, `aggregateId`, `shardId`, `sequenceNumber` and `reason` for every rejected item: a missing or duplicate `sequence_number`, rows of one `aggregate_id` that restore to different type names or values, a timestamp finer than a millisecond, a row refused by `restoreEvent`, an unusable type name or `aid`, a snapshot number above the maximum or without an event, a snapshot row whose aggregate has no journal rows, and a target that is not ready. Fix the cause at its source and run again. Do not renumber events to hide a gap or a duplicate.
    - `error`: a storage failure, with the counts written so far in `progress`.
    - `verification-failed`: the data was written but reading it back differs from the plan; `mismatches` lists each aggregate and reason.
 
    The function reads the v4 tables and the target state in one strong read-only transaction, so the check and the write use the same data. After writing, it reads every aggregate back through the public API and compares the event count, that the numbers are contiguous from 1, that `headSeqNr` equals the maximum number, and the snapshot number.
+
+   The function reads both v4 tables completely into memory in one strong read and copies the payloads, so it needs roughly twice the total payload size of the v4 tables, or more, in memory.
 8. This version provides no change feed. If a downstream process or read model depended on the v4 data, decide how to rebuild it before switching over.
 9. Switch the application to the new prefix only after the function returned a successful report. Keep the v4 tables until you have confirmed that they can be cleaned up.
 

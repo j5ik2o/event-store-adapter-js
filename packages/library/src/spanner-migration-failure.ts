@@ -10,7 +10,7 @@ type Progress = Pick<
 /**
  * 移行の失敗。
  * - `rejected`: 検査で拒んだ。移行先には何も書いていない。
- * - `error`: 保存先の失敗。`progress` は書き終えた件数。
+ * - `error`: 設定の検査の失敗、移行元の読み取りの失敗、または移行先（保存先）の失敗。`progress` は書き終えた件数。
  * - `verification-failed`: 書いた後の読み戻しが食い違った。
  */
 export type SpannerMigrationFailure =

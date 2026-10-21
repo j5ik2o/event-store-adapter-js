@@ -955,3 +955,437 @@ describe("rejects values returned by user functions", () => {
     expect(events.map((e) => e.seqNr)).toEqual([1]);
   });
 });
+
+describe("serializers of the target", () => {
+  const serializerOf = (serialize: () => unknown) => ({
+    serialize: serialize as never,
+    deserialize: () => ({}),
+  });
+  const withSnapshot = async () =>
+    scene(
+      [ev("Order-1", 1), ev("Order-1", 2)],
+      [{ aggregateId: "Order-1", shardId: 1, seq: 0, payload: '{"s":1}' }],
+    );
+  const snapshotAt2 = () => ({
+    seqNr: 2,
+    manifest: "snapshot/v1",
+    aggregate: { s: 1 },
+  });
+
+  test.each([
+    ["returns a string", () => "text", "serializer.serialize must return"],
+    [
+      "throws",
+      () => {
+        throw new Error("cannot");
+      },
+      "cannot",
+    ],
+  ])("an event serializer that %s rejects the row", async (_n, fn, text) => {
+    const s = await scene([ev("Order-1", 1)]);
+
+    const rejections = rejectionsOf(
+      await run(s, {
+        target: {
+          tablePrefix: s.prefix,
+          eventSerializer: serializerOf(fn),
+        },
+      }),
+    );
+
+    expect(rejections).toEqual([
+      expect.objectContaining({
+        aggregateId: "Order-1",
+        sequenceNumber: 1,
+        reason: expect.stringContaining(
+          `payload could not be serialized: ${text}`,
+        ),
+      }),
+    ]);
+    expect(await targetRowCounts(s.prefix)).toEqual(EMPTY_TARGET);
+  });
+
+  test.each([
+    ["returns a string", () => "text", "serializer.serialize must return"],
+    [
+      "throws",
+      () => {
+        throw new Error("cannot");
+      },
+      "cannot",
+    ],
+  ])(
+    "a snapshot serializer that %s rejects the aggregate",
+    async (_n, fn, text) => {
+      const s = await withSnapshot();
+
+      const rejections = rejectionsOf(
+        await run(s, {
+          restoreSnapshot: snapshotAt2,
+          target: {
+            tablePrefix: s.prefix,
+            snapshotSerializer: serializerOf(fn),
+          },
+        }),
+      );
+
+      expect(rejections).toEqual([
+        expect.objectContaining({
+          aggregateId: "Order-1",
+          reason: expect.stringContaining(
+            `snapshot could not be serialized: ${text}`,
+          ),
+        }),
+      ]);
+      expect(await targetRowCounts(s.prefix)).toEqual(EMPTY_TARGET);
+    },
+  );
+});
+
+describe("values handed to user functions", () => {
+  test("a restoreEvent that changes the occurredAt it received does not change the migrated time", async () => {
+    const s = await scene([ev("Order-1", 1)]);
+
+    unwrap(
+      await run(s, {
+        restoreEvent: (row) => {
+          row.occurredAt.setTime(0);
+          return restoreEvent(row);
+        },
+      }),
+    );
+
+    const store = await openTarget(s.prefix);
+    const events = unwrap(
+      await store.getEventsByIdSinceSeqNr({ typeName: "Order", value: "1" }, 1),
+    );
+    expect(events.map((e) => e.occurredAt.getTime())).toEqual([
+      Date.parse(V4_TIMESTAMP),
+    ]);
+  });
+});
+
+describe("snapshot seqNr of the created envelope", () => {
+  const events = [ev("Order-1", 1), ev("Order-1", 2)];
+  const latest: V4Snapshot = {
+    aggregateId: "Order-1",
+    shardId: 1,
+    seq: 0,
+    payload: '{"s":1}',
+  };
+  // seqNr を読むたびに、先頭の値のあとは 99 を返す。
+  const unstable = (first: number) => {
+    const reads = { count: 0 };
+    return {
+      reads,
+      restoreSnapshot: () => ({
+        get seqNr() {
+          reads.count += 1;
+          return reads.count === 1 ? first : 99;
+        },
+        manifest: "snapshot/v1",
+        aggregate: { s: 1 },
+      }),
+    };
+  };
+
+  test("reads seqNr once and writes that value", async () => {
+    const s = await scene(events, [latest]);
+    const { reads, restoreSnapshot } = unstable(2);
+
+    unwrap(await run(s, { restoreSnapshot }));
+
+    expect(reads.count).toBe(1);
+    const store = await openTarget(s.prefix);
+    const found = unwrap(
+      await store.getLatestSnapshotById({ typeName: "Order", value: "1" }),
+    );
+    expect(found?.snapshot?.seqNr).toBe(2);
+  });
+
+  test("checks the range with the value that was read first", async () => {
+    const s = await scene(events, [latest]);
+    const { reads, restoreSnapshot } = unstable(99);
+
+    const rejections = rejectionsOf(await run(s, { restoreSnapshot }));
+
+    expect(reads.count).toBe(1);
+    expect(rejections).toEqual([
+      expect.objectContaining({
+        aggregateId: "Order-1",
+        reason: "snapshot seqNr 99 exceeds the aggregate maximum 2",
+      }),
+    ]);
+    expect(await targetRowCounts(s.prefix)).toEqual(EMPTY_TARGET);
+  });
+
+  test("a restoreSnapshot that throws", async () => {
+    const s = await scene(events, [latest]);
+
+    const rejections = rejectionsOf(
+      await run(s, {
+        restoreSnapshot: () => {
+          throw new Error("no snapshot");
+        },
+      }),
+    );
+
+    expect(rejections).toEqual([
+      expect.objectContaining({
+        reason: "restoreSnapshot threw: no snapshot",
+      }),
+    ]);
+  });
+
+  test("a snapshot row with a negative sequence_number", async () => {
+    const s = await scene(events, [{ ...latest, seq: -1 }]);
+
+    const rejections = rejectionsOf(await run(s));
+
+    expect(rejections).toEqual([
+      {
+        table: s.tables.snapshot,
+        aggregateId: "Order-1",
+        reason: "invalid snapshot row",
+      },
+    ]);
+  });
+});
+
+describe("reads of the input", () => {
+  const rawInput = (s: Scene) => ({
+    database: emulator.database,
+    v4Tables: s.tables,
+    target: { tablePrefix: s.prefix },
+    restoreEvent,
+  });
+
+  test.each([["restoreEvent"], ["v4Tables"], ["target"], ["database"]])(
+    "a %s getter that throws is a configuration error",
+    async (field) => {
+      const s = await scene([ev("Order-1", 1)]);
+      const input = Object.defineProperty(rawInput(s), field, {
+        get: () => {
+          throw new Error("unreadable");
+        },
+        enumerable: true,
+      });
+
+      const result = await migrateV4Spanner(input as never);
+
+      expect(result).toMatchObject({
+        type: "err",
+        error: {
+          type: "error",
+          error: {
+            type: "configuration-error",
+            fieldName: field,
+            cause: expect.objectContaining({ message: "unreadable" }),
+          },
+          progress: { aggregates: 0, events: 0, snapshots: 0 },
+        },
+      });
+      expect(await targetRowCounts(s.prefix)).toEqual(EMPTY_TARGET);
+    },
+  );
+
+  test("reads every top-level field once", async () => {
+    const s = await scene([ev("Order-1", 1)]);
+    const reads: Record<string, number> = {};
+    const counted = (value: unknown, field: string) => ({
+      get: () => {
+        reads[field] = (reads[field] ?? 0) + 1;
+        return value;
+      },
+      enumerable: true,
+    });
+    const base = rawInput(s);
+    const input = Object.defineProperties(
+      {},
+      {
+        database: counted(base.database, "database"),
+        v4Tables: counted(base.v4Tables, "v4Tables"),
+        target: counted(base.target, "target"),
+        typeNameMapping: counted(new Map(), "typeNameMapping"),
+        restoreEvent: counted(base.restoreEvent, "restoreEvent"),
+        restoreSnapshot: counted(undefined, "restoreSnapshot"),
+      },
+    );
+
+    unwrap(await migrateV4Spanner(input as never));
+
+    expect(reads).toEqual({
+      database: 1,
+      v4Tables: 1,
+      target: 1,
+      typeNameMapping: 1,
+      restoreEvent: 1,
+      restoreSnapshot: 1,
+    });
+  });
+
+  test.each([[null], ["journal"]])(
+    "a v4Tables of %p is a configuration error",
+    async (v4Tables) => {
+      const s = await scene([ev("Order-1", 1)]);
+
+      expect(await run(s, { v4Tables: v4Tables as never })).toMatchObject({
+        type: "err",
+        error: {
+          type: "error",
+          error: { type: "configuration-error", fieldName: "v4Tables" },
+        },
+      });
+      expect(await targetRowCounts(s.prefix)).toEqual(EMPTY_TARGET);
+    },
+  );
+
+  test("a null input is a configuration error", async () => {
+    expect(await migrateV4Spanner(null as never)).toMatchObject({
+      type: "err",
+      error: {
+        type: "error",
+        error: { type: "configuration-error", fieldName: "input" },
+      },
+    });
+  });
+
+  test.each([
+    ["restoreEvent", { restoreEvent: "no" }],
+    ["restoreSnapshot", { restoreSnapshot: "no" }],
+  ])("a %s that is not a function", async (field, overrides) => {
+    const s = await scene([ev("Order-1", 1)]);
+
+    expect(await run(s, overrides as never)).toMatchObject({
+      type: "err",
+      error: {
+        type: "error",
+        error: { type: "configuration-error", fieldName: field },
+      },
+    });
+    expect(await targetRowCounts(s.prefix)).toEqual(EMPTY_TARGET);
+  });
+
+  test("a target that the storage rejects is a configuration error", async () => {
+    const s = await scene([ev("Order-1", 1)]);
+
+    expect(await run(s, { target: { tablePrefix: "a b" } })).toMatchObject({
+      type: "err",
+      error: {
+        type: "error",
+        error: { type: "configuration-error", fieldName: "tablePrefix" },
+      },
+    });
+  });
+});
+
+describe("failures of the database", () => {
+  // getTransaction は書き込みだけが使い、getSnapshot は読み取りだけが使う。
+  // 呼ばれたかどうかで、書く前と書いた後を見分ける。
+  const failing = (
+    onSnapshot: (written: boolean) => unknown,
+    onTransaction?: () => unknown,
+  ) => {
+    const state = { written: false };
+    const database = new Proxy(emulator.database, {
+      get(target, property) {
+        if (property === "getTransaction")
+          return async (options: never) => {
+            state.written = true;
+            if (onTransaction !== undefined) return onTransaction();
+            return target.getTransaction(options);
+          };
+        if (property === "getSnapshot")
+          return async (options: never) => {
+            const replaced = onSnapshot(state.written);
+            if (replaced !== undefined) return replaced;
+            return target.getSnapshot(options);
+          };
+        const value = Reflect.get(target, property);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    return database;
+  };
+
+  test("a database that fails to answer at initialization is an error", async () => {
+    const s = await scene([ev("Order-1", 1)]);
+
+    const result = await run(s, {
+      database: {
+        getDatabaseDialect: () => Promise.reject(new Error("down")),
+      } as never,
+    });
+
+    expect(result).toMatchObject({
+      type: "err",
+      error: {
+        type: "error",
+        error: { type: "storage-error" },
+        progress: { aggregates: 0, events: 0, snapshots: 0 },
+      },
+    });
+  });
+
+  test("a failed write is an error with no progress", async () => {
+    const s = await scene([ev("Order-1", 1)]);
+    const database = failing(
+      () => undefined,
+      () => Promise.reject(new Error("write down")),
+    );
+
+    const result = await run(s, { database });
+
+    expect(result).toMatchObject({
+      type: "err",
+      error: {
+        type: "error",
+        error: { type: "storage-error" },
+        progress: { aggregates: 0, events: 0, snapshots: 0 },
+      },
+    });
+    expect(await targetRowCounts(s.prefix)).toEqual(EMPTY_TARGET);
+  });
+
+  test("a failed read-back is an error that keeps the written progress", async () => {
+    const s = await scene([ev("Order-1", 1)]);
+    const database = failing((written) =>
+      written ? Promise.reject(new Error("read down")) : undefined,
+    );
+
+    const result = await run(s, { database });
+
+    expect(result).toMatchObject({
+      type: "err",
+      error: {
+        type: "error",
+        error: { type: "storage-error" },
+        progress: { aggregates: 1, events: 1, snapshots: 0 },
+      },
+    });
+  });
+
+  test("a read-back that finds nothing is a verification failure", async () => {
+    const s = await scene([ev("Order-1", 1)]);
+    const database = failing((written) =>
+      written ? [{ run: async () => [[]], end: () => undefined }] : undefined,
+    );
+
+    const result = await run(s, { database });
+
+    expect(result).toMatchObject({
+      type: "err",
+      error: {
+        type: "verification-failed",
+        mismatches: [
+          { aggregateId: "Order-1", reason: "expected 1 events but read 0" },
+          {
+            aggregateId: "Order-1",
+            reason: "expected headSeqNr 1 but read undefined",
+          },
+        ],
+        progress: { aggregates: 1, events: 1, snapshots: 0 },
+      },
+    });
+  });
+});
