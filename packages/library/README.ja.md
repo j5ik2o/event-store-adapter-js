@@ -102,6 +102,8 @@ const store = unwrap(opened);
 
 `database` は `@google-cloud/spanner` の `Database` で、`tablePrefix` から5つのテーブル名を導きます。`Database` は呼び出し側が管理し、閉じるのも呼び出し側です。結果は `Result<EventStore, EventStoreError>` で、テーブルや設定の欠けと食い違いは `configuration-error` になります。`retention` は `{ count, mode }` で、`count` は正の整数です。modeは `"delete"`（既定）または `{ type: "ttl", graceDays }`（正の整数の日数）です。`transactionRetryLimit` はABORTEDになったトランザクションの再実行の上限で、既定は5、最初の試行は数えません。スナップショットの保持処理は、スナップショットの書き込みが成功した後に行い、保持の失敗はloggerと `onRetentionFailure` へ通知します。
 
+v4 の Spanner アダプタ（`journal` と `snapshot` の 2 テーブル）のデータを移すには、同じ入口の `migrateV4Spanner` を使います。先に全行を検査し、拒む理由が 1 件でもあれば何も書きません。手順は [Spanner 4.x から v5 の Spanner へ](docs/MIGRATION_GUIDE.ja.md#spanner-4x-から-v5-の-spanner-へ) を参照してください。
+
 この版は変更フィードを提供しません。`changeFeed` を指定すると `configuration-error` になり、設定の行は `change_feed_enabled` を `FALSE` で記録します。
 
 ## SerializerとMemoryの共有

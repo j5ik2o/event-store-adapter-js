@@ -102,6 +102,8 @@ const store = unwrap(opened);
 
 `database` is a `Database` of `@google-cloud/spanner` and `tablePrefix` derives the five table names. The caller owns the `Database` and closes it. The result is `Result<EventStore, EventStoreError>`; a missing or mismatched table or configuration is a `configuration-error`. `retention` is `{ count, mode }` with a positive integer `count`; the mode is `"delete"` (the default) or `{ type: "ttl", graceDays }` with a positive integer number of days. `transactionRetryLimit` is the maximum number of re-runs after an ABORTED transaction; the default is 5 and the first attempt is not counted. Snapshot retention runs after a successful snapshot write, and a retention failure is reported through the logger and `onRetentionFailure`.
 
+To move data from the v4 Spanner adapter (the `journal` and `snapshot` tables), use `migrateV4Spanner` from the same entry point; it checks every row first and writes nothing if any row is rejected. See [Spanner 4.x to the v5 Spanner](docs/MIGRATION_GUIDE.md#spanner-4x-to-the-v5-spanner).
+
 This version provides no change feed. Passing `changeFeed` is a `configuration-error`, and the configuration row records `change_feed_enabled` as `FALSE`.
 
 ## Serializers and Memory storage
