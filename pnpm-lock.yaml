@@ -170,7 +170,7 @@ importers:
     dependencies:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.413.0
-        version: 3.1153.0
+        version: 3.1154.0
       event-store-adapter-js:
         specifier: workspace:*
         version: link:../library
@@ -195,7 +195,7 @@ importers:
     dependencies:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.413.0
-        version: 3.1153.0
+        version: 3.1154.0
     devDependencies:
       '@biomejs/biome':
         specifier: 2.5.15
@@ -248,7 +248,7 @@ importers:
     devDependencies:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.413.0
-        version: 3.1153.0
+        version: 3.1154.0
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
@@ -265,8 +265,8 @@ packages:
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
 
-  '@aws-sdk/client-dynamodb@3.1153.0':
-    resolution: {integrity: sha512-VLltvPCGtzBIskdvOY6MDkCM5igTCAY4KUpFTFh/ak1DuvrJ8R9H0hiSfPBj8meqyJkc+dzc2oACVnwT9JMjvg==}
+  '@aws-sdk/client-dynamodb@3.1154.0':
+    resolution: {integrity: sha512-59z5o4r+U0jOC9QEPPCcZkfcF7vAiQPGkMUDe5p6euN0fAFMNDy4rVeyf1eMROEcTs+Lu9xkUJTOVPr5TrbkYg==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.978.4':
@@ -1001,10 +1001,6 @@ packages:
 
   '@sinonjs/fake-timers@15.4.0':
     resolution: {integrity: sha512-DsG+8/LscQIQg68J6Ef3dv10u6nVyetYn923s3/sus5eaGfTo1of5WMZSLf0UJc9KDuKPilPH0UDJCjvNbDNCA==}
-
-  '@smithy/core@3.35.2':
-    resolution: {integrity: sha512-ejTukBuP/Pg3t9N8Ux+0zKsXeHWm7p6W3HbXFOyltKasSxZwCFmvTut7kBdZSCF3m9y1bXXyVu6p2xuMFcsTyQ==}
-    engines: {node: '>=18.0.0'}
 
   '@smithy/core@3.36.0':
     resolution: {integrity: sha512-3hJiwG1F5t1SoXqp/yOCmYXziyx7ZVqF63S5W6YU201e/qwVaHPex+E/3vvyY9a3ORq/b+BydeNZpP2saQ9X2g==}
@@ -2873,7 +2869,7 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@aws-sdk/client-dynamodb@3.1153.0':
+  '@aws-sdk/client-dynamodb@3.1154.0':
     dependencies:
       '@aws-sdk/core': 3.978.4
       '@aws-sdk/credential-provider-node': 3.972.87
@@ -3857,11 +3853,6 @@ snapshots:
     dependencies:
       '@sinonjs/commons': 3.0.1
 
-  '@smithy/core@3.35.2':
-    dependencies:
-      '@smithy/types': 4.19.0
-      tslib: 2.8.1
-
   '@smithy/core@3.36.0':
     dependencies:
       '@smithy/types': 4.19.0
@@ -3869,25 +3860,25 @@ snapshots:
 
   '@smithy/credential-provider-imds@4.5.2':
     dependencies:
-      '@smithy/core': 3.35.2
+      '@smithy/core': 3.36.0
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@smithy/fetch-http-handler@5.8.0':
     dependencies:
-      '@smithy/core': 3.35.2
+      '@smithy/core': 3.36.0
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@smithy/node-http-handler@4.12.1':
     dependencies:
-      '@smithy/core': 3.35.2
+      '@smithy/core': 3.36.0
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@smithy/signature-v4@5.7.4':
     dependencies:
-      '@smithy/core': 3.35.2
+      '@smithy/core': 3.36.0
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
