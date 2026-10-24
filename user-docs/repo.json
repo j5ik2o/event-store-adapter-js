@@ -1,0 +1,17 @@
+{
+  "package": "event-store-adapter-js",
+  "docs_root": "packages/library",
+  "storages": [
+    "memory",
+    "dynamodb",
+    "spanner"
+  ],
+  "extra_documents": [
+    "docs/GCP_EVENT_INTEGRATION.md",
+    "docs/MIGRATION_GUIDE_3.0.md",
+    "docs/MIGRATION_GUIDE_4.0.md"
+  ],
+  "moved": {
+    "docs/DATABASE_SCHEMA.md": "docs/DYNAMODB_DATABASE_SCHEMA.md"
+  }
+}

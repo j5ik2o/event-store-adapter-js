@@ -1,3 +1,5 @@
+> この文書は [GCP_EVENT_INTEGRATION.md](GCP_EVENT_INTEGRATION.md) の日本語版です。英語版が正本で、食い違うときは英語版に従います。
+
 # GCPにおけるイベント駆動連携の選択肢
 
 このドキュメントは、`DynamoDB Streams + Lambda` に近い後段処理を GCP 上で実現する場合の選択肢を整理した設計メモです。

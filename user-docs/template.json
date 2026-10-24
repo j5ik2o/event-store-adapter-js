@@ -1,0 +1,58 @@
+{
+  "format": "user-docs-template",
+  "version": "1.0.0",
+  "japanese_first_line": "> この文書は [{english}]({english}) の日本語版です。英語版が正本で、食い違うときは英語版に従います。",
+  "storages": [
+    {"id": "memory", "en": "Memory", "ja": "メモリ", "schema_prefix": null},
+    {"id": "dynamodb", "en": "DynamoDB", "ja": "DynamoDB", "schema_prefix": "DYNAMODB"},
+    {"id": "sqlite", "en": "SQLite", "ja": "SQLite", "schema_prefix": "SQLITE"},
+    {"id": "spanner", "en": "Spanner", "ja": "Spanner", "schema_prefix": "SPANNER"},
+    {"id": "bigtable", "en": "Bigtable", "ja": "Bigtable", "schema_prefix": "BIGTABLE"}
+  ],
+  "documents": {
+    "readme": {
+      "path": "README.md",
+      "h1": "package",
+      "h2": [
+        {"en": "Overview", "ja": "概要"},
+        {"en": "Installation", "ja": "インストール"},
+        {"en": "Quick start", "ja": "はじめに"},
+        {"en": "Storages", "ja": "保存先"},
+        {"en": "Serialization", "ja": "直列化"},
+        {"en": "Retention", "ja": "保持"},
+        {"en": "Errors", "ja": "エラー"},
+        {"en": "Migration", "ja": "移行"},
+        {"en": "Conformance", "ja": "適合"},
+        {"en": "License", "ja": "ライセンス"}
+      ],
+      "storages_h2": "Storages"
+    },
+    "schema": {
+      "path": "docs/{prefix}_DATABASE_SCHEMA.md",
+      "h1": {"en": "{en} storage schema", "ja": "{ja} の保存先のスキーマ"},
+      "h2": [
+        {"en": "Layout", "ja": "配置"},
+        {"en": "Configuration", "ja": "設定"},
+        {"en": "Initialization", "ja": "初期化"},
+        {"en": "Records", "ja": "記録"},
+        {"en": "Writes and reads", "ja": "書き込みと読み取り"},
+        {"en": "Retention", "ja": "保持"},
+        {"en": "Operations", "ja": "運用"}
+      ]
+    },
+    "migration_guide": {
+      "path": "docs/MIGRATION_GUIDE.md",
+      "h1": {"en": "Migration guide", "ja": "移行ガイド"},
+      "h2": [
+        {"en": "Overview", "ja": "概要"},
+        {"en": "Code changes", "ja": "コードの変更"},
+        {"en": "Data migration", "ja": "データの移行"},
+        {"en": "Verification and cutover", "ja": "確認と切り替え"}
+      ]
+    }
+  },
+  "moved": {
+    "en": "# Moved\n\nThis document has moved to [{link}]({link}).\n",
+    "ja": "{first_line}\n\n# 移動しました\n\nこの文書は [{link}]({link}) に移りました。\n"
+  }
+}
