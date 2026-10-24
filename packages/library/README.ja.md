@@ -1,13 +1,18 @@
+> この文書は [README.md](README.md) の日本語版です。英語版が正本で、食い違うときは英語版に従います。
+
 # event-store-adapter-js
 
 [![CI](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/j5ik2o/event-store-adapter-js/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/event-store-adapter-js.svg)](https://badge.fury.io/js/event-store-adapter-js)
 
+
+## 概要
+
 Memory、DynamoDB、Spannerのイベントストアです。[共通契約 v5](https://github.com/j5ik2o/event-store-adapter/blob/main/docs/spec/README.md) に従います。メジャーの番号 5 は、共通契約の版と同じです。
 
 [English](./README.md)
 
-## 導入
+## インストール
 
 Node.js 24以降を使用してください。
 
@@ -15,7 +20,7 @@ Node.js 24以降を使用してください。
 npm install event-store-adapter-js
 ```
 
-## 使い方
+## はじめに
 
 メタデータは封筒に置き、payloadにはserializerが扱える任意のドメイン型を使います。シーケンス番号は安全な整数で、書き込みは1から連続します。集約IDは `typeName-value` で構築します。`typeName` に `-` は使えず、集約ID全体のUTF-8サイズは1024バイト以内です。
 
@@ -58,11 +63,21 @@ const total = events.reduce((value, next) => value + next.payload.added, saved?.
 
 headがなければ `getLatestSnapshotById` は `undefined` を返します。headがあれば `{ headSeqNr, snapshot }` を返し、snapshotは省略される場合があります。復元はsnapshot番号＋1、snapshotなしなら1から始めます。head番号は最新の確定イベントを表します。
 
-両factoryと4操作はすべて `Result` を返します。DynamoDB生成は非同期です。エラーは `contract-violation`（`rule` 付き）、`optimistic-lock-conflict`、`serialization-error`、`configuration-error`、`storage-error` の5分類で、元の `cause` がある場合は保持します。
+## 保存先
 
-## DynamoDB
+### メモリ
 
-[DATABASE_SCHEMA.ja.md](docs/DATABASE_SCHEMA.ja.md) に従い、3表と履歴GSIを作成してからストアを生成します。ライブラリは3表の共通設定項目を作成・照合します。3 つの表は同じリージョンに置き、書き込みもそのリージョンからだけ行ってください。グローバルテーブル（複数リージョンのレプリカ）は範囲外です。
+メモリの保存先は単一プロセスのメモリだけを使います。ファイルへの保存、再起動後の回復、プロセス間の共有はしません。storageを省略したMemory生成は独立します。共有する場合は `MemoryStorage.create()` の同じ値を複数のfactoryへ渡し、保持設定もstorageに指定します。
+
+```typescript
+const storage = unwrap(MemoryStorage.create({ retention: { count: 3 } }));
+const first = unwrap(EventStore.createMemory({ storage }));
+const second = unwrap(EventStore.createMemory({ storage }));
+```
+
+### DynamoDB
+
+[DYNAMODB_DATABASE_SCHEMA.ja.md](docs/DYNAMODB_DATABASE_SCHEMA.ja.md) に従い、3表と履歴GSIを作成してからストアを生成します。ライブラリは3表の共通設定項目を作成・照合します。3 つの表は同じリージョンに置き、書き込みもそのリージョンからだけ行ってください。グローバルテーブル（複数リージョンのレプリカ）は範囲外です。
 
 ```typescript
 const opened = await EventStore.createDynamoDB({
@@ -75,9 +90,9 @@ const opened = await EventStore.createDynamoDB({
 const store = unwrap(opened);
 ```
 
-AWSクライアントは呼び出し側で管理します。snapshot書き込み成功後に保持処理を行い、DynamoDBのevent-only書き込みでは保持要求を送りません。保持失敗でも確定済み書き込みは成功し、loggerと `onRetentionFailure` へ通知します。TTL方式は `mode: { type: "ttl", graceSeconds: 3600 }` とし、snapshot表の `ttl` を有効化してください。
+AWSクライアントは呼び出し側で管理します。
 
-## Spanner
+### Spanner
 
 Spannerは別の入口 `event-store-adapter-js/spanner` で提供します。Spannerの SDK は利用者が導入してください。任意のpeer依存（`^8.7.1 || ^9.0.0`）です。元の入口 `event-store-adapter-js` は Spanner の SDK を読み込みません。
 
@@ -100,29 +115,35 @@ const opened = await SpannerEventStore.create({
 const store = unwrap(opened);
 ```
 
-`database` は `@google-cloud/spanner` の `Database` で、`tablePrefix` から5つのテーブル名を導きます。`Database` は呼び出し側が管理し、閉じるのも呼び出し側です。結果は `Result<EventStore, EventStoreError>` で、テーブルや設定の欠けと食い違いは `configuration-error` になります。`retention` は `{ count, mode }` で、`count` は正の整数です。modeは `"delete"`（既定）または `{ type: "ttl", graceDays }`（正の整数の日数）です。`transactionRetryLimit` はABORTEDになったトランザクションの再実行の上限で、既定は5、最初の試行は数えません。スナップショットの保持処理は、スナップショットの書き込みが成功した後に行い、保持の失敗はloggerと `onRetentionFailure` へ通知します。
-
-v4 の Spanner アダプタ（`journal` と `snapshot` の 2 テーブル）のデータを移すには、同じ入口の `migrateV4Spanner` を使います。先に全行を検査し、拒む理由が 1 件でもあれば何も書きません。手順は [Spanner 4.x から v5 の Spanner へ](docs/MIGRATION_GUIDE.ja.md#spanner-4x-から-v5-の-spanner-へ) を参照してください。
+`database` は `@google-cloud/spanner` の `Database` で、`tablePrefix` から5つのテーブル名を導きます。`Database` は呼び出し側が管理し、閉じるのも呼び出し側です。結果は `Result<EventStore, EventStoreError>` で、テーブルや設定の欠けと食い違いは `configuration-error` になります。`retention` は `{ count, mode }` で、`count` は正の整数です。modeは `"delete"`（既定）または `{ type: "ttl", graceDays }`（正の整数の日数）です。`transactionRetryLimit` はABORTEDになったトランザクションの再実行の上限で、既定は5、最初の試行は数えません。
 
 この版は変更フィードを提供しません。`changeFeed` を指定すると `configuration-error` になり、設定の行は `change_feed_enabled` を `FALSE` で記録します。
 
-## SerializerとMemoryの共有
+## 直列化
 
 既定の `PayloadSerializer.json()` はJSON値だけを扱います。任意の同期 `PayloadSerializer<P>` は `serialize(payload): Uint8Array` と `deserialize(bytes, manifest): P` を実装します。payloadだけを直列化し、クラスやbrandは `deserialize` で復元してください。実例の [domain serializer](../examples/src/domain/user-account-serializers.ts) を参照できます。
 
-メモリの保存先は単一プロセスのメモリだけを使います。ファイルへの保存、再起動後の回復、プロセス間の共有はしません。storageを省略したMemory生成は独立します。共有する場合は `MemoryStorage.create()` の同じ値を複数のfactoryへ渡し、保持設定もstorageに指定します。
+JavaScriptの時刻はミリ秒精度の `Date` です。DynamoDBのイベント時刻は完全なエポックミリ秒値からナノ秒へ変換して保存します。ミリ秒未満の精度はこのAPIで表現できません。
 
-```typescript
-const storage = unwrap(MemoryStorage.create({ retention: { count: 3 } }));
-const first = unwrap(EventStore.createMemory({ storage }));
-const second = unwrap(EventStore.createMemory({ storage }));
-```
+## 保持
 
-Memoryは削除方式の保持に対応し、保持失敗で残った履歴は後のevent-only書き込みでも処理します。TTLには対応しません。JavaScriptの時刻はミリ秒精度の `Date` です。DynamoDBのイベント時刻は完全なエポックミリ秒値からナノ秒へ変換して保存します。ミリ秒未満の精度はこのAPIで表現できません。
+snapshotの書き込み成功後に保持処理を行い、DynamoDBのevent-only書き込みでは保持要求を送りません。保持失敗でも確定済み書き込みは成功し、loggerと `onRetentionFailure` へ通知します。
 
-## 移行と開発
+- DynamoDB: `retention: { count, mode }` を指定します。TTL方式は `mode: { type: "ttl", graceSeconds: 3600 }` とし、snapshot表の `ttl` を有効化してください。
+- Spanner: `retention` は `{ count, mode }` で、`count` は正の整数です。modeは `"delete"`（既定）または `{ type: "ttl", graceDays }` です。スナップショットの書き込みが成功した後の保持の失敗は、loggerと `onRetentionFailure` へ通知します。
+- Memory: 共有する `MemoryStorage` に保持設定を指定します。Memoryは削除方式の保持に対応し、保持失敗で残った履歴は後のevent-only書き込みでも処理します。TTLには対応しません。
 
-既存データを新しい表へ移す際は [JavaScript移行ガイド](docs/MIGRATION_GUIDE.ja.md) を参照してください。旧shard・version・converter・serializer APIはこの公開入口に含みません。Spannerは `event-store-adapter-js/spanner` の入口で提供し、元の入口は Spanner の SDK を読み込みません。v4のSpannerアダプタからデータを移すには、移行ガイドのSpannerの節を参照してください。
+## エラー
+
+両factoryと4操作はすべて `Result` を返します。DynamoDB生成は非同期です。エラーは `contract-violation`（`rule` 付き）、`optimistic-lock-conflict`、`serialization-error`、`configuration-error`、`storage-error` の5分類で、元の `cause` がある場合は保持します。
+
+## 移行
+
+既存データを新しい表へ移す際は [JavaScript移行ガイド](docs/MIGRATION_GUIDE.ja.md) を参照してください。旧shard・version・converter・serializer APIはこの公開入口に含みません。Spannerは `event-store-adapter-js/spanner` の入口で提供し、元の入口は Spanner の SDK を読み込みません。
+
+v4 の Spanner アダプタ（`journal` と `snapshot` の 2 テーブル）のデータを移すには、同じ入口の `migrateV4Spanner` を使います。先に全行を検査し、拒む理由が 1 件でもあれば何も書きません。手順は [Spanner 4.x から v5 の Spanner へ](docs/MIGRATION_GUIDE.ja.md#spanner-4x-から-v5-の-spanner-へ) を参照してください。
+
+## 適合
 
 リポジトリのrootで実行します。
 
