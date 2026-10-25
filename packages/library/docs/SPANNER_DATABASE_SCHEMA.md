@@ -1,12 +1,12 @@
-# Cloud Spanner schema (v5, `event-store-adapter-js/spanner`)
+# Spanner storage schema
+
+## Layout
 
 This document describes the tables that `SpannerEventStore.create(...)` from the `event-store-adapter-js/spanner` entry point expects. For usage, see the [current README](../README.md). The v4 (4.x) two-table schema is kept at the end only as the source of a migration; see the [migration guide](MIGRATION_GUIDE.md).
 
 Only the GoogleSQL dialect is supported. All five tables live in the same database. Every table name is derived from one prefix as `<prefix>_<logical name>`: with the prefix `esa` the tables are `esa_journal`, `esa_head`, `esa_snapshot_current`, `esa_snapshot_history` and `esa_config`. The prefix and every derived name must be valid SQL identifiers, and each derived name is at most 128 characters.
 
 `SpannerEventStore.create(...)` never runs DDL. It only verifies the tables and the configuration row, and it does not create anything that is missing. You create the tables and the configuration row yourself with the procedure below. The examples use the prefix `esa`; replace it with your own prefix.
-
-## Tables
 
 <!-- spanner-schema:tables -->
 ```sql
@@ -79,16 +79,7 @@ CREATE TABLE esa_snapshot_history (
   ROW DELETION POLICY (OLDER_THAN(expired_at, INTERVAL 7 DAY));
 ```
 
-Columns:
-
-- `hash_prefix`: the FNV-1a 64 hash of `aid`, as 8 bytes in big-endian order. It is not converted to a signed integer and is not reduced by a shard count. Keys are compared as the exact pair `(hash_prefix, aid)`; if two hashes collide, different `aid` values are still different keys.
-- `aid`: `typeName-value`. The UTF-8 size is at most 1024 bytes, which the library checks before writing.
-- `seq_nr`: 1 to 2^53 - 1.
-- `occurred_at_ns` and `event_occurred_at_ns`: signed 64-bit nanoseconds since the Unix epoch, stored as `INT64`, not as `TIMESTAMP`.
-- `esa_snapshot_history.expired_at`: the time at which a row was marked for TTL. It is not the event's occurrence time. It stays `NULL` for rows that are not marked, and TTL never removes those.
-- `esa_head` holds the latest committed event with its metadata and payload. `esa_snapshot_current` holds the latest snapshot, and its row is absent if no snapshot has been written.
-
-## Configuration row
+## Configuration
 
 `esa_config` holds exactly one row, with `singleton = 1`.
 
@@ -117,21 +108,7 @@ INSERT INTO esa_config (singleton, store_id, layout_version, keep_snapshot_count
 VALUES (1, GENERATE_UUID(), 1, 3, 'ttl', 7, FALSE);
 ```
 
-## Retention modes
-
-| | delete | TTL |
-|:--|:--|:--|
-| Client setting | `retention: { count }` or `{ count, mode: "delete" }` | `retention: { count, mode: { type: "ttl", graceDays } }` |
-| `retention_mode` | `delete` | `ttl` |
-| `ttl_grace_days` | `NULL` | `graceDays` |
-| Row deletion policy on `esa_snapshot_history` | none | `OLDER_THAN(expired_at, INTERVAL graceDays DAY)` |
-| Old history rows | deleted right after the snapshot write | marked once by setting `expired_at`, then removed by Spanner TTL |
-
-In TTL mode, keep three values equal: the `n` of `INTERVAL n DAY`, `ttl_grace_days` and `graceDays`. Marked rows are not counted as retained snapshots and are never marked again. Physical deletion happens later, at Spanner's discretion. Only `esa_snapshot_history` is affected; `esa_journal`, `esa_head` and `esa_snapshot_current` are never deleted.
-
-Retention runs after a snapshot write has committed. A retention failure does not change the committed write; it is reported through `logger` and `onRetentionFailure`.
-
-## Initialization procedure
+## Initialization
 
 Run this procedure outside the application, while no client is writing.
 
@@ -154,7 +131,42 @@ Run this procedure outside the application, while no client is writing.
 
 DDL changes while the store is in use, and data changes that bypass the library, are not supported.
 
-## Changing the retention count
+## Records
+
+Columns:
+
+- `hash_prefix`: the FNV-1a 64 hash of `aid`, as 8 bytes in big-endian order. It is not converted to a signed integer and is not reduced by a shard count. Keys are compared as the exact pair `(hash_prefix, aid)`; if two hashes collide, different `aid` values are still different keys.
+- `aid`: `typeName-value`. The UTF-8 size is at most 1024 bytes, which the library checks before writing.
+- `seq_nr`: 1 to 2^53 - 1.
+- `occurred_at_ns` and `event_occurred_at_ns`: signed 64-bit nanoseconds since the Unix epoch, stored as `INT64`, not as `TIMESTAMP`.
+- `esa_snapshot_history.expired_at`: the time at which a row was marked for TTL. It is not the event's occurrence time. It stays `NULL` for rows that are not marked, and TTL never removes those.
+- `esa_head` holds the latest committed event with its metadata and payload. `esa_snapshot_current` holds the latest snapshot, and its row is absent if no snapshot has been written.
+
+## Writes and reads
+
+Writes run in a SERIALIZABLE read-write transaction. If the transaction is ABORTED, it is re-run up to `transactionRetryLimit` times; the first attempt is not counted.
+
+Inside the transaction, the head `seq_nr` of the aggregate is read first. A new event number that is less than or equal to the head number is an `optimistic-lock-conflict`; a number greater than head + 1 is a `contract-violation` (rule `W-8`). Otherwise the journal row and the head row (inserted for the first event, updated afterwards) are committed in one transaction. A write with a snapshot also inserts or updates the `esa_snapshot_current` row in the same transaction, and, when retention is configured, adds an `esa_snapshot_history` row with `expired_at` set to `NULL`. `occurred_at_ns` is the epoch milliseconds of the event times 1,000,000.
+
+Reading events uses one strong read-only transaction: it reads the head number first, then reads `seq_nr >= start AND seq_nr <= head` in ascending order. If the number of rows does not match the range, the read fails with a `storage-error`. The latest snapshot reads the head row and the `esa_snapshot_current` row in one strong read-only transaction.
+
+## Retention
+
+| | delete | TTL |
+|:--|:--|:--|
+| Client setting | `retention: { count }` or `{ count, mode: "delete" }` | `retention: { count, mode: { type: "ttl", graceDays } }` |
+| `retention_mode` | `delete` | `ttl` |
+| `ttl_grace_days` | `NULL` | `graceDays` |
+| Row deletion policy on `esa_snapshot_history` | none | `OLDER_THAN(expired_at, INTERVAL graceDays DAY)` |
+| Old history rows | deleted right after the snapshot write | marked once by setting `expired_at`, then removed by Spanner TTL |
+
+In TTL mode, keep three values equal: the `n` of `INTERVAL n DAY`, `ttl_grace_days` and `graceDays`. Marked rows are not counted as retained snapshots and are never marked again. Physical deletion happens later, at Spanner's discretion. Only `esa_snapshot_history` is affected; `esa_journal`, `esa_head` and `esa_snapshot_current` are never deleted.
+
+Retention runs after a snapshot write has committed. A retention failure does not change the committed write; it is reported through `logger` and `onRetentionFailure`.
+
+## Operations
+
+### Changing the retention count
 
 Changing `keep_snapshot_count` is a maintenance procedure that you run outside the library, with every client stopped. The library does not provide a tool for it.
 
@@ -166,7 +178,7 @@ TTL mode requires `retention.count`, so in TTL mode the new count must also be a
 
 If the procedure fails part-way, keep the clients stopped and run it again with the same target recorded in step 1. Rows that were already deleted or marked are not processed again, and their expiry is not postponed. There is no rollback of the whole store. When you increase the count, or set a count where there was none (delete mode only), rows that were deleted, marked or never kept are not restored or created afterwards; the new setting applies from the next snapshot write.
 
-## v4 (4.x) Cloud Spanner schema (migration source)
+### v4 (4.x) Cloud Spanner schema (migration source)
 
 This section describes the layout written by the v4 Spanner adapter. The current entry point does not read it. To move the data, follow [Spanner 4.x to the v5 Spanner](MIGRATION_GUIDE.md#spanner-4x-to-the-v5-spanner). The v4 adapter used two GoogleSQL tables: `journal` and `snapshot`.
 
@@ -189,12 +201,12 @@ CREATE TABLE snapshot (
 ) PRIMARY KEY (shard_id, aggregate_id, sequence_number);
 ```
 
-### v4 journal
+#### v4 journal
 
 `journal` stores every event. `occurred_at` is copied from `event.occurredAt`.
 Events are read by `(shard_id, aggregate_id)` and ordered by `sequence_number ASC`.
 
-### v4 snapshot
+#### v4 snapshot
 
 `snapshot` stores the latest snapshot and optional retained snapshot copies.
 

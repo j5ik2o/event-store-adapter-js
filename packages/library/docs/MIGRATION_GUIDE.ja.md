@@ -1,24 +1,51 @@
-# JavaScriptの封筒APIへの移行
+> この文書は [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) の日本語版です。英語版が正本で、食い違うときは英語版に従います。
+
+# 移行ガイド
+
+## 概要
+
+このガイドは、JavaScriptの封筒APIへの移行を扱います。
 
 旧JavaScript 4.x APIと、旧DynamoDB 2表配置または旧Spanner 2表配置を使うアプリケーション向けの手順です。新公開APIは新しい配置だけを読みます。DynamoDBは3表、Spannerは `event-store-adapter-js/spanner` 入口の5表です。DynamoDBの手順を先に説明します。Spannerは [Spanner 4.x から v5 の Spanner へ](#spanner-4x-から-v5-の-spanner-へ) を参照してください。DynamoDBの手順は、利用者がexportと書き直しを行う手順であり、移行ツールは提供しません。Spannerの旧配置には、移行関数 `migrateV4Spanner` があります。Rustの移行ツールはこのJavaScript配置へ流用できません。
 
-## 準備と読み出し
+## コードの変更
+
+### APIの対応
+
+| 旧API・設定 | 新契約 |
+| --- | --- |
+| `EventStore<Id, Aggregate, Event>` | `EventStore<EventPayload, SnapshotPayload>` |
+| 永続化metadataを含むイベント・集約 | `EventEnvelope`・`SnapshotEnvelope`、payloadを分離 |
+| `persistEvent(event, expectedVersion)` | `persistEvent(envelope)`、連続 `seqNr` でロック |
+| `getEventsByIdSinceSequenceNumber` | `getEventsByIdSinceSeqNr`、封筒のResult |
+| 最新aggregateの直接返却 | `{ headSeqNr, snapshot? }` のResult、headなしなら `undefined` |
+| 同期のDynamoDB直接生成 | `await EventStore.createDynamoDB(input)`、Result |
+| Memoryの直接生成 | `EventStore.createMemory(input?)`、Result |
+| `eventConverter`・`snapshotConverter`・旧serializer | `eventSerializer`・`snapshotSerializer`、payload bytesとmanifest |
+| `keepSnapshotCount`・`deleteTtlMillis` | `retention: { count, mode }`、TTLの `graceSeconds` は秒 |
+| shard設定・journal GSI | 3表配置、journal本体を読取 |
+| `isCreated`・aggregateの `version` | イベント番号とheadの条件付き更新 |
+| Spanner（`EventStore.createSpanner`） | `event-store-adapter-js/spanner` の `await SpannerEventStore.create(input)`、Result。表は [SPANNER_DATABASE_SCHEMA.ja.md](SPANNER_DATABASE_SCHEMA.ja.md) に従って作成 |
+
+## データの移行
+
+### 準備と読み出し
 
 1. 旧書き込みを止めるか、exportの確定点と切替時間を決めます。読み取り用に旧アプリケーション、正確な導入版、domain converter/serializer、旧表を保持します。
-2. [DATABASE_SCHEMA.ja.md](DATABASE_SCHEMA.ja.md) に従い、新しい名前でjournal・snapshot・headの3表、履歴GSI、必要なTTL設定を作ります。
+2. [DYNAMODB_DATABASE_SCHEMA.ja.md](DYNAMODB_DATABASE_SCHEMA.ja.md) に従い、新しい名前でjournal・snapshot・headの3表、履歴GSI、必要なTTL設定を作ります。
 3. 導入済みの旧4.xを使う別プロセスで、旧APIから集約ごとの全イベントを番号1から読み、移すsnapshotも読みます。domain値と確認済みmetadataをexportします。snapshot番号からだけ読むと、全件書き直しに必要な履歴が欠けます。
 4. 利用者の変換コードで、封筒のmetadataとevent・aggregateのpayloadを分離します。旧集約ごとに有効な `AggregateId` を明示対応させます。新版の `typeName` に `-` は使えません。payloadのスキーマと `manifest` を決め、JSON値以外のdomain値を使う場合は `PayloadSerializer` を用意します。
 5. 元のイベント順を確認し、旧番号から新しい連続番号1以降への対応表を作ります。snapshotはその状態を表すイベントへ対応させ、そのイベントの新番号を使います。この対応をexport記録に残します。
 
 旧readerと新writerは、それぞれのパッケージを導入した別プロセスで動かし、利用者が定めたexportデータを受け渡します。新版ライブラリは旧APIのaliasや旧形式readerを提供しません。
 
-## 時刻の変換前に確認すること
+### 時刻の変換前に確認すること
 
 実際の旧パッケージ、serializer、保存属性、exportしたpayloadのmetadataを確認してください。数値時刻の単位や、完全なエポック値が入っていることを推測してはいけません。旧JavaScriptの一部の書込経路はUTCのミリ秒成分だけを保存していました。成分だけから元の時点は復元できません。exportに別の確認済み時刻があれば使い、必要な情報が欠ける場合は移行データの問題として対応してください。時点や精度を創作しないでください。
 
 新版はミリ秒精度の `Date` を受けます。失われたミリ秒未満の桁を補ったり、数値の大きさから元単位を推測したりしません。確認できた精度損失はexportへ記録します。
 
-## 書き直しと照合
+### 書き直しと照合
 
 writerプロセスで新版を使い、新しい表を開き、確認済みの順に集約ごとに書き込みます。次のhelperの入力は、**利用者が既にmetadataとpayloadを分離し、確認したデータ**です。新番号を付与し、各イベントを1回だけ書きます。対応するsnapshotは同じイベントと同じ番号で書きます。
 
@@ -73,11 +100,7 @@ async function rewrite(
 
 既定JSONを使う場合、`records` のpayloadはJSON値です。任意domain値を使う場合は、target生成時に両serializerを設定してください。
 
-exportと書直し結果のイベント件数、連続番号、終端head番号、metadata、復元したpayloadを照合します。snapshot番号＋1、snapshotなしなら1から集約を復元し、domain状態も比較してください。履歴保持で古いsnapshotは除去され得るため、残るsnapshot件数だけで現在状態を判定しません。
-
-照合後にアプリケーションを新公開入口と新しい表へ切り替えます。旧exportと旧表は利用者が清掃を確認するまで保持します。
-
-## Spanner 4.x から v5 の Spanner へ
+### Spanner 4.x から v5 の Spanner へ
 
 この節は、v4 の Spanner アダプタが書いたデータ（`journal` と `snapshot` の 2 テーブル。[v4 の構成](SPANNER_DATABASE_SCHEMA.ja.md#v44xの-cloud-spanner-のテーブル構成移行の元) を参照）を、`event-store-adapter-js/spanner` の `migrateV4Spanner` で v5 の 5 テーブルへ移す手順です。この関数は v4 の 2 テーブルを読み、全行を検査し、拒む理由が 1 件もないときだけ書きます。復元の関数を書くときは、コミット `a443ef9` の v4 アダプタ（`packages/library/src/internal/spanner-event-store.ts`）の契約を読んでください。
 
@@ -144,24 +167,20 @@ v4 のアダプタが書いていたもの:
    関数は、v4 の 2 テーブルと移行先の状態を 1 つの strong の読み取り専用トランザクションで読むので、検査と書き込みは同じデータを使います。書いた後は、集約ごとに公開 API で読み戻し、イベントの数、番号が 1 から連続していること、`headSeqNr` が最大値と等しいこと、スナップショットの番号を照合します。
 
    v4 の 2 テーブルを 1 つの strong の読み取りで全件メモリに読み、payload を複製します。そのため、v4 のテーブルの payload の合計のおよそ 2 倍以上のメモリが必要です。
+
+## 確認と切り替え
+
+### DynamoDBの書き直し
+
+exportと書直し結果のイベント件数、連続番号、終端head番号、metadata、復元したpayloadを照合します。snapshot番号＋1、snapshotなしなら1から集約を復元し、domain状態も比較してください。履歴保持で古いsnapshotは除去され得るため、残るsnapshot件数だけで現在状態を判定しません。
+
+照合後にアプリケーションを新公開入口と新しい表へ切り替えます。旧exportと旧表は利用者が清掃を確認するまで保持します。
+
+### Spannerの移行
+
+手順8と9は、「データの移行」の下の [Spanner 4.x から v5 の Spanner へ](#spanner-4x-から-v5-の-spanner-へ) の手順の続きです。
+
 8. この版には変更フィードがありません。v4 のデータに依存する下流の処理や読み取りモデルがある場合は、切り替える前に作り直す方法を決めてください。
 9. 関数が成功の報告を返してから、アプリケーションを新しい接頭辞へ切り替えます。v4 のテーブルは、片付けてよいと確かめるまで残します。
 
 部分的な移行と回復: 関数は、公開 API を使って、新しい `aid` の昇順に、集約ごとに、イベント 1 件につき 1 つのトランザクションで書きます。書き込みを始めた後で保存先の失敗（`error`）や読み戻しの食い違い（`verification-failed`）が起きると、すでに書いた行は移行先に残ります。関数は巻き戻しません。検査は書き込みの前に行うので、`rejected` のときは移行先に何も残りません。部分的な移行から回復するには、その移行先をそのまま使わないでください。行があるので、次の実行は拒まれます。5 テーブルを作り直す（または別の新しい接頭辞で作る）、もう一度初期化する、同じ入力で関数を再実行する、の順に行います。v4 のテーブルは変わらないので、何度でもやり直せます。
-
-## APIの対応
-
-| 旧API・設定 | 新契約 |
-| --- | --- |
-| `EventStore<Id, Aggregate, Event>` | `EventStore<EventPayload, SnapshotPayload>` |
-| 永続化metadataを含むイベント・集約 | `EventEnvelope`・`SnapshotEnvelope`、payloadを分離 |
-| `persistEvent(event, expectedVersion)` | `persistEvent(envelope)`、連続 `seqNr` でロック |
-| `getEventsByIdSinceSequenceNumber` | `getEventsByIdSinceSeqNr`、封筒のResult |
-| 最新aggregateの直接返却 | `{ headSeqNr, snapshot? }` のResult、headなしなら `undefined` |
-| 同期のDynamoDB直接生成 | `await EventStore.createDynamoDB(input)`、Result |
-| Memoryの直接生成 | `EventStore.createMemory(input?)`、Result |
-| `eventConverter`・`snapshotConverter`・旧serializer | `eventSerializer`・`snapshotSerializer`、payload bytesとmanifest |
-| `keepSnapshotCount`・`deleteTtlMillis` | `retention: { count, mode }`、TTLの `graceSeconds` は秒 |
-| shard設定・journal GSI | 3表配置、journal本体を読取 |
-| `isCreated`・aggregateの `version` | イベント番号とheadの条件付き更新 |
-| Spanner（`EventStore.createSpanner`） | `event-store-adapter-js/spanner` の `await SpannerEventStore.create(input)`、Result。表は [SPANNER_DATABASE_SCHEMA.ja.md](SPANNER_DATABASE_SCHEMA.ja.md) に従って作成 |

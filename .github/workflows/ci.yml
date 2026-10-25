@@ -405,6 +405,9 @@ jobs:
           python3 tools/conformance/manifest.py verify
           echo "0157c012042afa9a19f0bff509a433a4bd5ddc5b674de864a41bec453c460691  conformance/manifest.json" | sha256sum -c -
           echo "37c91f8f94e10c73513a9c1deef990ea4deea96d5001ae700d6bf799658d0e32  api-surface/surface.json" | sha256sum -c -
+          echo "95c189b5e7c0f65967d366d6b0060e7f66d9cc5df7158a382f69750e40d1b37d  user-docs/template.json" | sha256sum -c -
+          echo "104386e9257a05cf8766e12e43e89fe5ff2328b9601c0a24e421c12e76df29dd  tools/user-docs/check.py" | sha256sum -c -
+          python3 tools/user-docs/check.py
       - name: Test semver detection
         run: |
           pip install semver

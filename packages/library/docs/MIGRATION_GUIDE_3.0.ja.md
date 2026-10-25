@@ -1,3 +1,5 @@
+> この文書は [MIGRATION_GUIDE_3.0.md](MIGRATION_GUIDE_3.0.md) の日本語版です。英語版が正本で、食い違うときは英語版に従います。
+
 # Migration Guide 3.0
 
 この文書は旧版（3.0）向けです。5.0 への移行は [MIGRATION_GUIDE](./MIGRATION_GUIDE.ja.md) を参照してください。
