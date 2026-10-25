@@ -53,7 +53,7 @@
   "author": "Junichi Kato <j5ik2o@gmail.com>",
   "license": "MIT",
   "devDependencies": {
-    "@biomejs/biome": "2.6.2",
+    "@biomejs/biome": "2.6.3",
     "@google-cloud/spanner": "^9.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
