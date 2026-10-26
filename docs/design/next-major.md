@@ -1,64 +1,66 @@
-# 次のメジャー版（5.0.0）の設計
+> This document is the design record written while building v5. Check the [README](../../README.md) and the current code for current usage.
 
-この文書は、event-store-adapter-js の次のメジャー版の設計案である。コードは書かない。コーディネーターがレビューし、オーナーが決めた点（第9章）を反映してから、実装に使う。
+# Design of the Next Major Version (5.0.0)
 
-- 規範: ハブ（j5ik2o/event-store-adapter）の `docs/spec/core-contract.md`、`docs/spec/storage/dynamodb.md`、`docs/spec/storage/memory.md`、`docs/plan/implementation-plan.md`、`docs/adr/`。
-- 適合テストデータ: このリポジトリの `conformance/`（v1.0.0、`conformance/README.md` が読み方）。
-- 規則番号（T-1、W-8、DY-9 など）は上記の規範の番号である。この文書は規則を足さず、仕様も変えない。
-- 「現行」は、この設計を書いた時点の 4.0.x（`packages/library/package.json` の版は `4.0.2-snapshot.0`）を指す。この設計による実装は main に入り、版は `5.0.0-snapshot.0` になった。
-- 第9章には、オーナーが決めた点とその理由を残す。保留は Spanner の入口だけである。
-- 「設計判断」と書いた箇所は、仕様の規則ではなく、この文書が決めた設計である。
+This document is the design proposal for the next major version of event-store-adapter-js. It contains no code. The coordinator reviews it, the points decided by the owner (Chapter 9) are reflected, and then it is used for implementation.
 
-## 1. 目的と範囲
+- Normative sources: the hub (j5ik2o/event-store-adapter) `docs/spec/core-contract.md`, `docs/spec/storage/dynamodb.md`, `docs/spec/storage/memory.md`, `docs/plan/implementation-plan.md`, and `docs/adr/`.
+- Conformance test data: `conformance/` in this repository (v1.0.0; `conformance/README.md` explains how to read it).
+- Rule numbers (T-1, W-8, DY-9, etc.) are the numbers in the normative sources above. This document adds no rules and changes no specifications.
+- "Current" means 4.0.x at the time this design was written (the version in `packages/library/package.json` is `4.0.2-snapshot.0`). The implementation based on this design has entered main, and the version became `5.0.0-snapshot.0`.
+- Chapter 9 keeps the points decided by the owner and the reasons. The only pending item is the Spanner entry point.
+- Passages marked "design decision" are designs decided by this document, not rules of the specification.
 
-### 1.1 目的
+## 1. Purpose and Scope
 
-共通契約（封筒モデル、ADR-0001）に合わせて、ライブラリを書き直す。現行の公開 API は、集約の `version` で楽観ロックを行い、`isCreated` でイベントの種類を判断し、`asString()` を利用者の実装に任せている。新しい版は、これらを封筒・ヘッド・`seqNr` で置き換える。
+### 1.1 Purpose
 
-### 1.2 次のメジャーの版の番号
+Rewrite the library to conform to the common contract (envelope model, ADR-0001). The current public API performs optimistic locking with the aggregate's `version`, decides the event kind with `isCreated`, and leaves `asString()` to the user's implementation. The new version replaces these with the envelope, the head, and `seqNr`.
 
-**5.0.0**。現行は 4.0.x で、4.0.0 を出したばかりである。次は2度目のメジャーになる（指示書の前提）。移行の間の main の Snapshot は `5.0.0-snapshot.<run>.<attempt>` の形で公開する（7章）。
+### 1.2 Version Number of the Next Major
 
-### 1.3 最初のメジャーに含めるもの（IP-D3、IP-D4）
+**5.0.0**. The current version is 4.0.x, and 4.0.0 has only just been released. The next one will be the second major (premise of the instructions). While the migration is in progress, the main Snapshot is published in the form `5.0.0-snapshot.<run>.<attempt>` (Chapter 7).
 
-| 対象 | 内容 | 主な規則 |
+### 1.3 Contents of the First Major (IP-D3, IP-D4)
+
+| Target | Content | Main rules |
 |:--|:--|:--|
-| 中核 | 集約 ID・封筒・整数と時刻の型・シリアライザ・4つの操作・エラー分類・設定の検査 | T-1〜T-13、W-3〜W-9、R-1〜R-6、E-1〜E-3、S-1 |
-| メモリ | 単一プロセスのメモリ保存先。適合も宣言する（IP-D4） | MEM-1〜MEM-13 |
-| DynamoDB | 3テーブルと設定項目に作り直す | D-3〜D-9、DY-2・DY-3・DY-8〜DY-12・DY-16〜DY-19 |
-| 適合テストデータの実行器 | メモリと DynamoDB の両方で全ケースを通す | 5章 |
+| Core | Aggregate ID, envelope, integer and time types, serializer, four operations, error classification, configuration validation | T-1 to T-13, W-3 to W-9, R-1 to R-6, E-1 to E-3, S-1 |
+| Memory | Single-process in-memory store. Conformance is also declared (IP-D4) | MEM-1 to MEM-13 |
+| DynamoDB | Rebuilt with three tables and configuration items | D-3 to D-9, DY-2, DY-3, DY-8 to DY-12, DY-16 to DY-19 |
+| Conformance test data runner | Passes all cases on both Memory and DynamoDB | Chapter 5 |
 
-### 1.4 外すもの
+### 1.4 Excluded Items
 
-| 対象 | 扱い |
+| Target | Handling |
 |:--|:--|
-| Spanner | 最初のメジャーでは出さない。段階5で出し直す（IP-D3、IP 4.2）。恒久的な廃止ではない。現行の `EventStore.createSpanner` と `SpannerEventStoreInput`、`@google-cloud/spanner` の peer 依存、Spanner の試験・例は、削除の時点（7章）で外す。Spanner を任意の依存にするエントリポイントの分け方は9章の項目2（保留。段階5までに決める） |
-| 変更フィード | 最初のメジャーに、ヘッド遷移を組み立てる関数も、再同期（DY-15）の補助も含めない（オーナーの決定、2026-10-06）。head テーブルの Streams を有効にするのはテーブル作成側（ライブラリの外）の責務である |
-| TTL 方式（メモリ） | MEM-12。要求は設定エラー |
-| 変更フィード（メモリ） | MEM-13。要求は設定エラー |
-| 論理シャード | ADR-0006、DY-16。`ShardSelector`・`shardCount`・`ShardId` を廃止する |
-| 旧データの読み込み | 旧配置の読み込みは持たない。手順書だけを用意する（8章、IP-D8） |
-| 3テーブルの作成 | ライブラリの外（dynamodb.md 3.1） |
+| Spanner | Not shipped in the first major. It will be shipped again in stage 5 (IP-D3, IP 4.2). This is not a permanent removal. The current `EventStore.createSpanner`, `SpannerEventStoreInput`, the `@google-cloud/spanner` peer dependency, and the Spanner tests and examples are removed at the removal point (Chapter 7). How to split the entry point so that Spanner is an optional dependency is item 2 of Chapter 9 (pending; to be decided by stage 5) |
+| Change feed | The first major includes neither a function that assembles head transitions nor any helper for resynchronization (DY-15) (owner's decision, 2026-10-06). Enabling Streams on the head table is the responsibility of the table creation side (outside the library) |
+| TTL mode (Memory) | MEM-12. Requesting it is a configuration error |
+| Change feed (Memory) | MEM-13. Requesting it is a configuration error |
+| Logical shards | ADR-0006, DY-16. `ShardSelector`, `shardCount`, and `ShardId` are removed |
+| Loading old data | Loading the old layout is not provided. Only a procedure document is prepared (Chapter 8, IP-D8) |
+| Creating the three tables | Outside the library (dynamodb.md 3.1) |
 
-### 1.5 非目標
+### 1.5 Non-goals
 
-- 仕様や規則の変更・追加。
-- 他言語（rs・java・go）の設計。
-- 後方互換の層。旧 API と新 API の共存は、7章の移行期間の内部事情であり、公開しない。
+- Changing or adding specifications or rules.
+- Designs for other languages (rs, java, go).
+- A backward-compatibility layer. Coexistence of the old API and the new API is an internal matter of the migration period in Chapter 7 and is not made public.
 
-## 2. 公開 API
+## 2. Public API
 
-### 2.1 前提
+### 2.1 Premises
 
-- 言語は TypeScript（`strict`）、ビルドは CommonJS・target es6（現行の `tsconfig` に従う）、実行は Node.js 24 以上（現行の `engines`）。
-- 値は不変にする（`Readonly`、`Object.freeze`）。入力を変更しない。
-- 現行のスタイル（`type` と同名の `namespace` に関数を置き、`Object.freeze` する、`index.ts` から再エクスポートする）に合わせる。
-- 1つの公開型は1ファイルに置く（プロジェクトの規則）。
-- ファイルの置き場所（設計判断）: 以下のファイル名（`aggregate-id.ts` など）は、最終の置き場所 `packages/library/src/` での名前である。現行の `src/` に同じ名前のファイルがあるので、旧実装の削除（7章の PR 13）まで、新しい実装は `packages/library/src/next/` に同じ名前で置く。PR 13 で、旧実装を消し、`src/next/` の中身を `src/` へ移す（7.2）。
-- 失敗の返し方は、書き込み・読み取り・生成のすべての操作で `Result<T, EventStoreError>`（現行 `result.ts`）を使う（オーナーの決定、9章の項目1）。
-- 名前は共通契約の `seq_nr` に合わせて `seqNr` とする。`sequenceNumber` は廃止する。
+- The language is TypeScript (`strict`), the build is CommonJS with target es6 (following the current `tsconfig`), and the runtime is Node.js 24 or later (the current `engines`).
+- Values are immutable (`Readonly`, `Object.freeze`). Inputs are not modified.
+- Follow the current style (place functions in a `namespace` with the same name as the `type`, `Object.freeze` it, and re-export from `index.ts`).
+- One public type goes in one file (project rule).
+- File locations (design decision): the file names below (such as `aggregate-id.ts`) are the names at the final location, `packages/library/src/`. Because files with the same names exist in the current `src/`, the new implementation is placed under `packages/library/src/next/` with the same names until the old implementation is removed (PR 13 in Chapter 7). In PR 13, the old implementation is deleted and the contents of `src/next/` are moved to `src/` (7.2).
+- Failures are returned as `Result<T, EventStoreError>` (the current `result.ts`) for all write, read, and creation operations (owner's decision, item 1 of Chapter 9).
+- The name follows `seq_nr` of the common contract and is `seqNr`. `sequenceNumber` is removed.
 
-### 2.2 集約 ID（T-1・T-11・T-12）
+### 2.2 Aggregate ID (T-1, T-11, T-12)
 
 ```ts
 // aggregate-id.ts
@@ -79,23 +81,23 @@ export namespace AggregateId {
 }
 ```
 
-- `asString` は、型名が `-` を含まないこと（T-11）と、型名・値・区切りの UTF-8 バイト数の合計が 1024 以下であること（T-12）を検査し、違反は `Result` の失敗で返す。文字数ではなく `Buffer.byteLength(s, "utf8")` で数える。適合データの多バイトのケースは、これで検出できる。
-- 利用者が独自のオブジェクトを渡せるので、ストアの各操作も `AggregateId.asString` を通して再検査し、失敗はそのまま操作の失敗として返す。`AggregateId.of` を通っていない値でも T-11・T-12 が守られる（MEM-5 も同じ）。
-- 空の型名・空の値は許す。仕様（T-11・T-12）は禁じておらず、aid 文字列は `-` を含むので空にならない（指揮役の回答、2026-10-06）。適合データにこのケースはないので、PR 3 の単体試験で、型名が空（`-値`）・値が空（`型名-`）・両方が空（`-`）を確かめる。
-- 現行の `AggregateId` の `asString: () => string` は廃止する。型名と値だけを持つ。
+- `asString` checks that the type name does not contain `-` (T-11) and that the total UTF-8 byte count of the type name, the value, and the separator is at most 1024 (T-12), and returns violations as a `Result` failure. It counts with `Buffer.byteLength(s, "utf8")`, not by character count. This detects the multi-byte cases in the conformance data.
+- Because users can pass their own objects, each store operation also re-validates through `AggregateId.asString` and returns a failure as the failure of the operation as it is. T-11 and T-12 are enforced even for values that did not go through `AggregateId.of` (the same applies to MEM-5).
+- An empty type name and an empty value are allowed. The specification (T-11, T-12) does not forbid them, and the aid string contains `-`, so it is never empty (lead's answer, 2026-10-06). The conformance data has no such case, so the unit tests in PR 3 check an empty type name (`-value`), an empty value (`typeName-`), and both empty (`-`).
+- The current `AggregateId`'s `asString: () => string` is removed. It holds only the type name and the value.
 
-### 2.3 整数と時刻の型（T-9・T-13・1.5）
+### 2.3 Integer and Time Types (T-9, T-13, 1.5)
 
-| 値 | 型 | 検査 |
+| Value | Type | Validation |
 |:--|:--|:--|
-| `seqNr` | `number` | T-9: 整数で 0 以上 `Number.MAX_SAFE_INTEGER`（2^53−1）以下。範囲外は契約違反。イベントでは 0 も契約違反（W-6） |
-| `occurredAt` | `Date`（T-3 が js の `Date` はミリ秒と明記している） | T-13: エポックからのナノ秒が符号付き64bitに収まる範囲。範囲外は契約違反 |
+| `seqNr` | `number` | T-9: an integer from 0 to `Number.MAX_SAFE_INTEGER` (2^53−1). Out of range is a contract violation. For events, 0 is also a contract violation (W-6) |
+| `occurredAt` | `Date` (T-3 states that js `Date` has millisecond precision) | T-13: nanoseconds since the epoch fit in a signed 64-bit range. Out of range is a contract violation |
 
-- JS の `number` は負数を表せるので、`signed_seq_nr` のケースは実行する。2^53 は `number` で正確に表せる。それを超える値は `number` で表せないので、実行器側は BigInt で読み、`Number` に変換して正確に戻らない値は「表現不能」と報告する（5.1）。
-- `Date` はミリ秒精度である。T-3 は「標準時刻型の精度まで丸めてよい」としているので、ミリ秒に丸める。`representation.time_precision = milliseconds` のケースを実行し、`nanoseconds` のケースは対象外にする（理由を付けて報告する、5.1）。
-- T-13 の範囲（約 1677 年〜2262 年）は `Date` の範囲より狭い。検査はミリ秒をナノ秒へ BigInt で換算して行う。`Date` の無効値（`NaN`）も契約違反（T-13）にする。
+- A JS `number` can represent negative values, so the `signed_seq_nr` cases are executed. 2^53 is exactly representable as a `number`. Values beyond it cannot be represented as a `number`, so the runner reads them as BigInt, and values that do not convert back exactly through `Number` are reported as "not representable" (5.1).
+- `Date` has millisecond precision. T-3 allows rounding to the precision of the standard time type, so values are rounded to milliseconds. Cases with `representation.time_precision = milliseconds` are executed, and cases with `nanoseconds` are not applicable (reported with the reason, 5.1).
+- The T-13 range (about the year 1677 to 2262) is narrower than the `Date` range. The check converts milliseconds to nanoseconds using BigInt. An invalid `Date` (`NaN`) is also a contract violation (T-13).
 
-### 2.4 イベント封筒（T-2・T-3・T-4・T-5・T-13）
+### 2.4 Event Envelope (T-2, T-3, T-4, T-5, T-13)
 
 ```ts
 // event-envelope.ts
@@ -123,14 +125,14 @@ export namespace EventEnvelope {
 }
 ```
 
-- T-5: 封筒は不変（`Object.freeze`）。要素を足しても、構築関数が入力オブジェクト形式なので既存の利用コードは壊れない。
-- 必須要素の欠落（共通契約 T-2・T-10、P-42）: TypeScript では型が必須を表すが、型のない JavaScript から欠いて呼ばれることがある。そのため `EventEnvelope.create` と `SnapshotEnvelope.create` は実行時に検査し、契約違反（`rule: "T-2"`。スナップショットは `"T-10"`）を `Result` の失敗で返す。欠落とみなすのは、`aggregateId`・`seqNr`・`occurredAt`（スナップショットは `seqNr`）が `undefined` か `null` のとき、`payload`（スナップショットは `aggregate`）が `undefined` のときである。`payload` の JSON の `null` は値として許す。欠けたのが `seqNr` なら、メッセージに seqNr を含めない（E-3）。実装の PR 3 で、要素ごとに欠落の単体試験を書く。
-- T-3: ストアは `occurredAt` をストア側の時刻で置き換えない。読み取りで同じ値（ミリ秒精度）を返す。
-- `Date` は変更できる。そのため、メモリは `occurredAt` をミリ秒の数値（`getTime()`）で持ち、読み取りで返すたびに新しい `Date` を作る（MEM-6）。入力の `Date` の参照は保持しない。
-- 現行の `Event` の `typeName`・`id`・`isCreated` は廃止する。ドメインのイベントは `payload` に入れる。
-- `create` を通らない封筒も受け取るので、書き込みの入口（`persistEvent`・`persistEventAndSnapshot`）で同じ検査を再度行う（必須要素の欠落の T-2・T-10、W-6・T-9・T-13）。欠けた `payload` や `aggregate` が直列化の失敗に、欠けた `aggregateId` が例外になる前に、契約違反として返す。PR 5 の試験で、`create` を通さずに欠けた封筒を直接渡す場合を確かめる。
+- T-5: The envelope is immutable (`Object.freeze`). Even if elements are added, existing user code does not break because the construction function takes an input object.
+- Missing required elements (common contract T-2, T-10, P-42): in TypeScript the types express what is required, but untyped JavaScript may call without them. Therefore `EventEnvelope.create` and `SnapshotEnvelope.create` check at runtime and return a contract violation (`rule: "T-2"`; `"T-10"` for snapshots) as a `Result` failure. An element is considered missing when `aggregateId`, `seqNr`, or `occurredAt` (only `seqNr` for snapshots) is `undefined` or `null`, or when `payload` (`aggregate` for snapshots) is `undefined`. A JSON `null` in `payload` is allowed as a value. If the missing element is `seqNr`, the message does not include seqNr (E-3). In implementation PR 3, unit tests for the missing case are written for each element.
+- T-3: The store does not replace `occurredAt` with the store's time. Reads return the same value (millisecond precision).
+- `Date` is mutable. Therefore Memory keeps `occurredAt` as a millisecond number (`getTime()`) and creates a new `Date` each time it is returned on read (MEM-6). It does not keep a reference to the input `Date`.
+- The current `Event`'s `typeName`, `id`, and `isCreated` are removed. Domain events go into `payload`.
+- Envelopes that did not go through `create` are also accepted, so the write entry points (`persistEvent`, `persistEventAndSnapshot`) run the same checks again (T-2 and T-10 for missing required elements, W-6, T-9, T-13). A missing `payload` or `aggregate` is returned as a contract violation before it becomes a serialization failure, and a missing `aggregateId` before it becomes an exception. The tests in PR 5 check the case of passing an envelope with missing elements directly without going through `create`.
 
-### 2.5 スナップショット封筒（T-10）
+### 2.5 Snapshot Envelope (T-10)
 
 ```ts
 // snapshot-envelope.ts
@@ -160,10 +162,10 @@ export type LatestSnapshot<S = unknown> = Readonly<{
 }>;
 ```
 
-- ヘッドの `seqNr` は封筒に含めず、`LatestSnapshot.headSeqNr` で別に返す（ADR-0002）。書き込みと読み取りは同じ `SnapshotEnvelope` 型を使う。
-- 現行の `Aggregate`（`version`・`withVersion`・`updateVersion`）は廃止する。集約はドメイン側の型で、`aggregate` フィールドに入る。
+- The head's `seqNr` is not included in the envelope and is returned separately as `LatestSnapshot.headSeqNr` (ADR-0002). Writes and reads use the same `SnapshotEnvelope` type.
+- The current `Aggregate` (`version`, `withVersion`, `updateVersion`) is removed. The aggregate is a domain-side type and goes into the `aggregate` field.
 
-### 2.6 payload とシリアライザ（T-6・T-7・T-8）
+### 2.6 Payload and Serializer (T-6, T-7, T-8)
 
 ```ts
 // payload-serializer.ts
@@ -178,13 +180,13 @@ export namespace PayloadSerializer {
 }
 ```
 
-- T-6: ドメイン型にライブラリの型を求めない。`P` は任意の型で、シリアライザが直列化できればよい。
-- T-7: シリアライザは payload だけを扱う。メタデータ（aggregateId、seqNr、occurredAt）を埋め込まない。現行の `EventSerializer`・`SnapshotSerializer`（イベント全体・集約全体を扱い、`converter` 引数を取る）は廃止する。
-- `deserialize` に `manifest` を渡すのは、複数の型の payload を1つのシリアライザで復元できるようにするためである。ライブラリは manifest を解釈しない（T-4）。ただ渡すだけである。T-4 は渡すことを禁じていないので、この形に決めた（指揮役のレビュー、2026-10-06）。
-- シリアライザが投げた例外は、ライブラリが捕捉して `serialization` に分類する（`operation` は `serialize` か `deserialize`）。
-- 既定 JSON は `JSON.stringify` / `JSON.parse` を使う。`undefined` や関数、`BigInt` は直列化できず、直列化の失敗になる。
+- T-6: Domain types are not required to use library types. `P` can be any type as long as the serializer can serialize it.
+- T-7: The serializer handles only the payload. It does not embed metadata (aggregateId, seqNr, occurredAt). The current `EventSerializer` and `SnapshotSerializer` (which handle the whole event or whole aggregate and take a `converter` argument) are removed.
+- `manifest` is passed to `deserialize` so that one serializer can restore payloads of multiple types. The library does not interpret the manifest (T-4); it only passes it along. T-4 does not forbid passing it, so this form was decided (lead's review, 2026-10-06).
+- Exceptions thrown by a serializer are caught by the library and classified as `serialization` (`operation` is `serialize` or `deserialize`).
+- The default JSON uses `JSON.stringify` / `JSON.parse`. `undefined`, functions, and `BigInt` cannot be serialized and result in a serialization failure.
 
-### 2.7 操作（3章）と非同期の表現
+### 2.7 Operations (Chapter 3) and Asynchronous Representation
 
 ```ts
 // event-store.ts
@@ -213,25 +215,25 @@ export type EventStore<PE = unknown, PS = unknown> = {
 };
 ```
 
-- 非同期は `Promise` で表す（現行と同じ）。メモリ実装も `Promise` を返す。呼び出し側が保存先を差し替えられるようにするためである。
-- 書き込みは期待値の引数を取らない。照合の期待値は `event.seqNr` から決まる（W-3・W-4・W-8）。`expectedVersion` は廃止する。
-- 名前は現行の `getEventsByIdSinceSequenceNumber` から `getEventsByIdSinceSeqNr` に改める。
-- 読み取りの `seqNr` 引数も T-9 で検査する。0 は T-9 では有効（0 以上の全イベントを返す）。
-- 書き込みの共通規則（3.3）:
+- Asynchrony is expressed with `Promise` (same as the current one). The Memory implementation also returns a `Promise`. This is so that callers can swap the storage.
+- Writes take no expected-value argument. The expected value for the check is determined from `event.seqNr` (W-3, W-4, W-8). `expectedVersion` is removed.
+- The name changes from the current `getEventsByIdSinceSequenceNumber` to `getEventsByIdSinceSeqNr`.
+- The `seqNr` argument of reads is also checked by T-9. 0 is valid under T-9 (all events with seqNr 0 or greater are returned).
+- Common rules for writes (3.3):
 
-| 条件 | 結果 | 規則 |
+| Condition | Result | Rule |
 |:--|:--|:--|
-| `seqNr = 0` | 契約違反 | W-6 |
-| `seqNr = 1`、ヘッドなし | 新規作成 | W-3 |
-| `seqNr = 1`、ヘッドあり | 楽観ロック | W-3 |
-| `seqNr ≥ 2`、`seqNr = ヘッド + 1` | 更新 | W-4・W-8 |
-| `seqNr ≥ 2`、`seqNr ≤ ヘッド` | 楽観ロック | W-7・W-8 |
-| `seqNr ≥ 2`、`seqNr ≥ ヘッド + 2`（ヘッドなしはヘッド 0） | 契約違反（飛び番） | W-8 |
-| `snapshot.seqNr ≠ event.seqNr` | 契約違反 | W-9 |
+| `seqNr = 0` | Contract violation | W-6 |
+| `seqNr = 1`, no head | New creation | W-3 |
+| `seqNr = 1`, head exists | Optimistic lock | W-3 |
+| `seqNr ≥ 2`, `seqNr = head + 1` | Update | W-4, W-8 |
+| `seqNr ≥ 2`, `seqNr ≤ head` | Optimistic lock | W-7, W-8 |
+| `seqNr ≥ 2`, `seqNr ≥ head + 2` (head 0 when there is no head) | Contract violation (gap) | W-8 |
+| `snapshot.seqNr ≠ event.seqNr` | Contract violation | W-9 |
 
-- 保存先の違いで R-8 を明記する（メモリは原子的、DynamoDB は非原子的）。3章・4章に書く。
+- R-8 is stated explicitly per storage (Memory is atomic, DynamoDB is non-atomic). It is written in Chapters 3 and 4.
 
-#### 生成関数
+#### Creation Functions
 
 ```ts
 export namespace EventStore {
@@ -245,10 +247,10 @@ export namespace EventStore {
 }
 ```
 
-- 生成の失敗も分類して返す（指示書、4.2）。メモリは同期で設定を検査する（MEM-3）。DynamoDB は設定項目の読み取り・作成が入出力なので `Promise` を返す（DY-8、P-40）。DynamoDB は生成のたびに設定項目の `BatchGetItem` が走る（4.2）。生成時の障害（`faults` の `operation = 0`）は、生成より前に実行器が登録し、生成中の SDK 要求とシリアライザの包みが消費する（5.4）。
-- 現行の `createDynamoDB`・`createMemory` は同期でストアを返し、設定エラーは例外だった。置き換える。
+- Creation failures are also classified and returned (instructions, 4.2). Memory validates the configuration synchronously (MEM-3). DynamoDB returns a `Promise` because reading and creating the configuration items involve I/O (DY-8, P-40). DynamoDB runs a configuration-item `BatchGetItem` on every creation (4.2). Faults at creation time (`operation = 0` in `faults`) are registered by the runner before creation, and are consumed by SDK requests during creation and by the serializer wrapper (5.4).
+- The current `createDynamoDB` and `createMemory` return the store synchronously, and configuration errors were exceptions. They are replaced.
 
-### 2.8 エラー分類（4章）
+### 2.8 Error Classification (Chapter 4)
 
 ```ts
 // event-store-error.ts
@@ -262,18 +264,18 @@ export type EventStoreError =
 export type ContractRule = "T-2" | "T-9" | "T-10" | "T-11" | "T-12" | "T-13" | "W-6" | "W-8" | "W-9" | "D-7";
 ```
 
-| 分類 | `type` | 主な発生 |
+| Classification | `type` | Main occurrences |
 |:--|:--|:--|
-| 楽観ロック | `optimistic-lock-conflict` | 既存集約への seq_nr=1（W-3）、seq_nr の重複（W-7）、ヘッド以下での追記（W-8）、TransactionConflict（D-6） |
-| 契約違反 | `contract-violation` | W-6・W-9・T-9・T-11・T-12・T-13・W-8 の飛び番・D-7 |
-| 直列化 | `serialization-error` | payload の直列化・復元の失敗 |
-| 設定 | `configuration-error` | 生成時の不正な値（保持件数 0 など）、保存先に記録された設定との食い違い（P-40） |
-| 保存先 | `storage-error` | 通信・保存先の失敗、読み取ったデータの欠損、設定読み取りの上限到達（DY-8） |
+| Optimistic lock | `optimistic-lock-conflict` | seq_nr=1 on an existing aggregate (W-3), duplicate seq_nr (W-7), append at or below the head (W-8), TransactionConflict (D-6) |
+| Contract violation | `contract-violation` | W-6, W-9, T-9, T-11, T-12, T-13, gap in W-8, D-7 |
+| Serialization | `serialization-error` | Failure to serialize or restore the payload |
+| Configuration | `configuration-error` | Invalid value at creation (such as retention count 0), mismatch with the configuration recorded in the storage (P-40) |
+| Storage | `storage-error` | Communication or storage failures, missing data in what was read, reaching the limit on reading the configuration (DY-8) |
 
-- E-1: 呼び出し側は `error.type` の判別（判別可能なユニオン）で分類を区別する。メッセージ文字列から分類を推測しない。現行の4分類（`optimistic-lock-conflict`・`configuration-error`・`serialization-error`・`storage-error`）の `type` 値は維持し、`contract-violation` を足す。
-- E-2: 楽観ロックのメッセージに含めてよいのは、aid 文字列、追記しようとした seqNr、（分かれば）ヘッドの seqNr だけである。接続文字列・資格情報・SDK の生のエラー文は含めない。SDK の例外は `cause` に入れる。`message` には入れない。
-- E-3: 契約違反のメッセージに、違反した規則番号を含める。関係する seqNr は、あるときだけ含める（T-11 の型名違反のように関係する seqNr がなければ含めない）。W-9 では `seqNr` と、異なるスナップショット番号 `snapshotSeqNr` の両方を含める。ヘッド番号は契約違反の必須値にしない。D-7 のサイズ超過は、分類 `contract-violation` だけを満たせばよい（規則番号・メッセージ条件なし）。
-- 構築関数は `EventStoreError` の `namespace` に置く（現行と同じ形）:
+- E-1: Callers distinguish classifications by discriminating on `error.type` (a discriminated union). They do not infer the classification from the message string. The `type` values of the current four classifications (`optimistic-lock-conflict`, `configuration-error`, `serialization-error`, `storage-error`) are kept, and `contract-violation` is added.
+- E-2: The optimistic-lock message may include only the aid string, the seqNr being appended, and (if known) the head's seqNr. It does not include connection strings, credentials, or raw SDK error text. The SDK exception goes into `cause`, not into `message`.
+- E-3: The contract-violation message includes the number of the violated rule. The related seqNr is included only when there is one (it is not included when there is no related seqNr, as with a T-11 type-name violation). For W-9, both `seqNr` and the differing snapshot number `snapshotSeqNr` are included. The head number is not a required value of a contract violation. A D-7 size excess only needs to satisfy the classification `contract-violation` (no rule number or message condition).
+- Construction functions are placed in the `namespace` of `EventStoreError` (same form as the current one):
 
 ```ts
 export namespace EventStoreError {
@@ -285,10 +287,10 @@ export namespace EventStoreError {
 }
 ```
 
-- `contractViolation` が `message` を組み立てる。D-7 以外では `rule` を必ず含め、`seqNr` と `snapshotSeqNr` は渡されたときだけ含める。W-9 では呼び出し側が両方を渡す。`optimisticLockConflict` が `message` を組み立てる。SDK のメッセージを受け取る引数は持たない。E-2 を構造で守る。
-- 現行の `optimisticLockConflict(message?, cause?)` は、メッセージを自由に渡せる。置き換える。
+- `contractViolation` builds the `message`. Except for D-7, it always includes `rule`, and includes `seqNr` and `snapshotSeqNr` only when they are passed. For W-9 the caller passes both. `optimisticLockConflict` builds the `message`. It has no argument that receives an SDK message. This enforces E-2 by structure.
+- The current `optimisticLockConflict(message?, cause?)` lets callers pass any message. It is replaced.
 
-### 2.9 設定（S-1・MEM-3）と保持処理の失敗通知（S-4・MEM-11）
+### 2.9 Configuration (S-1, MEM-3) and Retention Failure Notification (S-4, MEM-11)
 
 ```ts
 // snapshot-retention.ts
@@ -337,407 +339,407 @@ export type DynamoDBEventStoreInput<PE, PS> = Readonly<{
 }>;
 ```
 
-- 設定エラーになる値: `retention.count` が 1 以上の整数でない（S-1）。`graceSeconds` が 0 以上の安全な整数（`Number.isSafeInteger`）でない。上限は定めない（指揮役の回答、2026-10-06）が、`number` で正確に表せない値（2^53 以上）は、生成時の不正な設定値として設定エラーにする。メモリで `mode.type = "ttl"`（MEM-3・MEM-12）。メモリで変更フィードを要求する設定（MEM-3・MEM-13）は、`MemoryStorageInput` に `changeFeed?: unknown` を持たせ、値が指定されていれば（`undefined` 以外）`MemoryStorage.create` が `configuration-error`（`fieldName = "changeFeed"`）を返す。型で項目を持たないだけでは、JavaScript からの入力を実行時に拒否できないためである。保持の設定はメモリの保存先が持つので、同じ `MemoryStorage` を共有するインスタンスは同じ設定を使う（`createMemory` は保持の設定を受け取らない）。DynamoDB で3テーブル名が空・同名、`snapshotAidIndexName` が空。保存先に記録された `store_id`・`layout_version` との食い違い（P-40）。
-- 「期限切れ方式」の名前は、仕様上のもの（`retention_mode = ttl`）に対応する。型の名前は `mode.type` とした。
-- S-4・MEM-11: 保持処理の失敗は書き込みの結果を変えない。`onRetentionFailure` コールバックに `RetentionFailure` を渡し、`logger.error` にも出す。コールバックが投げた例外は書き込みの結果に影響させず、`logger` に出す。公開 API の形は仕様で固定されていないので、この形は設計案である。
-- 同じ最終失敗は1回だけ通知する（観察側で同じ失敗の複数ログを1つに正規化してよい、という適合データの方針に合わせる）。
-- 現行の `shardCount`・`shardSelector`・`keepSnapshotCount`・`deleteTtlMillis`・`journalAidIndexName`・`snapshotActiveTtlIndexName`・`eventConverter`・`snapshotConverter` は廃止する。
+- Values that cause a configuration error: `retention.count` is not an integer of 1 or more (S-1). `graceSeconds` is not a safe integer of 0 or more (`Number.isSafeInteger`). No upper limit is defined (lead's answer, 2026-10-06), but a value that a `number` cannot represent exactly (2^53 or more) is treated as an invalid configuration value at creation and results in a configuration error. In Memory, `mode.type = "ttl"` (MEM-3, MEM-12). For a configuration requesting a change feed in Memory (MEM-3, MEM-13), `MemoryStorageInput` has `changeFeed?: unknown`, and if a value is specified (anything other than `undefined`), `MemoryStorage.create` returns a `configuration-error` (`fieldName = "changeFeed"`). This is because merely not having the field in the type cannot reject input from JavaScript at runtime. The retention configuration is held by the Memory storage, so instances sharing the same `MemoryStorage` use the same configuration (`createMemory` does not accept a retention configuration). In DynamoDB, the three table names are empty or identical, or `snapshotAidIndexName` is empty. A mismatch with the `store_id` or `layout_version` recorded in the storage (P-40).
+- The name of the "expiry mode" corresponds to the one in the specification (`retention_mode = ttl`). The type's name is `mode.type`.
+- S-4, MEM-11: A retention failure does not change the result of the write. A `RetentionFailure` is passed to the `onRetentionFailure` callback and also output to `logger.error`. An exception thrown by the callback does not affect the result of the write and is output to `logger`. The shape of the public API is not fixed by the specification, so this shape is a design proposal.
+- The same final failure is notified only once (this follows the conformance data's policy that observers may normalize multiple logs of the same failure into one).
+- The current `shardCount`, `shardSelector`, `keepSnapshotCount`, `deleteTtlMillis`, `journalAidIndexName`, `snapshotActiveTtlIndexName`, `eventConverter`, and `snapshotConverter` are removed.
 
-### 2.10 現行の公開 API との対応表
+### 2.10 Mapping to the Current Public API
 
-| 現行（4.0.x） | 次（5.0.0） | 理由・規則 |
+| Current (4.0.x) | Next (5.0.0) | Reason / rule |
 |:--|:--|:--|
-| `AggregateId { typeName, value, asString }` | `AggregateId { typeName, value }` と `AggregateId.of` / `AggregateId.asString` | T-1・T-11・T-12 |
-| `Aggregate`（`version`、`withVersion`、`updateVersion`、`sequenceNumber`、`id`、`typeName`） | 廃止。`SnapshotEnvelope.aggregate` にドメインの値を入れる | T-10、ADR-0002・ADR-0004 |
-| `Event`（`typeName`、`id`、`aggregateId`、`sequenceNumber`、`occurredAt`、`isCreated`） | `EventEnvelope`（`aggregateId`、`seqNr`、`occurredAt`、`manifest`、`payload`） | T-2・T-3・T-5 |
-| `persistEvent(event, expectedVersion)` | `persistEvent(event)` | H-2・W-3・W-4・W-8 |
-| `persistEventAndSnapshot(event, aggregate)` | `persistEventAndSnapshot(event, snapshot)` | 3.2・W-9 |
-| `getEventsByIdSinceSequenceNumber(id, n): Promise<E[]>`（失敗は例外） | `getEventsByIdSinceSeqNr(aid, seqNr): Promise<Result<EventEnvelope[], EventStoreError>>` | R-4〜R-6・4章 |
-| `getLatestSnapshotById(id): Promise<A \| undefined>`（失敗は例外） | `getLatestSnapshotById(aid): Promise<Result<LatestSnapshot \| undefined, EventStoreError>>` | R-1〜R-3 |
-| `EventSerializer`・`SnapshotSerializer`・`converter` 引数 | `PayloadSerializer` | T-6・T-7 |
-| `EventStore.createDynamoDB`（同期、例外） | 非同期で `Result` を返す | DY-8・4章 |
-| `EventStore.createMemory({ events, snapshots })`（`Map` の参照を共有） | `MemoryStorage.create({ retention })` で保存先を作り、`createMemory({ storage })` で明示的に共有 | MEM-2・MEM-3・MEM-6 |
-| `EventStore.createSpanner` ほか Spanner 一式 | 最初のメジャーでは出さない | IP-D3 |
-| `ShardSelector`・`ShardId`・`shardCount`・`DEFAULT_SHARD_COUNT` 系 | 廃止 | ADR-0006・DY-16 |
-| `keepSnapshotCount`・`deleteTtlMillis` | `retention: { count, mode }` | S-1・DY-2・8章 |
-| `journalAidIndexName`・`snapshotActiveTtlIndexName` | 廃止。`snapshotAidIndexName` だけ残す | D-3 |
-| `EventStoreError`（4分類） | 5分類（`contract-violation` を足す）。構築関数の引数を変える | 4章・E-1〜E-3 |
-| `Logger` | 維持 | S-4 |
-| `Result` | 維持。全操作の戻り値に使う（9章の項目1） | — |
-| 依存 `aws-sdk`（v2）・`moment`・`winston`・`@types/winston` | 外す。`src` と `packages` の TypeScript から参照がないことは確認済み | IP 4.2 |
+| `AggregateId { typeName, value, asString }` | `AggregateId { typeName, value }` and `AggregateId.of` / `AggregateId.asString` | T-1, T-11, T-12 |
+| `Aggregate` (`version`, `withVersion`, `updateVersion`, `sequenceNumber`, `id`, `typeName`) | Removed. The domain value goes into `SnapshotEnvelope.aggregate` | T-10, ADR-0002, ADR-0004 |
+| `Event` (`typeName`, `id`, `aggregateId`, `sequenceNumber`, `occurredAt`, `isCreated`) | `EventEnvelope` (`aggregateId`, `seqNr`, `occurredAt`, `manifest`, `payload`) | T-2, T-3, T-5 |
+| `persistEvent(event, expectedVersion)` | `persistEvent(event)` | H-2, W-3, W-4, W-8 |
+| `persistEventAndSnapshot(event, aggregate)` | `persistEventAndSnapshot(event, snapshot)` | 3.2, W-9 |
+| `getEventsByIdSinceSequenceNumber(id, n): Promise<E[]>` (failure is an exception) | `getEventsByIdSinceSeqNr(aid, seqNr): Promise<Result<EventEnvelope[], EventStoreError>>` | R-4 to R-6, Chapter 4 |
+| `getLatestSnapshotById(id): Promise<A \| undefined>` (failure is an exception) | `getLatestSnapshotById(aid): Promise<Result<LatestSnapshot \| undefined, EventStoreError>>` | R-1 to R-3 |
+| `EventSerializer`, `SnapshotSerializer`, `converter` argument | `PayloadSerializer` | T-6, T-7 |
+| `EventStore.createDynamoDB` (synchronous, exceptions) | Asynchronous, returns a `Result` | DY-8, Chapter 4 |
+| `EventStore.createMemory({ events, snapshots })` (shares `Map` references) | Create the storage with `MemoryStorage.create({ retention })` and share it explicitly with `createMemory({ storage })` | MEM-2, MEM-3, MEM-6 |
+| `EventStore.createSpanner` and the rest of the Spanner set | Not shipped in the first major | IP-D3 |
+| `ShardSelector`, `ShardId`, `shardCount`, `DEFAULT_SHARD_COUNT` family | Removed | ADR-0006, DY-16 |
+| `keepSnapshotCount`, `deleteTtlMillis` | `retention: { count, mode }` | S-1, DY-2, Chapter 8 |
+| `journalAidIndexName`, `snapshotActiveTtlIndexName` | Removed. Only `snapshotAidIndexName` remains | D-3 |
+| `EventStoreError` (4 classifications) | 5 classifications (`contract-violation` added). The arguments of the construction functions change | Chapter 4, E-1 to E-3 |
+| `Logger` | Kept | S-4 |
+| `Result` | Kept. Used as the return value of all operations (item 1 of Chapter 9) | — |
+| Dependencies `aws-sdk` (v2), `moment`, `winston`, `@types/winston` | Removed. It has been confirmed that nothing in the TypeScript under `src` and `packages` references them | IP 4.2 |
 
-## 3. メモリの実装方針
+## 3. Memory Implementation Approach
 
-置き場所は、削除の時点まで `packages/library/src/next/internal/memory-event-store.ts` である（PR 13 で `src/internal/memory-event-store.ts` へ移り、現行のファイルを置き換える。2.1）。現行は集約状態の `version` で照合し、封筒とヘッドの組を返さず、イベントの参照を共有している（memory.md 8章）。全面的に置き換える。
+The location is `packages/library/src/next/internal/memory-event-store.ts` until the removal point (in PR 13 it moves to `src/internal/memory-event-store.ts` and replaces the current file; 2.1). The current one checks with the aggregate state's `version`, does not return an envelope-and-head pair, and shares references to events (memory.md Chapter 8). It is replaced entirely.
 
-| 規則 | 方針 |
+| Rule | Approach |
 |:--|:--|
-| MEM-1 | 単一プロセスのメモリだけ。永続化しない。利用中の全消去 API は作らない |
-| MEM-2 | `MemoryStorage.create()` は空の独立した記録を作る。`createMemory({ storage })` に同じ `MemoryStorage` を渡したインスタンスだけが、記録・設定・排他制御を共有する。名前の一致では共有しない。排他制御は `MemoryStorage` の内部に持つ |
-| MEM-3 | `MemoryStorage.create({ retention })` が、生成時に `retention`（count 0 や ttl）を検査し、設定エラーを返す。変更フィードの要求（`changeFeed` の指定）も実行時に検査して設定エラーにする（2.9）。設定は保存先が不変（`Object.freeze`）で持つ。`createMemory` は設定を受け取らず、共有するインスタンスは保存先の設定を使う |
-| MEM-4 | 排他制御は `MemoryStorage` ごとに1つ。JavaScript ではオブジェクトをスレッドをまたいで共有できない。そのため、js の保存先は1つのスレッドの中だけで共有される。同じスレッドの中で非同期の呼び出しが重なっても、確定前の途中状態を読ませないために、非同期の直列化キュー（Promise チェーンによる mutex）を使う。これが MEM-4 の満たし方である（ハブの memory.md の MEM-4 にある js の注記、2026-10-06）。スレッドをまたいで共有できる保存先は作らない（9章の項目3） |
-| MEM-5 | 記録は `Map<string, 集約の記録>` で、キーは `AggregateId.asString` の完全一致。`seqNr` は別の値として扱う（連結しない）。ハッシュだけで識別せず、前方一致で選ばない。T-9・T-11・T-12・T-13 を入口で検査する。プレーンオブジェクトを辞書にしない（`"toString"` などの継承プロパティが混入するため） |
-| MEM-6 | メタデータと payload を分けて持つ。payload は入力時に `serializer.serialize` で `Uint8Array` にして保持し（`Buffer` ではなくコピーを取る）、取得時に `deserialize` で復元する。利用者が書き込み後に payload を変更しても、取得結果を変更しても保存値は変わらない。T-6 を超える要件（複製可能性など）は課さない |
-| MEM-7 | 排他制御の**前**に、入力検査（T-9・W-6・W-9・T-11〜T-13）と payload の直列化を終える。排他制御の**中**で、ヘッドの読み取り・照合（W-3・W-7・W-8）・変更の準備・まとめての公開（確定）・保持処理を行う。準備中の失敗は記録を変えない。イベントだけで seqNr=1 の新規作成もできる（スナップショットなし） |
-| MEM-8 | `getLatestSnapshotById` は同じ排他制御の中でヘッドとスナップショットを読む。`headSeqNr` と封筒が同じ時点の値になる（R-8: 原子的） |
-| MEM-9 | `getEventsByIdSinceSeqNr` は同じ排他制御の中で全件を読み、昇順で返す。復元は排他制御の外で行ってよい（直列化済みの `Uint8Array` を取り出した後） |
-| MEM-10 | 保持件数がなければ現在のスナップショットだけを持つ。n ありなら新しい n 件の履歴を残し、古い順に取り除く。確定後に同じ排他制御の中で行う。イベントだけの追記でも、取り残された履歴を片付ける。ジャーナルとヘッドは取り除かない |
-| MEM-11 | 保持の失敗は書き込みの成功を変えない。排他制御を解いた後に `onRetentionFailure` と `logger` で通知する。次の追記後の保持処理で再試行する（毎回、超過分を再計算するので自然に再試行になる） |
-| MEM-12 | TTL 方式の要求は設定エラー |
-| MEM-13 | 変更フィードを提供しない。`changeFeed` が指定されたら `MemoryStorage.create` が設定エラー（MEM-3） |
+| MEM-1 | Single-process memory only. No persistence. No API for clearing everything during use is created |
+| MEM-2 | `MemoryStorage.create()` creates empty, independent records. Only instances given the same `MemoryStorage` through `createMemory({ storage })` share the records, configuration, and mutual exclusion. Matching names do not cause sharing. The mutual exclusion is held inside `MemoryStorage` |
+| MEM-3 | `MemoryStorage.create({ retention })` validates `retention` (count 0 and ttl) at creation and returns a configuration error. A change feed request (specifying `changeFeed`) is also checked at runtime and becomes a configuration error (2.9). The configuration is held immutably (`Object.freeze`) by the storage. `createMemory` does not accept configuration, and sharing instances use the storage's configuration |
+| MEM-4 | One mutual exclusion per `MemoryStorage`. In JavaScript, objects cannot be shared across threads. Therefore a js storage is shared only within a single thread. Even when asynchronous calls overlap within the same thread, an asynchronous serialization queue (a mutex based on a Promise chain) is used so that intermediate states before commit are not exposed. This is how MEM-4 is satisfied (the js note in MEM-4 of the hub's memory.md, 2026-10-06). A storage that can be shared across threads is not created (item 3 of Chapter 9) |
+| MEM-5 | The records are a `Map<string, aggregate record>` keyed by exact match on `AggregateId.asString`. `seqNr` is treated as a separate value (not concatenated). Aggregates are not identified by a hash alone and are not selected by prefix match. T-9, T-11, T-12, and T-13 are checked at the entry point. A plain object is not used as a dictionary (because inherited properties such as `"toString"` would leak in) |
+| MEM-6 | Metadata and payload are held separately. The payload is converted to a `Uint8Array` with `serializer.serialize` on input and held (a copy is taken, not a `Buffer`), and restored with `deserialize` on retrieval. The stored value does not change even if the user modifies the payload after writing or modifies the retrieved result. No requirement beyond T-6 (such as cloneability) is imposed |
+| MEM-7 | **Before** the mutual exclusion, input validation (T-9, W-6, W-9, T-11 to T-13) and payload serialization are finished. **Inside** the mutual exclusion, the head is read and checked (W-3, W-7, W-8), the change is prepared, published all at once (commit), and retention is run. A failure during preparation does not change the records. A new creation with seqNr=1 is possible with an event alone (no snapshot) |
+| MEM-8 | `getLatestSnapshotById` reads the head and the snapshot inside the same mutual exclusion. `headSeqNr` and the envelope are values from the same point in time (R-8: atomic) |
+| MEM-9 | `getEventsByIdSinceSeqNr` reads everything inside the same mutual exclusion and returns it in ascending order. Restoration may be done outside the mutual exclusion (after taking out the serialized `Uint8Array`) |
+| MEM-10 | Without a retention count, only the current snapshot is held. With n, the newest n history entries are kept and the oldest are removed in order. This is done after commit, inside the same mutual exclusion. Even for an event-only append, leftover history is cleaned up. The journal and the head are not removed |
+| MEM-11 | A retention failure does not change the success of the write. It is notified through `onRetentionFailure` and `logger` after the mutual exclusion is released. It is retried in the retention run after the next append (the excess is recomputed every time, so this is naturally a retry) |
+| MEM-12 | A request for TTL mode is a configuration error |
+| MEM-13 | No change feed is provided. If `changeFeed` is specified, `MemoryStorage.create` returns a configuration error (MEM-3) |
 
-- 「確定」は、新しいヘッド・ジャーナル項目・スナップショットを組み立て終えてから、1回の代入（不変な記録の置き換え）で公開する。公開前の途中状態は誰にも見えない（H-1・MEM-4）。
-- MEM-6 の `Date`: 2.4 と同じく、時刻はミリ秒の数値で記録する。
-- 保持の失敗を試験で起こすために、内部にフック（保持処理の差し替え口）を持つ（5.3）。公開 API には出さない。
-- 適合の事例（memory.md 9章）は、5章の実行器と、`memory-event-store.test.ts` の作り直しで確かめる。
+- "Commit" means assembling the new head, journal entry, and snapshot completely and then publishing them with a single assignment (replacement of the immutable records). No intermediate state before publication is visible to anyone (H-1, MEM-4).
+- `Date` in MEM-6: as in 2.4, the time is recorded as a millisecond number.
+- To cause retention failures in tests, there is an internal hook (a point to swap the retention processing) (5.3). It is not exposed in the public API.
+- The conformance cases (memory.md Chapter 9) are verified by the runner in Chapter 5 and by rebuilding `memory-event-store.test.ts`.
 
-## 4. DynamoDB の実装方針
+## 4. DynamoDB Implementation Approach
 
-置き場所は、削除の時点まで `packages/library/src/next/internal/dynamodb-event-store.ts` である（PR 13 で `src/internal/dynamodb-event-store.ts` へ移り、現行のファイルを置き換える。2.1）。現行は論理シャードのキー（`pkey` と `skey` の組）、ミリ秒の `occurred_at`、保持失敗を書き込み失敗にする挙動を持つ。全面的に置き換える。
+The location is `packages/library/src/next/internal/dynamodb-event-store.ts` until the removal point (in PR 13 it moves to `src/internal/dynamodb-event-store.ts` and replaces the current file; 2.1). The current one has logical-shard keys (the pair of `pkey` and `skey`), a millisecond `occurred_at`, and behavior that turns a retention failure into a write failure. It is replaced entirely.
 
 ### 4.1 SDK
 
-- `@aws-sdk/client-dynamodb`（v3）。現行の `^3.413.0` で、ロックファイルは 3.1146.0 を解決している。最低版は、`ReturnValuesOnConditionCheckFailure`（D-5）と `TransactionCanceledException` の `CancellationReasons` の `Item` を型に持つ版へ上げる（実装時に、使う最小版を確認して決める。未確認）。
-- `@aws-sdk/lib-dynamodb` は使わない。属性型（S/N/B/L/M）を明示し、数値は文字列の `N` で扱う（BigInt 変換のため）。
-- `aws-sdk`（v2）は外す。
-- 差し込みの仕組み: SDK v3 の**ミドルウェアスタック**（`client.middlewareStack.add`）を使う。5.4 で述べる。
+- `@aws-sdk/client-dynamodb` (v3). The current range is `^3.413.0`, and the lock file resolves 3.1146.0. The minimum version is raised to one whose types include `ReturnValuesOnConditionCheckFailure` (D-5) and the `Item` of `CancellationReasons` in `TransactionCanceledException` (the minimum version to use is confirmed and decided at implementation time; unverified).
+- `@aws-sdk/lib-dynamodb` is not used. Attribute types (S/N/B/L/M) are specified explicitly, and numbers are handled as the string `N` (for BigInt conversion).
+- `aws-sdk` (v2) is removed.
+- Injection mechanism: the SDK v3 **middleware stack** (`client.middlewareStack.add`) is used. Described in 5.4.
 
-### 4.2 3テーブルと設定項目（DY-8、P-19、P-40）
+### 4.2 Three Tables and Configuration Items (DY-8, P-19, P-40)
 
-| テーブル | キー | 備考 |
+| Table | Key | Notes |
 |:--|:--|:--|
-| journal | PK `aid`(S)、SK `seq_nr`(N) | GSI なし、Streams 無効 |
-| snapshot | PK `aid`(S)、SK `skey`(N) | GSI `(aid, active_history_seq_nr)`・KEYS_ONLY（D-3）。TTL 属性 `ttl`（TTL 方式のときだけ有効、DY-2） |
-| head | PK `aid`(S) | Streams 有効・NEW_IMAGE（DY-3・DY-12・D-4） |
+| journal | PK `aid`(S), SK `seq_nr`(N) | No GSI, Streams disabled |
+| snapshot | PK `aid`(S), SK `skey`(N) | GSI `(aid, active_history_seq_nr)`, KEYS_ONLY (D-3). TTL attribute `ttl` (enabled only in TTL mode, DY-2) |
+| head | PK `aid`(S) | Streams enabled, NEW_IMAGE (DY-3, DY-12, D-4) |
 
-- PK は `AggregateId.asString` そのもの（DY-16）。SK は journal が `seq_nr`、snapshot が現在 0・履歴がその seq_nr（DY-17）。
-- 3テーブルは同じリージョン。読み取りは強整合（DY-18）。使う操作は aid に絞ったもの（DY-19）。`Scan` は使わない。
-- 3テーブルの作成はライブラリの外。試験ではテスト側が作る（6章）。
+- The PK is `AggregateId.asString` itself (DY-16). The SK is `seq_nr` for the journal, and for the snapshot it is currently 0, with history entries using their seq_nr (DY-17).
+- The three tables are in the same region. Reads are strongly consistent (DY-18). The operations used are limited to those scoped by aid (DY-19). `Scan` is not used.
+- Creating the three tables is outside the library. In tests, the test side creates them (Chapter 6).
 
-生成時（`createDynamoDB`）の手順:
+Steps at creation time (`createDynamoDB`):
 
-1. 生成のたびに、設定項目 `__config__` の3件（journal は `seq_nr=0`、snapshot は `skey=0`、head は SK なし）を、1回の `BatchGetItem`（`ConsistentRead=true`）で読む。
-2. `UnprocessedKeys` は、そのキーだけを指数バックオフで強整合のまま再要求する。`Responses` は蓄積する。未処理がなくなるまで「存在しない」と判定しない。再要求の上限（`retryLimit`、初回を数えない）に達したら**保存先エラー**を返す（設定エラーにしない）。設計判断: 上限は回数で持ち、既定は 5 回（現行の保持処理の再試行の上限に合わせる）、バックオフの初期値は 50ms、1回の待ちの上限は 1000ms（倍々に増やす）。待つ処理は内部フック `sleep`（5.3）で差し替えられる。適合データの `dynamodb-config-retry-exhausted` は `retry_limit: 1` に未処理の応答を2回返す。1回目の再要求の後も未処理が残るので、上限到達で保存先エラーを返し、`configuration-create` の要求は送らない。
-3. 3つともなければ、新しい `store_id`（ランダム値）を作り、1つの `TransactWriteItems` で `attribute_not_exists(aid)` 条件付きの `Put` を3件行う。属性は `store_id`(S) と `layout_version`(N, 1) だけ。snapshot の設定項目は `active_history_seq_nr` を持たない。条件不成立（別の実行器が先に作った）なら、応答を捨てて3件を強整合で読み直し、手順4へ。取り消し理由が `TransactionConflict`（別の実行器が書いている最中）のときも、同じく読み直す。読み直しても3つともなければ、作成を繰り返さずに保存先エラーを返す（DY-8、P-44）。適合データにこの場面はないので、単体試験で、読み直しで設定項目が見つかる場合と、3つともなくて保存先エラーになる場合を確かめる。
-4. 3つともあり、`store_id` が3件で一致し、`layout_version` が自分の版（1）と同じなら続行する。
-5. それ以外（一部のみ、`store_id` 不一致、`layout_version` 違い）は設定エラー（P-40）。
-- 必要な IAM は、3テーブルへの `dynamodb:BatchGetItem` と `dynamodb:PutItem`。設定項目は条件付き `Put` だけで作る（更新・削除しない）。
+1. On every creation, read the three `__config__` configuration items (`seq_nr=0` for the journal, `skey=0` for the snapshot, no SK for the head) with a single `BatchGetItem` (`ConsistentRead=true`).
+2. For `UnprocessedKeys`, re-request only those keys with exponential backoff, still strongly consistent. `Responses` are accumulated. Absence is not concluded until nothing remains unprocessed. When the re-request limit (`retryLimit`, not counting the first request) is reached, return a **storage error** (not a configuration error). Design decision: the limit is held as a count, the default is 5 (matching the current limit on retention retries), the initial backoff is 50 ms, and the upper limit on a single wait is 1000 ms (doubling each time). The waiting can be swapped through the internal hook `sleep` (5.3). The conformance data `dynamodb-config-retry-exhausted` returns unprocessed responses twice with `retry_limit: 1`. Unprocessed keys remain after the first re-request, so the storage error is returned on reaching the limit and the `configuration-create` request is not sent.
+3. If none of the three exists, create a new `store_id` (a random value) and issue three `Put`s conditioned on `attribute_not_exists(aid)` in a single `TransactWriteItems`. The only attributes are `store_id`(S) and `layout_version`(N, 1). The snapshot's configuration item has no `active_history_seq_nr`. If the condition fails (another runner created them first), discard the response, re-read the three with strong consistency, and proceed to step 4. The same re-read happens when the cancellation reason is `TransactionConflict` (another runner is writing at that moment). If none of the three exists even after re-reading, return a storage error without repeating the creation (DY-8, P-44). The conformance data has no such situation, so unit tests check both the case where the configuration items are found by the re-read and the case where none of the three exists and a storage error results.
+4. If all three exist, `store_id` matches across the three, and `layout_version` equals its own version (1), continue.
+5. Otherwise (only some exist, `store_id` mismatch, `layout_version` differs), it is a configuration error (P-40).
+- The required IAM permissions are `dynamodb:BatchGetItem` and `dynamodb:PutItem` on the three tables. Configuration items are created only with a conditional `Put` (never updated or deleted).
 
-### 4.3 書き込み（D-5・D-6・D-7・W-8・H-1〜H-4）
+### 4.3 Writes (D-5, D-6, D-7, W-8, H-1 to H-4)
 
-1回の書き込みは1つの `TransactWriteItems`。アクションは最大4つ:
+One write is one `TransactWriteItems`. There are at most four actions:
 
-1. journal に `Put`（条件 `attribute_not_exists(aid)`）。属性は `aid`、`seq_nr`、`occurred_at`（N、エポックナノ秒）、`manifest`(S)、`payload`(B)。
-2. head: 新規作成（`seqNr = 1`）は `Put`（条件 `attribute_not_exists(aid)`）。更新は `Update`（条件 `seq_nr = :prev`、`:prev = event.seqNr − 1`。`seq_nr` と `events` を上書き）。head の `events` は要素1つの `L`（要素は `M`: `seq_nr`、`occurred_at`、`manifest`、`payload`）。`type_name`(S) も持つ。
-3. スナップショットがあれば、現在のスナップショットに `Put`（`skey = 0`、条件なし）。`last_updated_at` は `occurred_at` のミリ秒。
-4. 保持件数を設定していれば、履歴スナップショットに `Put`（`skey = seq_nr`、条件なし）。印のない間だけ `active_history_seq_nr` を持つ。
+1. `Put` to the journal (condition `attribute_not_exists(aid)`). Attributes are `aid`, `seq_nr`, `occurred_at` (N, epoch nanoseconds), `manifest`(S), and `payload`(B).
+2. Head: a new creation (`seqNr = 1`) is a `Put` (condition `attribute_not_exists(aid)`). An update is an `Update` (condition `seq_nr = :prev`, `:prev = event.seqNr − 1`; overwrites `seq_nr` and `events`). The head's `events` is an `L` with one element (the element is an `M`: `seq_nr`, `occurred_at`, `manifest`, `payload`). It also holds `type_name`(S).
+3. If there is a snapshot, `Put` to the current snapshot (`skey = 0`, no condition). `last_updated_at` is the millisecond value of `occurred_at`.
+4. If a retention count is configured, `Put` to the history snapshot (`skey = seq_nr`, no condition). It holds `active_history_seq_nr` only while it is not marked.
 
-規則への対応:
+Correspondence to the rules:
 
-- **D-5**: head のアクションに `ReturnValuesOnConditionCheckFailure = ALL_OLD` を付ける。`TransactionCanceledException` の `CancellationReasons` の head の要素にある旧項目の `seq_nr` を、`event.seqNr` と比べる（追加の読み取りをしない）。旧項目が返らなければヘッド 0 とみなす。
-- **W-8（更新）**: 旧ヘッド `h` に対し、`event.seqNr ≤ h` は楽観ロック、`event.seqNr ≥ h + 2` は契約違反（飛び番）。ヘッドのない集約への `seqNr ≥ 2` は、ヘッド 0 とみなして飛び番の契約違反。
-- **W-3**: 新規作成でヘッドの条件が不成立なら楽観ロック。
-- **W-7**: journal の条件が不成立なら楽観ロック。
-- **D-6**: `TransactionConflict` は楽観ロックに分類する。head 以外のスロットリングと、通信失敗・その他は保存先エラー。
-- `CancellationReasons` に複数の理由があるときは、全理由を見る。どの項目の理由でも `TransactionConflict` があれば D-6（楽観ロック）にする。次に head の `ConditionalCheckFailed` を D-5 で分類し（W-3・W-8）、journal の `ConditionalCheckFailed` は W-7（楽観ロック）にする。それ以外のスロットリングは保存先エラー。この順は仕様で決まった（`dynamodb.md` 6.2、P-43。2026-10-06）。適合データには理由が複数の項目に付く場面がないので、単体試験で確かめる（例: ヘッドの条件不成立が飛び番を示し、別の項目が `TransactionConflict` を返したときに楽観ロックになる）。
-- **D-7**: 書き込み前に、書き込むすべての項目を見積もる。journal の項目、head の項目（`aid` と `type_name` を含む。`payload` は journal と head の両方に載る）、現在のスナップショットの項目、履歴のスナップショットの項目である。1つでも 409600 バイトを超えれば、一切送らずに契約違反（`rule: "D-7"`）にする（適合データの `no_requests_in_phases` に `commit` と `retention-*` がある）。属性名・型タグを含めた DynamoDB の項目サイズの計算規則を使う。適合データの4件（`dynamodb-item-size-event`・`-snapshot`・`-manifest`・`-head-overhead`）が、それぞれ別の項目の超過を確かめる。
-- **T-3**: `occurred_at` は `BigInt(date.getTime()) * BigInt(1000000)` の10進文字列を `N` で書く。読むときは BigInt で受け取り、ミリ秒の `Date` に戻す。浮動小数点を介さない。現行の `tsconfig` は target es6 なので、BigInt リテラル（`1n`）は使わず、`BigInt()` 関数を使う。`packages/library/tsconfig.json` の `lib` は `ESNext` なので、`BigInt` の型のために `lib` を足す必要はない。
-- **H-1**: 1つのトランザクションでヘッド・ジャーナル・スナップショットが確定する。変更フィードの供給源は head の Streams だけ（journal の Streams は使わない）。
-- 保持処理（4.5）は、トランザクションの**確定後**に行う（D-9）。
+- **D-5**: Attach `ReturnValuesOnConditionCheckFailure = ALL_OLD` to the head action. Compare the `seq_nr` of the old item in the head element of `CancellationReasons` of `TransactionCanceledException` with `event.seqNr` (no additional read). If no old item is returned, the head is regarded as 0.
+- **W-8 (update)**: For the old head `h`, `event.seqNr ≤ h` is an optimistic lock and `event.seqNr ≥ h + 2` is a contract violation (gap). A `seqNr ≥ 2` for an aggregate without a head is regarded as head 0 and is a contract violation (gap).
+- **W-3**: If the head condition fails on a new creation, it is an optimistic lock.
+- **W-7**: If the journal condition fails, it is an optimistic lock.
+- **D-6**: `TransactionConflict` is classified as an optimistic lock. Throttling other than on the head, and communication failures and others, are storage errors.
+- When `CancellationReasons` has multiple reasons, look at all of them. If any item's reason is `TransactionConflict`, it is D-6 (optimistic lock). Next, classify the head's `ConditionalCheckFailed` by D-5 (W-3, W-8), and treat the journal's `ConditionalCheckFailed` as W-7 (optimistic lock). Other throttling is a storage error. This order was fixed by the specification (`dynamodb.md` 6.2, P-43; 2026-10-06). The conformance data has no situation where reasons attach to multiple items, so unit tests check it (example: the head's condition failure indicates a gap while another item returns `TransactionConflict`, which results in an optimistic lock).
+- **D-7**: Before writing, estimate all items to be written: the journal item, the head item (including `aid` and `type_name`; `payload` appears in both the journal and the head), the current snapshot item, and the history snapshot item. If even one exceeds 409600 bytes, send nothing and return a contract violation (`rule: "D-7"`) (the conformance data's `no_requests_in_phases` includes `commit` and `retention-*`). Use the DynamoDB item size calculation rule, including attribute names and type tags. The four conformance cases (`dynamodb-item-size-event`, `-snapshot`, `-manifest`, `-head-overhead`) each check an excess in a different item.
+- **T-3**: Write `occurred_at` as the decimal string of `BigInt(date.getTime()) * BigInt(1000000)` in an `N`. When reading, receive it as BigInt and convert it back to a millisecond `Date`. No floating point is involved. The current `tsconfig` has target es6, so do not use BigInt literals (`1n`); use the `BigInt()` function. The `lib` in `packages/library/tsconfig.json` is `ESNext`, so there is no need to add `lib` for the `BigInt` type.
+- **H-1**: The head, journal, and snapshot are committed in one transaction. The only source of the change feed is the head's Streams (the journal's Streams are not used).
+- Retention processing (4.5) is run **after** the transaction commits (D-9).
 
-### 4.4 読み取り（DY-9・DY-10・DY-11・R-8）
+### 4.4 Reads (DY-9, DY-10, DY-11, R-8)
 
-- `getLatestSnapshotById`: head の項目と、現在のスナップショット（`skey = 0`）を1回の `BatchGetItem`（強整合）で読む（DY-9）。`UnprocessedKeys` は読み切るまで再要求する。再要求は、残ったキーだけを強整合のまま指数バックオフで行い、上限と待ち時間は設定項目の読み取り（4.2）と同じ（`retryLimit`。既定 5 回。初回を数えない）にする。上限に達したら、未処理のキーを「ない」と判定せず、保存先エラーを返す（設計判断。DY-9 は上限を定めないが、上限がないと呼び出しが終わらないおそれがある）。ヘッドがなければ `undefined`、あれば封筒（なくてもよい）と `headSeqNr` の組（DY-10）。2項目の読み取りは**原子的でない**（R-8）。`TransactGetItems` は使わない（P-25）。
-- `getEventsByIdSinceSeqNr`: journal に `aid = :aid AND seq_nr >= :seq_nr`、`ConsistentRead = true` で `Query` する。昇順で、`LastEvaluatedKey` が返る間は読み切る（DY-11、R-5）。
-- 復元できない項目（必須属性の欠損、`payload` が `B` でない）は**保存先エラー**（読み取ったデータの欠損）にする。直列化の復元失敗は直列化エラー。
+- `getLatestSnapshotById`: read the head item and the current snapshot (`skey = 0`) in a single `BatchGetItem` (strongly consistent) (DY-9). `UnprocessedKeys` are re-requested until fully read. The re-request covers only the remaining keys, with exponential backoff and still strongly consistent, and the limit and wait times are the same as for reading the configuration items (4.2) (`retryLimit`; default 5; the first request is not counted). When the limit is reached, unprocessed keys are not judged to be "absent" and a storage error is returned (design decision. DY-9 defines no limit, but without one the call might never finish). If there is no head, the result is `undefined`; if there is one, it is a pair of an envelope (which may be absent) and `headSeqNr` (DY-10). Reading the two items is **not atomic** (R-8). `TransactGetItems` is not used (P-25).
+- `getEventsByIdSinceSeqNr`: `Query` the journal with `aid = :aid AND seq_nr >= :seq_nr` and `ConsistentRead = true`. Results are in ascending order, and reading continues while `LastEvaluatedKey` is returned (DY-11, R-5).
+- Items that cannot be restored (missing required attributes, or `payload` that is not `B`) are a **storage error** (missing data in what was read). A failure to restore through serialization is a serialization error.
 
-### 4.5 保持処理（8章・D-3・D-9・P-18・P-24・S-2・S-3・S-4）
+### 4.5 Retention Processing (Chapter 8, D-3, D-9, P-18, P-24, S-2, S-3, S-4)
 
-履歴を書いた書き込みの**確定後**にだけ行う（D-9）。
+Run only **after** a write that wrote history has committed (D-9).
 
-1. 疎な GSI を `aid = :aid`、`ScanIndexForward = false` で `Query` し、読み切る（KEYS_ONLY）。
-2. 今書いた履歴を加え（GSI に見えていれば重ねない）、降順の先頭 n 件を残し、それより古いものを対象にする（S-2）。
-3. 削除方式: `BatchWriteItem` を25件ずつ（P-18）。`UnprocessedItems` は、残った項目だけを指数バックオフで再送する。上限と待ち時間は設定項目の読み取り（4.2）と同じ（`retryLimit`。既定 5 回。初回を数えない）にする。上限に達したら、残りを削除せずに保持の失敗として通知し、書き込みの結果は変えない。残った履歴は、次の保持処理で再び対象になる（設計判断。仕様は再送することだけを定め、上限を定めない。保持を書き込みの呼び出しの中で行うので、上限がないと呼び出しが終わらないおそれがある）。
-4. TTL 方式: 1件ずつ `UpdateItem`。`SET #ttl = :expires REMOVE active_history_seq_nr`、条件 `attribute_exists(active_history_seq_nr)`。`#ttl` は `ExpressionAttributeNames`（`ttl` が予約語のため）。`:expires` は印付け時点のエポック秒＋猶予秒。和は 2^53 を超えうるので、`BigInt` で計算し、10 進文字列で N 属性に書く（`number` の加算では精度が落ちる）。単体試験で、猶予秒が `Number.MAX_SAFE_INTEGER` の境界を確かめる。後の更新が条件失敗したら、印付け済みとして読み飛ばす。
-5. 件数を数えてから超過分を選ぶ方式は使わない（P-24）。印付き履歴は件数に数えず、期限は先送りしない（S-3）。
-- 失敗は書き込みの結果を変えない（S-4）。`onRetentionFailure` と `logger` で通知する。現行の `dynamodb-snapshot-retention-executor.ts` の、保持失敗を書き込み失敗にする挙動は置き換える。
-- 現行の `deleteTtlMillis`（ミリ秒）は、`graceSeconds`（秒、`ttl` 属性はエポック秒）に置き換える。
+1. `Query` the sparse GSI with `aid = :aid` and `ScanIndexForward = false`, and read it all (KEYS_ONLY).
+2. Add the history just written (do not duplicate it if it is already visible in the GSI), keep the top n in descending order, and make everything older the target (S-2).
+3. Delete mode: `BatchWriteItem` in groups of 25 (P-18). For `UnprocessedItems`, resend only the remaining items with exponential backoff. The limit and wait times are the same as for reading the configuration items (4.2) (`retryLimit`; default 5; the first request is not counted). When the limit is reached, the rest is not deleted and is notified as a retention failure, and the result of the write does not change. The remaining history becomes a target again in the next retention run (design decision. The specification only defines that items are resent and defines no limit. Because retention runs inside the write call, without a limit the call might never finish).
+4. TTL mode: one `UpdateItem` per item. `SET #ttl = :expires REMOVE active_history_seq_nr`, with the condition `attribute_exists(active_history_seq_nr)`. `#ttl` goes in `ExpressionAttributeNames` (because `ttl` is a reserved word). `:expires` is the epoch seconds at the time of marking plus the grace seconds. The sum can exceed 2^53, so compute it with `BigInt` and write it to the N attribute as a decimal string (adding as `number` loses precision). A unit test checks the boundary where the grace seconds are `Number.MAX_SAFE_INTEGER`. If a later update fails its condition, it is skipped as already marked.
+5. The approach of counting first and then selecting the excess is not used (P-24). Marked history is not counted toward the count, and the expiry is not postponed (S-3).
+- A failure does not change the result of the write (S-4). It is notified through `onRetentionFailure` and `logger`. The current behavior in `dynamodb-snapshot-retention-executor.ts` of turning a retention failure into a write failure is replaced.
+- The current `deleteTtlMillis` (milliseconds) is replaced by `graceSeconds` (seconds; the `ttl` attribute is epoch seconds).
 
-### 4.6 変更フィード
+### 4.6 Change Feed
 
-最初のメジャーには含めない（オーナーの決定、2026-10-06）。head の Streams を有効にするのはテーブル側で、ライブラリは DY-3・DY-12 の形（head は Streams 有効・NEW_IMAGE、journal の Streams は供給源にしない）を守って書くだけである。ヘッド遷移を組み立てる関数（DY-13）と再同期の補助（DY-15）は出さない。
+Not included in the first major (owner's decision, 2026-10-06). Enabling the head's Streams is done on the table side, and the library only writes while keeping the shape of DY-3 and DY-12 (the head has Streams enabled with NEW_IMAGE, and the journal's Streams are not a source). The function that assembles head transitions (DY-13) and the resynchronization helper (DY-15) are not shipped.
 
-## 5. 適合テストデータの実行器
+## 5. Conformance Test Data Runner
 
-### 5.0 置き場所と実行方法
+### 5.0 Location and How to Run
 
-- 実行器は `src/internal/test/conformance/` に置く（内部。公開しない。削除の時点までは `packages/library/src/next/internal/test/conformance/`、2.1）。ライブラリの内部モジュールとフックへ、公開 API を増やさずに触れるためである。`internal/test/` は、現行の `scripts/remove-test-artifacts.mjs` が `dist/internal/test` を消すので出荷物に入らず、`jest.config.ts` のカバレッジの除外（`!src/internal/test/**`）にも入る。PR 13 までの `src/next/internal/test/` は、この2つの設定に入らない。そのため PR 2 で、`remove-test-artifacts.mjs` の削除対象と `jest.config.ts` の除外に `next/internal/test` を加える。PR 13 で `src/internal/test/` へ移すときに、この追加分を外す。
-- 実行は Jest（現行の試験基盤）から行う。1つの試験ファイル（`conformance.test.ts`）が、`conformance/` の全ファイルを読み、ケースごとに試験を動的に作る。保存先（メモリ・DynamoDB）ごとに実行する。実行器は、ライブラリの型には直接依存せず、自前の境界のインターフェイス（ストアの生成・4つの操作・封筒の構築・フック）を持つ。このインターフェイスへの対応付けは、7章の各 PR で足す。
-- `conformance/` は、ハブと同一内容で写してある。実行器は `conformance/` を**書き換えない**。
+- The runner is placed in `src/internal/test/conformance/` (internal; not public. Until the removal point, `packages/library/src/next/internal/test/conformance/`, 2.1). This is so it can reach the library's internal modules and hooks without increasing the public API. `internal/test/` is deleted by the current `scripts/remove-test-artifacts.mjs` (`dist/internal/test`), so it is not part of what is shipped, and it is also covered by the coverage exclusion in `jest.config.ts` (`!src/internal/test/**`). `src/next/internal/test/` until PR 13 is covered by neither setting. Therefore in PR 2, `next/internal/test` is added to the deletion targets of `remove-test-artifacts.mjs` and to the exclusion of `jest.config.ts`. When it moves to `src/internal/test/` in PR 13, this addition is removed.
+- It is run from Jest (the current test infrastructure). One test file (`conformance.test.ts`) reads all files in `conformance/` and creates tests dynamically per case. It runs for each storage (Memory, DynamoDB). The runner does not depend directly on the library's types and has its own boundary interface (store creation, the four operations, envelope construction, hooks). The mapping to this interface is added in each PR in Chapter 7.
+- `conformance/` is copied with the same contents as the hub. The runner does **not rewrite** `conformance/`.
 
-### 5.1 データの読み方
+### 5.1 How to Read the Data
 
-| 論点 | 方針 |
+| Topic | Approach |
 |:--|:--|
-| 読み込み | UTF-8 の JSON。最上位の `format` と `version` を確認する。重複キーは検出して失敗にする。標準の `JSON.parse` は重複キーを検出しないので、`manifest.py verify` が通っていることに依存し、実行器自身でも検査する案を取る（実装時に確認） |
-| 任意精度整数 | `seq_nr` の `-1` や `2^53` を、汎用の JSON 値として読む。数値は `JSON.parse` の reviver の `context.source`（Node.js 24 で使えるかは未確認）か、独自の字句解析で読む。`number` へ直接変換しない。`bigint` にするのは `seq_nr` と時刻（`epoch_nanoseconds`、10進文字列から `bigint` で計算する）だけである。payload の数値は `number` のまま JSON 値として扱う。payload まで `bigint` にすると `JSON.stringify` が失敗する（`core-seq-above-max` は payload にも `9007199254740992` を持つ） |
-| 型への変換 | `bigint` から `number` へは `Number(x)` で変換し、`BigInt(Number(x)) === x` で正確に戻ることを確かめる。戻らない値（2^53 を超える奇数など）はライブラリの検査に渡せないので、「表現不能」と報告する。2^53 そのもの（`Number.MAX_SAFE_INTEGER` を1つ超える値）は `number` で正確に表せるので、T-9 の上限超過として実行する。封筒の構築で T-9 の契約違反を検査し、直列化（payload の `JSON.stringify`）より先に出す。そのため payload の `9007199254740992` は直列化の失敗にならない |
-| 時刻 | `occurred_at` は9桁小数秒の UTC ISO 8601 を読み、`bigint` のエポックナノ秒へ変換する |
-| 精度の方針 | `precision_policy = native-time-type` の成功ケースは、入力を `Date`（ミリ秒）へ変換した値を期待値とする。実行器は変換した値と実際の値を報告する。設計判断: 変換は `BigInt` の床除算（負の無限大へ丸める）で、`BigInt` の `/` はゼロ方向への切り捨てなので、`q = ns / 1000000n` の後に `ns % 1000000n < 0n` なら `q - 1n` とする補正を入れる（`occurred-at-before-epoch` の -1 ナノ秒は -1 ミリ秒になる）。実行器の中で1つに決める。`representation.time_precision = nanoseconds` のケース（実データでは値の表に4件、場面に4件）は、対象外とし、「Date はミリ秒精度である」という理由を付けて報告する。`milliseconds` のケース（同じく4件と4件）は実行する。印のないケースは全実装が実行する |
-| 負数 | `representation.signed_seq_nr = true` は実行する（`number` は負数を表せる） |
-| 値の表の操作 | `buildAid` は `AggregateId.of` と `AggregateId.asString`。`user_string` は、利用者の別表現を返す試験用の ID（`asString` と `toString` が別の文字列を返す値）を `AggregateId` と同じ形で渡し、ライブラリがそれを使わずに型名と値から組み立てることを確かめる。`validateSeqNr` は `EventEnvelope.create`（`context=event`）と、値域だけを検査する内部関数（`context=value`）。`validateOccurredAt` は `EventEnvelope.create` を使って、ケースの手順（型名 `ConformanceTime`、値がケース ID）で `persistEvent` する。`fnv1a64` の4件は、最初のメジャーにハッシュを使う保存先がないので、対象外として報告する（成功にも失敗にも数えない）。段階5でハッシュを使う保存先を出すときに実行する（オーナーの決定、2026-10-06、実装計画 5 章 1） |
-| payload の比較 | 既定 JSON で復元した値を、キー順・空白を無視して比較する。配列順・`null`・真偽値・文字列・数値は保つ。真偽値と数値を同一視しない。Unicode 正規化はしない |
-| generators | `target`（JSON Pointer）の空文字列を、`character`（Unicode の1文字）を `byte_length`（UTF-8 総バイト数）に達するまで反復して展開する（`byte_length` ÷ 文字の UTF-8 幅 回。割り切れない指定はデータの誤りとして失敗にする）。`~0`・`~1` を復号する。Schema 検査は展開前、操作は展開後。参照実装は `tools/conformance/data.py` の `materialize` |
-| サイズ | 400KB は 409600 バイト、1MB は 1048576 バイト |
+| Loading | UTF-8 JSON. Check the top-level `format` and `version`. Detect duplicate keys and fail. The standard `JSON.parse` does not detect duplicate keys, so the plan is to rely on `manifest.py verify` passing and also check in the runner itself (to be confirmed at implementation) |
+| Arbitrary-precision integers | Read `-1` and `2^53` of `seq_nr` as generic JSON values. Numbers are read with the `context.source` of the `JSON.parse` reviver (whether it is available in Node.js 24 is unverified) or with a custom lexer. They are not converted directly to `number`. Only `seq_nr` and time (`epoch_nanoseconds`, computed as `bigint` from a decimal string) become `bigint`. Payload numbers remain `number` and are treated as JSON values. Making even payloads `bigint` would make `JSON.stringify` fail (`core-seq-above-max` also has `9007199254740992` in its payload) |
+| Conversion to types | Convert from `bigint` to `number` with `Number(x)` and check that it converts back exactly with `BigInt(Number(x)) === x`. Values that do not convert back (such as odd numbers above 2^53) cannot be passed to the library's checks, so they are reported as "not representable". 2^53 itself (the value one above `Number.MAX_SAFE_INTEGER`) is exactly representable as a `number`, so it is executed as exceeding the T-9 upper bound. The T-9 contract violation is checked in envelope construction and comes out before serialization (`JSON.stringify` of the payload). Therefore the payload `9007199254740992` does not become a serialization failure |
+| Time | Read `occurred_at` as UTC ISO 8601 with nine fractional-second digits and convert it to `bigint` epoch nanoseconds |
+| Precision policy | For success cases with `precision_policy = native-time-type`, the expected value is the input converted to `Date` (milliseconds). The runner reports the converted value and the actual value. Design decision: the conversion uses `BigInt` floor division (rounding toward negative infinity). `/` on `BigInt` truncates toward zero, so after `q = ns / 1000000n`, a correction `q - 1n` is applied when `ns % 1000000n < 0n` (the −1 nanosecond of `occurred-at-before-epoch` becomes −1 millisecond). It is decided in one place inside the runner. Cases with `representation.time_precision = nanoseconds` (in the actual data, 4 in the value table and 4 in the scenarios) are not applicable and are reported with the reason "Date has millisecond precision". Cases with `milliseconds` (likewise 4 and 4) are executed. Cases without the marker are executed by all implementations |
+| Negative numbers | `representation.signed_seq_nr = true` is executed (`number` can represent negative values) |
+| Operations in the value table | `buildAid` is `AggregateId.of` and `AggregateId.asString`. For `user_string`, a test ID that returns the user's alternative representation (a value whose `asString` and `toString` return different strings) is passed in the same shape as `AggregateId`, and the test checks that the library builds the string from the type name and value without using it. `validateSeqNr` is `EventEnvelope.create` (`context=event`) and an internal function that checks only the value range (`context=value`). `validateOccurredAt` uses `EventEnvelope.create` and calls `persistEvent` following the case's steps (type name `ConformanceTime`, value is the case ID). The four `fnv1a64` cases are reported as not applicable (counted neither as success nor as failure) because the first major has no storage that uses hashes. They are executed when a storage using hashes is shipped in stage 5 (owner's decision, 2026-10-06, implementation plan Chapter 5 item 1) |
+| Payload comparison | Compare values restored with the default JSON while ignoring key order and whitespace. Array order, `null`, booleans, strings, and numbers are preserved. Booleans and numbers are not equated. No Unicode normalization |
+| generators | Expand the empty-string `target` (JSON Pointer) by repeating `character` (one Unicode character) until `byte_length` (total UTF-8 bytes) is reached (`byte_length` ÷ the UTF-8 width of the character times; a specification that does not divide evenly fails as a data error). Decode `~0` and `~1`. Schema validation is before expansion, and operations are after expansion. The reference implementation is `materialize` in `tools/conformance/data.py` |
+| Sizes | 400KB is 409600 bytes, and 1MB is 1048576 bytes |
 
-### 5.2 場面の実行手順と、ストアの分離
+### 5.2 Scenario Execution Steps and Store Isolation
 
-各場面は独立したストアで実行する。手順は `conformance/README.md` に従う。
+Each scenario runs on an independent store. The steps follow `conformance/README.md`.
 
-1. `backends` に実行する保存先があるか確認する。`requires = ["ttl"]` はメモリでは対象外（MEM-12。v1 の TTL 場面は DynamoDB だけ）。
-2. `store` の設定からストアを生成する。`retention_count = null` は履歴なし。`retention_mode`（delete / ttl）と `ttl_grace_seconds` は `SnapshotRetention` へ対応付ける。メモリでは `MemoryStorage.create({ retention })` に渡し、`createMemory({ storage })` でストアを作る。DynamoDB は生成のたびに設定項目の `BatchGetItem` が走る（4.2）。
-3. `seed.items` があれば、ストア生成の前にテスト用の権限（実行器自身のクライアント）で入れる。
-4. `initialization` があれば、生成結果を検査する。生成失敗のケースは操作列がない。生成前の障害は先に登録する（`operation = 0`。登録と消費は5.4）。
-5. generators を展開し、`fixtures.events`・`fixtures.snapshots` を各操作の直前に封筒として構築する。無効な入力の封筒構築中の規則違反も、その操作の失敗として捕捉する。実行器の事前検査でライブラリの検査を代替しない。
-6. `steps` を配列順に、並行実行せずに実行する。
-7. 各操作の `expect` と `observe` を検査する。保持失敗や遅延のある場面は、保持・検査フックの完了後に観測する。フックは書き込みの成功・失敗を変えない。
-- `retry_limit` は設定照合の再要求回数の上限（初回は数えない）。`DynamoDBEventStoreInput.retryLimit` に対応付ける。指数バックオフは、時計フック（`sleep` の差し替え）で実時間を短縮してよい。
+1. Check that `backends` includes the storage being run. `requires = ["ttl"]` is not applicable to Memory (MEM-12; the TTL scenarios in v1 are DynamoDB only).
+2. Create the store from the `store` configuration. `retention_count = null` means no history. `retention_mode` (delete / ttl) and `ttl_grace_seconds` are mapped to `SnapshotRetention`. For Memory, pass it to `MemoryStorage.create({ retention })` and create the store with `createMemory({ storage })`. DynamoDB runs a configuration-item `BatchGetItem` on every creation (4.2).
+3. If there is `seed.items`, insert them with test privileges (the runner's own client) before creating the store.
+4. If there is `initialization`, check the creation result. Cases where creation fails have no operation sequence. Faults before creation are registered first (`operation = 0`; registration and consumption are in 5.4).
+5. Expand generators, and construct `fixtures.events` and `fixtures.snapshots` as envelopes just before each operation. Rule violations during envelope construction for invalid input are also caught as failures of that operation. The runner's pre-checks do not substitute for the library's checks.
+6. Run `steps` in array order, without running them concurrently.
+7. Check each operation's `expect` and `observe`. For scenarios with retention failures or delays, observe after the retention and check hooks have completed. The hooks do not change the success or failure of the write.
+- `retry_limit` is the limit on the number of re-requests in configuration verification (the first request is not counted). It maps to `DynamoDBEventStoreInput.retryLimit`. For exponential backoff, the clock hook (swapping `sleep`) may be used to shorten the real time.
 
-**DynamoDB のストア分離**: 場面ごとに、実行器が3テーブルと GSI を新しく作る。テーブル名は `conf-<連番>-<ランダム>-journal` のように場面ごとに一意にし、3テーブルを同じリージョンに作る。GSI 名は固定の名前でよいが、テーブルが場面ごとに別なので衝突しない。場面の終了時に3テーブルを削除する。他のケースの項目を使い回さない。作成はテスト側の `CreateTable`（現行の `dynamodb-utils.ts` を作り直す）で行う。他のケースの項目を使い回さないので、場面ごとに別のテーブルにする。DynamoDB Local での作成コスト（場面85件のうち DynamoDB は43件）が CI の制約に収まるかは、実行時間で確認する（未確認）。
+**Store isolation for DynamoDB**: for each scenario, the runner creates the three tables and the GSI anew. Table names are unique per scenario, like `conf-<sequence>-<random>-journal`, and the three tables are created in the same region. The GSI name may be fixed because tables differ per scenario and there is no collision. At the end of the scenario, the three tables are deleted. Items from other cases are not reused. Creation is done by the test side's `CreateTable` (rebuilding the current `dynamodb-utils.ts`). Since items from other cases are not reused, separate tables are used per scenario. Whether the creation cost on DynamoDB Local (43 of the 85 scenarios are DynamoDB) fits within the CI constraints is checked by execution time (unverified).
 
-**メモリのストア分離**: 場面ごとに `MemoryStorage.create()` で新しい記録を作る。
+**Store isolation for Memory**: for each scenario, new records are created with `MemoryStorage.create()`.
 
-### 5.3 フックの置き場所
+### 5.3 Where the Hooks Live
 
-フックは内部の生成関数（`createDynamoDBEventStoreInternal(input, hooks)`、`createMemoryEventStoreInternal(input, hooks)`）の第2引数で渡す。公開の `EventStore.createDynamoDB` は、フックなしで内部関数を呼ぶ。
+Hooks are passed as the second argument of the internal creation functions (`createDynamoDBEventStoreInternal(input, hooks)`, `createMemoryEventStoreInternal(input, hooks)`). The public `EventStore.createDynamoDB` calls the internal function without hooks.
 
-| フック | 置き場所 |
+| Hook | Location |
 |:--|:--|
-| 保持の決定的実行 | 内部フック `retentionScheduler`。通常は書き込み確定後に即時実行する。実行器は、完了を待てる実行（`await` できる `Promise`）を受け取り、`observe` の前に待つ。ライブラリ内部で保持処理を `Promise` として返す |
-| 内部履歴の検査（`observe.history`） | DynamoDB: 実行器のクライアントで、その集約の snapshot テーブルの項目を `Query`（強整合）して、active（`active_history_seq_nr` あり）と marked（`ttl` あり）に分類する。現在のスナップショット（`skey = 0`）と設定項目は数えない。メモリ: 内部の論理履歴を読む内部アクセサ |
-| 失敗通知の検査（`observe.notifications`） | `onRetentionFailure` の受け取りを記録する。同じ最終失敗のログが複数あれば1つに正規化する |
-| SDK 要求の検査（`observe.requests`） | ミドルウェア（5.4）が、`build` 段階で組み上がった入力を記録する。式は構文解析して、式と属性名・値の束縛の構造で比較する（空白・節の順序・AND の順序は比較しない） |
-| 属性検査（`observe.items`・`seed.items`） | 実行器のクライアントで `GetItem`。属性集合・型・リスト件数の検査は、除外の前の実際の項目全体で行い、属性集合を完全一致で比較する。`N` は10進文字列を整数として比較。`binary_json` は `B` の復元結果を JSON で比較。`L` の中の `M` は `nested_attributes`。`generated-store-id` の束縛は、最初の実際の `store_id` を束縛し、3項目（journal・snapshot・head の設定項目）で同じ値であることを検査する |
-| 時計 | 内部フック `clock`（`() => epochSeconds`）。TTL の印付けの期限が「印付け時刻＋猶予秒」になる。v1 は2100年の時計 |
-| 待ち（DY-8 のバックオフ） | 内部フック `sleep`（`(ms: number) => Promise<void>`）。既定は実時間で待つ。実行器は、待ちを記録して即座に戻る関数に差し替え、指数バックオフの実時間を短縮する（4.2） |
-| 配置照合（`dynamodb/layout.json`） | 実行器が `DescribeTable` と `DescribeTimeToLive` で、作成した3テーブルを照合する。キー、GSI の射影（KEYS_ONLY）、head だけの Streams（NEW_IMAGE）、snapshot の TTL の状態も照合する。テーブル名と GSI 名は設定値に束縛する |
-| SDK 要求のサイズ検査 | D-7 は、4つの項目（4.3）のどれかが超過したときに、`commit` と `retention-*` の要求が送られないことを `no_requests_in_phases` で検査する |
+| Deterministic run of retention | Internal hook `retentionScheduler`. Normally it runs immediately after the write commits. The runner receives a run whose completion can be awaited (a `Promise` that can be `await`ed) and waits for it before `observe`. The library returns the retention processing internally as a `Promise` |
+| Inspecting internal history (`observe.history`) | DynamoDB: with the runner's client, `Query` (strongly consistent) the snapshot table items for that aggregate and classify them into active (has `active_history_seq_nr`) and marked (has `ttl`). The current snapshot (`skey = 0`) and the configuration item are not counted. Memory: an internal accessor that reads the internal logical history |
+| Inspecting failure notifications (`observe.notifications`) | Record what `onRetentionFailure` receives. If there are multiple logs of the same final failure, normalize them into one |
+| Inspecting SDK requests (`observe.requests`) | The middleware (5.4) records the input assembled at the `build` stage. Expressions are parsed and compared by the structure of the expression and the bindings of attribute names and values (whitespace, clause order, and AND order are not compared) |
+| Inspecting attributes (`observe.items`, `seed.items`) | `GetItem` with the runner's client. Checks on attribute set, type, and list length are done on the whole actual item before exclusion, and the attribute set is compared for exact match. `N` is compared as an integer from the decimal string. `binary_json` compares the restored result of `B` as JSON. An `M` inside an `L` is `nested_attributes`. The binding of `generated-store-id` binds the first actual `store_id` and checks that the three items (the configuration items of journal, snapshot, and head) have the same value |
+| Clock | Internal hook `clock` (`() => epochSeconds`). The expiry of TTL marking becomes "marking time + grace seconds". In v1 it is a clock set to the year 2100 |
+| Waiting (DY-8 backoff) | Internal hook `sleep` (`(ms: number) => Promise<void>`). The default waits in real time. The runner swaps it for a function that records the wait and returns immediately, shortening the real time of exponential backoff (4.2) |
+| Layout verification (`dynamodb/layout.json`) | The runner verifies the three created tables with `DescribeTable` and `DescribeTimeToLive`. It also verifies the keys, the GSI projection (KEYS_ONLY), Streams only on the head (NEW_IMAGE), and the TTL state of the snapshot. Table names and GSI names are bound to configuration values |
+| SDK request size check | For D-7, `no_requests_in_phases` checks that no `commit` or `retention-*` requests are sent when any of the four items (4.3) exceeds the limit |
 
-### 5.4 SDK の差し込みの位置
+### 5.4 Where the SDK Injection Happens
 
-DynamoDB は、`DynamoDBClient.middlewareStack` に、実行器が追加するミドルウェアで差し込む。
+For DynamoDB, injection is done through middleware that the runner adds to `DynamoDBClient.middlewareStack`.
 
-- 位置（設計判断）: `build` 段階（入力が組み上がった後、署名とリトライの前）に1つに決める。SDK 要求の観測と、`replace-request`・`replace-response` の差し込みを、同じ段階のミドルウェアで行う。**自動再試行を無効**にするため、実行器が作るクライアントは `maxAttempts: 1` にする。`build` 段階で差し込めるかは、実装の最初の PR で小さな試作で確かめる（未確認）。
-- `replace-request`: ミドルウェアが `next` を呼ばず、例外または応答を返す。何も確定しない。v1 の書き込み失敗と保持失敗は全てこれ。
-- `replace-response`: `next` を呼んだ後に、応答を差し替える。副作用は残る。
-- 保持処理の要求だけを失敗させる（IP 6）。ミドルウェアは、コマンド名と、テーブルと GSI の対象（`QueryCommand` の `IndexName`、`BatchWriteItemCommand`、`UpdateItemCommand` の対象）で対象を絞る。書き込みのトランザクションは失敗させない。
-- 生成時の `TransactWriteItems`（段階 `configuration-create`）と、書き込みの `TransactWriteItems`（段階 `commit`）は、操作番号で区別する。生成は `operation = 0`、書き込みは1以上である。ミドルウェアは、実行器が今実行している操作番号を持ち、登録した障害の `operation` と段階の両方が合う要求にだけ差し込む。
-- ライブラリ本体にミドルウェアを置かない。ライブラリは、渡されたクライアントをそのまま使う。
+- Position (design decision): fixed to a single place, the `build` stage (after the input is assembled, before signing and retry). Observing SDK requests and injecting `replace-request` and `replace-response` are both done in middleware at the same stage. To **disable automatic retries**, the client the runner creates uses `maxAttempts: 1`. Whether injection at the `build` stage is possible is checked by a small prototype in the first implementation PR (unverified).
+- `replace-request`: the middleware does not call `next` and returns an exception or a response. Nothing is committed. All write failures and retention failures in v1 are of this kind.
+- `replace-response`: after calling `next`, the response is replaced. Side effects remain.
+- Only retention requests are made to fail (IP 6). The middleware narrows the target by command name and by the target table and GSI (`IndexName` of `QueryCommand`, `BatchWriteItemCommand`, the target of `UpdateItemCommand`). The write transaction is not made to fail.
+- The `TransactWriteItems` at creation (stage `configuration-create`) and the `TransactWriteItems` of a write (stage `commit`) are distinguished by operation number. Creation is `operation = 0`, and writes are 1 or more. The middleware holds the operation number the runner is currently executing, and injects only into requests where both the registered fault's `operation` and the stage match.
+- The middleware is not placed in the library itself. The library uses the client it is given as it is.
 
-#### 障害の登録・消費・未発火の検査（共通の仕組み）
+#### Registering, Consuming, and Checking for Unfired Faults (Common Mechanism)
 
-実行器が、障害の登録簿を1つ持つ。差し込み口は3つあり、どれも同じ登録簿を使う。
+The runner holds one fault registry. There are three injection points, and all use the same registry.
 
-| 差し込み口 | 対象の段階 |
+| Injection point | Target stages |
 |:--|:--|
-| SDK のミドルウェア（`build` 段階） | `commit`・`read-events`・`read-snapshot`・`retention-*`・`configuration-*` |
-| シリアライザの包み（`PayloadSerializer` を包む関数） | `serialize-event`・`serialize-snapshot`・`deserialize-event`・`deserialize-snapshot` |
-| メモリの内部フック | `commit`・`read-events`・`read-snapshot`・`retention-*` |
+| SDK middleware (`build` stage) | `commit`, `read-events`, `read-snapshot`, `retention-*`, `configuration-*` |
+| Serializer wrapper (a function that wraps `PayloadSerializer`) | `serialize-event`, `serialize-snapshot`, `deserialize-event`, `deserialize-snapshot` |
+| Memory internal hooks | `commit`, `read-events`, `read-snapshot`, `retention-*` |
 
-- 登録: 場面の `faults` を、操作番号（0 は生成）と段階ごとに、すべて登録する。異なる段階の障害は、すべて同時に登録する。生成前の障害（`operation = 0`）は、ストア生成の前に登録する。
-- 消費: 同じ操作番号・同じ段階の障害は、配列順に1件ずつ消費する。差し込み口は、要求・呼び出しが来るたびに、登録簿から合う障害を探して発火する。
-- `repeat`: `{ "mode": "count", "count": n }` は、n 回発火したら消費済みにする。`{ "mode": "until-operation-finishes" }` は、その操作が終わるまで発火し続け、操作の終了で消費済みにする。
-- 未発火の検査: 操作の終了（生成では生成の終了）で、その操作番号の登録済みの障害が1度も発火していなければ、場面を失敗にする。`until-operation-finishes` も1度は発火している必要がある。差し込めなかった段階は、成功に数えずに「未検証」と報告する（5.5、5.8）。
+- Registration: register all of the scenario's `faults` per operation number (0 is creation) and stage. Faults of different stages are all registered at the same time. Faults before creation (`operation = 0`) are registered before the store is created.
+- Consumption: faults with the same operation number and the same stage are consumed one at a time in array order. Each time a request or call arrives, the injection point looks up a matching fault in the registry and fires it.
+- `repeat`: `{ "mode": "count", "count": n }` becomes consumed after firing n times. `{ "mode": "until-operation-finishes" }` keeps firing until that operation finishes, and becomes consumed when the operation ends.
+- Check for unfired faults: at the end of an operation (for creation, the end of creation), if any registered fault for that operation number has never fired, the scenario fails. `until-operation-finishes` must also fire at least once. A stage that could not be injected is not counted as a success and is reported as "unverified" (5.5, 5.8).
 
-### 5.5 障害の差し込み（12段階）
+### 5.5 Fault Injection (12 Stages)
 
-`phase` は12種類である（`conformance/schema/common.schema.json` の列挙。指示書の13は指揮役の誤りだった）。
+There are 12 kinds of `phase` (the enumeration in `conformance/schema/common.schema.json`; the 13 in the instructions was the lead's mistake).
 
-| 段階 | DynamoDB | メモリ |
+| Stage | DynamoDB | Memory |
 |:--|:--|:--|
-| `serialize-event` | イベントのシリアライザをラップし、`serialize` を失敗させる | 同じ（排他制御の前に失敗するので記録は変わらない） |
-| `serialize-snapshot` | スナップショットのシリアライザをラップ | 同じ |
-| `deserialize-event` | イベントのシリアライザの `deserialize` を失敗させる | 同じ |
-| `deserialize-snapshot` | スナップショットのシリアライザの `deserialize` を失敗させる | 同じ |
-| `commit` | `TransactWriteItems` のミドルウェア。`replace-request`（`TransactionCanceledException` の組み立てを含む）と `replace-response`。`cancellation_reasons` は5.7 | 確定の直前（まとめて公開の前）の内部フックで失敗させる。ヘッド・ジャーナル・スナップショットに変更を残さない。SDK の例外はないので `sdk-error` 系は**差し込めない**（未検証と報告。代わりに、確定前の失敗で記録が変わらないことを `storage-error` のケースで確かめる） |
-| `read-events` | `QueryCommand`（journal）のミドルウェア | 読み取り直前の内部フック |
-| `read-snapshot` | `BatchGetItemCommand` のミドルウェア（`sdk-response` の応答計画、`read-interleave` を含む） | 読み取り直前の内部フック。`read-interleave` は R-8 が原子的なので対象外（理由を記録） |
-| `retention-query` | GSI の `QueryCommand` のミドルウェア（`history_pages` の応答計画を含む） | 論理履歴の列挙フック。`history_pages` が、論理履歴の列挙を置き換える。ページ列の履歴 seq_nr を連結して返す（今書いた履歴は自動追加しない）。今書いた履歴を加えて重複を除くのは、ライブラリのコード（4.5 の手順2と同じ処理）が行う。メモリにページ送りはないので `LastEvaluatedKey` と `ExclusiveStartKey` の対応付けは行わない。保持対象の選択結果は `observe.history` で確かめる |
-| `retention-delete` | `BatchWriteItemCommand`（`unprocessed_first_n` を含む） | 論理履歴の削除フック。`BatchWriteItem` の分割と `unprocessed_first_n` は存在しない（DynamoDB だけ） |
-| `retention-mark` | `UpdateItemCommand`（snapshot の TTL 印付け） | TTL がないので**対象外**（MEM-12） |
-| `configuration-read` | 生成時の `BatchGetItemCommand`（`unprocessed_keys`） | 設定の読み取りがないので**対象外** |
-| `configuration-create` | 生成時の `TransactWriteItemsCommand`（`install_items` による生成競合を含む） | 設定の作成がないので**対象外** |
+| `serialize-event` | Wrap the event serializer and make `serialize` fail | Same (it fails before the mutual exclusion, so the records do not change) |
+| `serialize-snapshot` | Wrap the snapshot serializer | Same |
+| `deserialize-event` | Make the event serializer's `deserialize` fail | Same |
+| `deserialize-snapshot` | Make the snapshot serializer's `deserialize` fail | Same |
+| `commit` | Middleware for `TransactWriteItems`. `replace-request` (including assembling `TransactionCanceledException`) and `replace-response`. `cancellation_reasons` is in 5.7 | Fail with an internal hook just before commit (before the all-at-once publication). No change is left in the head, journal, or snapshot. There is no SDK exception, so the `sdk-error` family **cannot be injected** (reported as unverified. Instead, the `storage-error` case checks that the records do not change on a failure before commit) |
+| `read-events` | Middleware for `QueryCommand` (journal) | Internal hook just before the read |
+| `read-snapshot` | Middleware for `BatchGetItemCommand` (including the response plan of `sdk-response` and `read-interleave`) | Internal hook just before the read. `read-interleave` is not applicable because R-8 is atomic (reason recorded) |
+| `retention-query` | Middleware for the GSI's `QueryCommand` (including the response plan of `history_pages`) | Hook for enumerating the logical history. `history_pages` replaces the enumeration of the logical history. It returns the history seq_nrs of the page sequence concatenated (the history just written is not added automatically). Adding the history just written and removing duplicates is done by the library's code (the same processing as step 2 of 4.5). Memory has no paging, so `LastEvaluatedKey` and `ExclusiveStartKey` are not mapped. The result of selecting retention targets is checked with `observe.history` |
+| `retention-delete` | `BatchWriteItemCommand` (including `unprocessed_first_n`) | Hook for deleting the logical history. The splitting of `BatchWriteItem` and `unprocessed_first_n` do not exist (DynamoDB only) |
+| `retention-mark` | `UpdateItemCommand` (TTL marking of the snapshot) | **Not applicable** because there is no TTL (MEM-12) |
+| `configuration-read` | `BatchGetItemCommand` at creation (`unprocessed_keys`) | **Not applicable** because there is no reading of configuration |
+| `configuration-create` | `TransactWriteItemsCommand` at creation (including creation races through `install_items`) | **Not applicable** because there is no creation of configuration |
 
-- メモリを対象に含む障害ケースは、`conformance/scenarios/core/retention-errors.json` に11件ある（`conformance/` を走査して確認した範囲）。`retention-query` の `history_pages` を指定するのは、`core-retention-delete-1`・`core-retention-delete-2`・`core-retention-failure-after-commit`・`core-retention-query-failure` の4件で、上の対応付けで差し込む。残り7件は、`core-serialize-event`（`serialize-event`）、`core-serialize-snapshot`（`serialize-snapshot`）、`core-deserialize-event`（`deserialize-event`）、`core-deserialize-snapshot`（`deserialize-snapshot`）、`core-storage-commit-failure`（`commit`）、`core-storage-read-events`（`read-events`）、`core-storage-read-snapshot`（`read-snapshot`）で、いずれも上の表のメモリ列のフックで差し込む。それ以外の段階でメモリに差し込めないものが実行対象に現れた場合は、理由つきで「未検証」と報告し、成功に集計しない。
-- `kind` の扱い: `serialization-error` はシリアライザの対応段階を失敗させる。`storage-error` は保存先・保持フックの最終失敗。`details.scope = final-retention-failure` は、候補選択後・削除前に保持全体を失敗させる。フックの位置は、DynamoDB では 4.5 の手順2（対象の選択）と手順3（削除）の間、メモリでは論理履歴の削除フックの直前である。`omit_just_written_history` は DynamoDB だけにある（GSI が今書いた履歴をまだ返さない状況を作る）。メモリは対象外とする。`sdk-error` は、`details.code` と `cancellation_reasons` から SDK の例外クラス（`TransactionCanceledException` など）を組み立てる。`sdk-response` は応答計画。`read-interleave` は DY-9 の非原子的応答。
-- `read-interleave`: 送信直前に旧ヘッドを捕捉し、`interleaved_operation` の追記を確定し、元の `BatchGetItem` を送って、応答内のヘッドを旧ヘッドへ差し替える。実時間の競争は使わない。実行器が別のストアインスタンスで追記を行う。
-- `repeat` の扱いは、5.4 の共通の仕組みに従う。
+- There are 11 fault cases that include Memory in `conformance/scenarios/core/retention-errors.json` (the range confirmed by scanning `conformance/`). Four specify `history_pages` of `retention-query`: `core-retention-delete-1`, `core-retention-delete-2`, `core-retention-failure-after-commit`, and `core-retention-query-failure`, and they are injected with the mapping above. The remaining seven are `core-serialize-event` (`serialize-event`), `core-serialize-snapshot` (`serialize-snapshot`), `core-deserialize-event` (`deserialize-event`), `core-deserialize-snapshot` (`deserialize-snapshot`), `core-storage-commit-failure` (`commit`), `core-storage-read-events` (`read-events`), and `core-storage-read-snapshot` (`read-snapshot`), all of which are injected with the hooks in the Memory column of the table above. If a stage other than these that cannot be injected into Memory appears among the executed targets, it is reported as "unverified" with the reason and is not aggregated as a success.
+- Handling of `kind`: `serialization-error` makes the serializer's corresponding stage fail. `storage-error` is the final failure of the storage or retention hook. `details.scope = final-retention-failure` makes the whole retention fail after candidate selection and before deletion. The hook position is, in DynamoDB, between step 2 (selecting targets) and step 3 (deletion) of 4.5, and, in Memory, just before the logical-history deletion hook. `omit_just_written_history` exists only for DynamoDB (it creates a situation where the GSI does not yet return the history just written). Memory is not applicable. `sdk-error` builds the SDK exception class (such as `TransactionCanceledException`) from `details.code` and `cancellation_reasons`. `sdk-response` is a response plan. `read-interleave` is the non-atomic response of DY-9.
+- `read-interleave`: capture the old head just before sending, commit the append of `interleaved_operation`, send the original `BatchGetItem`, and replace the head in the response with the old head. Real-time races are not used. The runner performs the append with a different store instance.
+- The handling of `repeat` follows the common mechanism in 5.4.
 
-### 5.6 `observe.requests` の検査
+### 5.6 Checking `observe.requests`
 
-- 式は、実行器内の小さな構文解析で `SET`・`REMOVE`・条件式の構造に分解する。空白・節の順序・AND の順序は比較しない。
-- `key_condition.all`（`eq` / `gte` と `aggregate_id`・`seq_nr` の束縛）、TTL の `#ttl` と `ExpressionAttributeNames`、`expires`（エポック秒）、`initial_batch_sizes`（再送を除く削除バッチ件数）、`no_requests_in_phases`、`request_count`、`minimum_request_count` を検査する。
-- `requests` の要素は、実際の別々の要求に配列順で対応付ける。ページ送り・未処理キーの再要求・削除バッチ分割は、段階の要求列全体で検査する。
+- Expressions are decomposed into the structure of `SET`, `REMOVE`, and condition expressions by a small parser inside the runner. Whitespace, clause order, and AND order are not compared.
+- Check `key_condition.all` (`eq` / `gte` and the bindings of `aggregate_id` and `seq_nr`), TTL's `#ttl` and `ExpressionAttributeNames`, `expires` (epoch seconds), `initial_batch_sizes` (the number of deletion batches excluding resends), `no_requests_in_phases`, `request_count`, and `minimum_request_count`.
+- The elements of `requests` are matched, in array order, to distinct actual requests. Paging, re-requests of unprocessed keys, and splitting of deletion batches are checked across the whole request sequence of the stage.
 
 ### 5.7 `cancellation_reasons`
 
-トランザクションの各アクションに1要素。書き込みは journal・head・current-snapshot・history-snapshot の順（存在するアクションだけ）。設定作成は `configuration:journal`・`configuration:snapshot`・`configuration:head`。失敗していない要素の `Code` は文字列 `None`。実行器は、対象名を実際の要求内のアクションに照合して並べ直す（ライブラリの要求順を強制しない）。head の `ConditionalCheckFailed` は `old_head_seq_nr`（`null` は旧項目が返らない）を持つ。D-5 の分類はこの旧項目を使う。ライブラリの分類は、4.3 のとおり全理由を見る（どの項目の `TransactionConflict` も D-6）。
+One element per action of the transaction. For writes, the order is journal, head, current-snapshot, history-snapshot (only the actions that exist). For configuration creation, they are `configuration:journal`, `configuration:snapshot`, and `configuration:head`. The `Code` of an element that did not fail is the string `None`. The runner matches target names to the actual actions in the request and reorders them (the library's request order is not enforced). The head's `ConditionalCheckFailed` has `old_head_seq_nr` (`null` means no old item is returned). The D-5 classification uses this old item. The library's classification looks at all reasons as in 4.3 (a `TransactionConflict` on any item is D-6).
 
-### 5.8 報告と CI
+### 5.8 Reporting and CI
 
-- 報告の形（JSON と、Jest の標準出力への要約の両方）:
-  - データの版と `manifest.json` の照合結果。
-  - 言語（`typescript`）、実装版（`package.json` の版）、保存先（`memory` / `dynamodb`）。
-  - ケース ID と規則番号ごとの結果: `passed`（成功）/ `failed`（失敗）/ `not-applicable`（対象外）/ `unverified`（未検証）/ `not-representable`（表現不能）の5つ。ナノ秒の精度の印のケースと、`fnv1a64` の4件は、`not-applicable` と理由で報告する。`number` で表せない値は `not-representable` で報告する。
-  - 失敗した操作番号と、期待値・実際の値。
-  - 表現能力の違いによる選択・任意能力・削除済み規則・呼び出し側の推奨の理由。
-- 1ケースが複数の規則を持てば、全規則へ対応付ける。途中で期待と異なれば成功と報告しない（IP 5）。条件を満たさないケース、必須ケースを飛ばした結果、障害を差し込めなかった結果を成功に集計しない。
-- 結果の表現名は、`conformance/README.md` の語に合わせる。語が異なれば README を優先する（実装時に確認）。
-- 配布の検証: 現行 CI の `release-checks` に既にある `python3 tools/conformance/manifest.py verify` と、`manifest.json` の SHA-256（v1.0.0 は `61c26614dbbfba88eebce72cc1d2b0220218839e74dcfb64c19268f7ee2302ce`）の照合を、維持する。manifest を作り直して差分を隠さない。`conformance/.gitattributes` が改行変換を止めている。
-- 実行: `pnpm --filter event-store-adapter-js run coverage --runInBand`（現行の `test` ジョブ）に含める。DynamoDB Local はテスト内で Testcontainers が起動する（6章）。実行時間が長ければ、専用ジョブに分ける。
+- Report form (both JSON and a summary to Jest's standard output):
+  - The data version and the result of verifying `manifest.json`.
+  - The language (`typescript`), the implementation version (the version in `package.json`), and the storage (`memory` / `dynamodb`).
+  - Results per case ID and rule number, in five kinds: `passed` / `failed` / `not-applicable` / `unverified` / `not-representable`. Cases marked for nanosecond precision and the four `fnv1a64` cases are reported as `not-applicable` with reasons. Values that a `number` cannot represent are reported as `not-representable`.
+  - The failed operation number, with the expected and actual values.
+  - Reasons for selection, optional capabilities, removed rules, and caller recommendations that arise from differences in representational capability.
+- If one case has multiple rules, it is mapped to all of them. If the result differs from the expectation partway, it is not reported as a success (IP 5). Cases whose conditions are not met, results where required cases were skipped, and results where faults could not be injected are not aggregated as successes.
+- The names for result representation match the terms in `conformance/README.md`. If the terms differ, the README takes priority (to be confirmed at implementation).
+- Distribution verification: keep the existing `python3 tools/conformance/manifest.py verify` in the current CI's `release-checks`, and the check against the SHA-256 of `manifest.json` (for v1.0.0, `61c26614dbbfba88eebce72cc1d2b0220218839e74dcfb64c19268f7ee2302ce`). Do not regenerate the manifest to hide differences. `conformance/.gitattributes` stops newline conversion.
+- Execution: include it in `pnpm --filter event-store-adapter-js run coverage --runInBand` (the current `test` job). DynamoDB Local is started inside the tests by Testcontainers (Chapter 6). If the run time is long, split it into a dedicated job.
 
-## 6. 試験環境
+## 6. Test Environment
 
 ### 6.1 DynamoDB Local 3.3.1
 
-- イメージ: `amazon/dynamodb-local` を、digest `sha256:ff89bd48ff32cd8d9be5fee8873b65b8854dc408f1afe881be6eb00247bc0dab`（3.3.1、2026-10-05 に固定）で指定する。
-- 起動方法: 現行の Testcontainers（`GenericContainer`、現行の `packages/examples/src/dynamodb-container.ts` と `packages/library/src/internal/test/dynamodb-utils.ts` の形）を使う。イメージ指定は `amazon/dynamodb-local@sha256:ff89bd48ff32cd8d9be5fee8873b65b8854dc408f1afe881be6eb00247bc0dab` とする。
-- ポートは 8000。待ち受けの確認は、ポートの待ち受けを待つ方式（`Wait.forListeningPorts()`）を使う（ログの文言には依存しない）。
-- 起動のオプション: メモリ上の実行（`-inMemory`）、共有データベース（`-sharedDb`）は、場面ごとにテーブルを分けるので不要。リージョンとアクセスキーは固定のダミー値（試験専用）。
-- クライアントには `endpoint` を**明示**する。Streams のクライアントにも同じ `endpoint` を明示する。Streams の ARN のリージョンは `ddblocal` で、ARN から推測してはならない（hub の `docs/plan/implementation-plan.md` 4.1）。
-- DynamoDB Local での TTL の扱い（実際の期限切れ削除は行われない可能性）は、TTL の期限の検査を属性の値（`ttl` のエポック秒）で行うので影響しない。TTL の有効化（`UpdateTimeToLive`）が受け付けられ、`DescribeTimeToLive` で読めるかは、`dynamodb/layout.json` の照合で確かめる（未確認）。
+- Image: specify `amazon/dynamodb-local` with the digest `sha256:ff89bd48ff32cd8d9be5fee8873b65b8854dc408f1afe881be6eb00247bc0dab` (3.3.1, pinned on 2026-10-05).
+- How to start: use the current Testcontainers (`GenericContainer`, in the form of the current `packages/examples/src/dynamodb-container.ts` and `packages/library/src/internal/test/dynamodb-utils.ts`). The image is specified as `amazon/dynamodb-local@sha256:ff89bd48ff32cd8d9be5fee8873b65b8854dc408f1afe881be6eb00247bc0dab`.
+- The port is 8000. Readiness is confirmed by waiting for the port to listen (`Wait.forListeningPorts()`), without depending on log wording.
+- Startup options: running in memory (`-inMemory`) and the shared database (`-sharedDb`) are unnecessary because tables are separated per scenario. The region and access keys are fixed dummy values (for tests only).
+- Specify `endpoint` **explicitly** on the client. Also specify the same `endpoint` explicitly on the Streams client. The region in the Streams ARN is `ddblocal` and must not be inferred from the ARN (hub's `docs/plan/implementation-plan.md` 4.1).
+- How DynamoDB Local handles TTL (actual expiry deletion may not happen) has no effect, because the TTL expiry check is done on the attribute value (epoch seconds in `ttl`). Whether enabling TTL (`UpdateTimeToLive`) is accepted and can be read with `DescribeTimeToLive` is checked by the verification in `dynamodb/layout.json` (unverified).
 
-### 6.2 今の試験（LocalStack）からの移し方
+### 6.2 How to Move from the Current Tests (LocalStack)
 
-| 対象 | 現状 | 移し方 |
+| Target | Current state | How to move |
 |:--|:--|:--|
-| `packages/library/src/internal/dynamodb-event-store.test.ts` | LocalStack（`localstack/localstack:2.1.0`、ポート 4566） | 旧実装の削除（PR 13）まで、LocalStack のまま残す。新しい DynamoDB 実装の試験は、`src/next/` に新しく作り、DynamoDB Local で動かす。PR 13 で旧試験を消す |
-| `packages/library/src/internal/test/dynamodb-utils.ts` | 旧配置（journal と snapshot、`pkey` など）の `CreateTable` | 旧実装の削除まで残す。新配置（3テーブルと GSI）の `CreateTable` は、`src/next/internal/test/` に新しく作る。ポートは 8000 |
-| `packages/library/src/internal/test/user-account-repository.test.ts` | LocalStack | 旧実装の削除（PR 13）まで残す。新 API の同等の試験は `src/next/` に新しく作り、DynamoDB Local で動かす |
-| `packages/examples/src/dynamodb-container.ts` | LocalStack | 利用側を移す PR 12 で、DynamoDB Local と新 API に移す |
-| `packages/examples/README.md` | LocalStack の説明 | 文書の更新は段階の最後（5.0.0 の文書の PR）。今回は触れない |
-| 依存 `testcontainers` | `^12.0.0` | 維持 |
+| `packages/library/src/internal/dynamodb-event-store.test.ts` | LocalStack (`localstack/localstack:2.1.0`, port 4566) | Keep it on LocalStack until the old implementation is removed (PR 13). Tests for the new DynamoDB implementation are newly created in `src/next/` and run on DynamoDB Local. The old test is removed in PR 13 |
+| `packages/library/src/internal/test/dynamodb-utils.ts` | `CreateTable` for the old layout (journal and snapshot, `pkey`, etc.) | Keep until the old implementation is removed. `CreateTable` for the new layout (three tables and the GSI) is newly created in `src/next/internal/test/`. The port is 8000 |
+| `packages/library/src/internal/test/user-account-repository.test.ts` | LocalStack | Keep until the old implementation is removed (PR 13). The equivalent test for the new API is newly created in `src/next/` and runs on DynamoDB Local |
+| `packages/examples/src/dynamodb-container.ts` | LocalStack | Move to DynamoDB Local and the new API in PR 12, which moves the consumers |
+| `packages/examples/README.md` | Description of LocalStack | Updating the documentation is at the end of the stages (the documentation PR for 5.0.0). Not touched this time |
+| Dependency `testcontainers` | `^12.0.0` | Kept |
 
-- LocalStack を扱う期間（設計判断）: 旧実装の試験（LocalStack）は、旧実装の削除（PR 13）まで消えない。新実装の試験（DynamoDB Local）は PR 9 から加わる。PR 9〜PR 12 の間、CI には LocalStack と DynamoDB Local の両方が残る。PR 12 で `examples` と `packages/tests` が DynamoDB Local に移り、PR 13 で LocalStack の依存が消える。
+- Period of handling LocalStack (design decision): the tests of the old implementation (LocalStack) are not removed until the old implementation is removed (PR 13). Tests of the new implementation (DynamoDB Local) are added from PR 9. From PR 9 to PR 12, both LocalStack and DynamoDB Local remain in CI. In PR 12, `examples` and `packages/tests` move to DynamoDB Local, and in PR 13 the LocalStack dependency disappears.
 
-## 7. main への入れ方
+## 7. Bringing It into main
 
-### 7.1 方針
+### 7.1 Policy
 
-実装計画 3 章の進め方に従う。main に PR ごとに squash マージする。main の Snapshot は次のメジャーの版（`5.0.0-snapshot.*`）で公開する。メジャーの公開は、受け入れ条件（IP 5）を満たした後、オーナーの承認を得て手動で出す。worker は PR の作成までで、マージはコーディネーターが行う（IP 9）。
+Follow the approach in Chapter 3 of the implementation plan. Squash-merge into main per PR. The main Snapshot is published with the next major's version (`5.0.0-snapshot.*`). The major is published manually after the acceptance conditions (IP 5) are met and the owner's approval is obtained. The worker's job ends at creating the PR, and the coordinator does the merge (IP 9).
 
-### 7.2 各 PR で main の CI を通し続ける方法
+### 7.2 How to Keep Main's CI Passing in Each PR
 
-現行の CI は、`lint`・`test`（ビルドと coverage）・`examples`（`pnpm run test:examples`）・`package-tests`（`pnpm run test:packages`）・`release-checks` と、集約の `ci-success` からなる。各 PR は、これらすべてを通す。
+The current CI consists of `lint`, `test` (build and coverage), `examples` (`pnpm run test:examples`), `package-tests` (`pnpm run test:packages`), `release-checks`, and the aggregate `ci-success`. Each PR passes all of them.
 
-- `examples` と `package-tests` は、公開 API を使う。PR 12 までは旧 API のまま通る。PR 12 で新 API に移す。`packages/tests` は `workspace:*` でワークスペースのライブラリに依存し、公開した版には依存しない。
-- 新旧の置き場所（設計判断）: 新しい中核・メモリ・DynamoDB は `packages/library/src/next/` に、最終の名前と同じファイル名で作る（2.1）。現行の `src/` のファイルと名前が衝突しない。PR 12 までは、`index.ts` から `src/next/` を公開しない。`src/next/` は内部の試験だけで検証する。PR 12 で `index.ts` を `src/next/` に向け替える。PR 13 で旧実装を消し、`src/next/` の中身を `src/` へ移す。
-- 旧 API と新 API の**公開上の共存はしない**。共存は、PR 1〜PR 11 の間の、内部の作業中の状態である。
-- 新しい試験は、DynamoDB Local で動く。CI の Docker の実行が必要（現行の LocalStack と同じ前提）。
+- `examples` and `package-tests` use the public API. Up to PR 12 they pass with the old API as is. In PR 12 they move to the new API. `packages/tests` depends on the workspace's library through `workspace:*` and does not depend on the published version.
+- Locations of old and new (design decision): the new core, Memory, and DynamoDB are created in `packages/library/src/next/` with the same file names as the final names (2.1). Names do not collide with the files in the current `src/`. Up to PR 12, `index.ts` does not expose `src/next/`. `src/next/` is verified only by internal tests. In PR 12, `index.ts` is repointed to `src/next/`. In PR 13, the old implementation is removed and the contents of `src/next/` are moved to `src/`.
+- There is **no public coexistence** of the old API and the new API. Coexistence is an internal work-in-progress state between PR 1 and PR 11.
+- New tests run on DynamoDB Local. This requires running Docker in CI (the same premise as the current LocalStack).
 
-### 7.3 PR の列
+### 7.3 Sequence of PRs
 
-1つの PR は、1つの規則群に対応させる。
+One PR corresponds to one group of rules.
 
-| PR | 範囲 | 対応する規則群 | 備考 |
+| PR | Scope | Corresponding rule group | Notes |
 |:--|:--|:--|:--|
-| PR 1: 下準備 | `packages/library/package.json` の版を `5.0.0-snapshot.0` にする（Snapshot の公開が、`snapshot.yml` の `replace(/-snapshot\.\d+$/, "")` により `5.0.0-snapshot.<run>.<attempt>` になる）。使っていない依存（`aws-sdk`・`moment`・`winston`・`@types/winston`）を外し、`pnpm-lock.yaml` を更新する | なし（IP-D1、IP 4.2） | コードの挙動は変えない。版上げの workflow（`bump-version.yml`）は手動の起動（`workflow_dispatch`）だけで、`level` に `major` があることを確かめ済み。4.x の保守（保守ブランチ、CI の対象、版上げの対応、`--tag`）は、実装計画 3 章のとおり、必要になった時点で行う |
-| PR 2: 適合の実行器の基盤 | データの読み込み、場面の実行、報告、`manifest` の照合、フックの置き場所（`src/next/internal/test/conformance/`）。`remove-test-artifacts.mjs` と `jest.config.ts` の除外を `next/internal/test` に広げる（5.0）。実行器は、自前の境界のインターフェイス（5.0）だけに依存し、中核の型に依存しない。実行器の単体試験 | 5.1・5.2・5.8、IP 5 の1 | 実装計画 4.2 の順（実行器 → 中核）を保つ。各ケースの実行は、メモリ（PR 8）・DynamoDB（PR 9〜11）で有効にする |
-| PR 3: 中核（値の型） | 集約 ID、イベント封筒、スナップショット封筒、整数・時刻の型 | T-1〜T-5、T-9〜T-13 | `index.ts` から公開しない |
-| PR 4: 中核（payload とエラー） | `PayloadSerializer`、`EventStoreError`（5分類）と構築関数 | T-6〜T-8、E-1〜E-3 | |
-| PR 5: 中核（操作） | `EventStore` の型と、書き込み・読み取りの入口の検査 | T-2・T-10 と W-3〜W-9 の入口の検査、R-1〜R-6 | 保存先の照合は各保存先の PR |
-| PR 6: 中核（設定） | `SnapshotRetention`、`RetentionFailure`、入力の型と検査 | S-1・S-4（型） | |
-| PR 7: メモリの実装 | 新しいメモリ実装（`MemoryStorage`、排他制御、保持処理）と、その単体試験 | MEM-1〜MEM-13、R-8 | |
-| PR 8: メモリの実行器のフック | 実行器のメモリ用のフック（保持の決定的実行、内部履歴、障害の差し込み）。メモリの全ケースを有効にして通す。現行の `memory-event-store.test.ts` に代わる試験 | MEM の適合の事例、IP 5 の1（メモリ） | |
-| PR 9: DynamoDB の基盤 | 3テーブルの作成（試験側）、DynamoDB Local への移行（6章）、設定項目（DY-8）、配置照合（`layout.json`） | DY-2・DY-3・DY-8・DY-16〜DY-19、P-19・P-40、IP 5 の2 | |
-| PR 10: DynamoDB の書き込み・読み取りと失敗の分類 | 書き込み、読み取り、D-5・D-6・D-7、`item-shapes.json` の照合 | D-4〜D-7、DY-9〜DY-11、W-3〜W-9、R-1〜R-8、P-25 | |
-| PR 11: DynamoDB の保持と障害の差し込み | 保持処理（削除方式・TTL 方式）、実行器の SDK ミドルウェアと障害の差し込み | D-3・D-9、P-18・P-24、S-2〜S-4、IP 5 の1（DynamoDB） | |
-| PR 12: 移行 | `index.ts` を `src/next/` に向け替える。`examples` と `packages/tests` を新 API に移す（LocalStack から DynamoDB Local へ） | IP 5 の3 | 旧実装はまだ消さない（公開はしない） |
-| PR 13: 旧実装の削除 | 旧 API・旧実装（`shard-*`、`default-serializer`、旧 `dynamodb-*`、旧 `memory-*`、Spanner 一式、LocalStack の試験と依存）を消し、`src/next/` を `src/` へ移す | 削除の時点 | `package-tests` と `examples` が新 API で通る |
-| PR 14: 文書 | README（英語・日本語）、スキーマの文書、移行ガイドを新契約に合わせる（IP 5 の5・6）。8章の手順書 | IP-D8 | |
-| 公開 | オーナーの承認後に、手動で 5.0.0 を出す（実装計画 3 章） | IP 5 | |
+| PR 1: Preparation | Set the version in `packages/library/package.json` to `5.0.0-snapshot.0` (publishing the Snapshot then becomes `5.0.0-snapshot.<run>.<attempt>` through `replace(/-snapshot\.\d+$/, "")` in `snapshot.yml`). Remove unused dependencies (`aws-sdk`, `moment`, `winston`, `@types/winston`) and update `pnpm-lock.yaml` | None (IP-D1, IP 4.2) | Does not change code behavior. The version-bump workflow (`bump-version.yml`) is started only manually (`workflow_dispatch`), and it has been confirmed that `level` includes `major`. Maintenance of 4.x (maintenance branch, CI targets, version-bump handling, `--tag`) is done when it becomes necessary, as in implementation plan Chapter 3 |
+| PR 2: Foundation of the conformance runner | Loading data, running scenarios, reporting, `manifest` verification, the location of hooks (`src/next/internal/test/conformance/`). Widen the exclusions in `remove-test-artifacts.mjs` and `jest.config.ts` to `next/internal/test` (5.0). The runner depends only on its own boundary interface (5.0) and not on the core types. Unit tests for the runner | 5.1, 5.2, 5.8, IP 5 item 1 | Keep the order of implementation plan 4.2 (runner → core). Running each case is enabled in Memory (PR 8) and DynamoDB (PR 9 to 11) |
+| PR 3: Core (value types) | Aggregate ID, event envelope, snapshot envelope, integer and time types | T-1 to T-5, T-9 to T-13 | Not exposed from `index.ts` |
+| PR 4: Core (payload and errors) | `PayloadSerializer`, `EventStoreError` (5 classifications) and construction functions | T-6 to T-8, E-1 to E-3 | |
+| PR 5: Core (operations) | The `EventStore` type and the entry-point checks for writes and reads | Entry-point checks for T-2, T-10 and W-3 to W-9, R-1 to R-6 | Checks against the storage belong to each storage's PR |
+| PR 6: Core (configuration) | `SnapshotRetention`, `RetentionFailure`, input types and validation | S-1, S-4 (types) | |
+| PR 7: Memory implementation | The new Memory implementation (`MemoryStorage`, mutual exclusion, retention processing) and its unit tests | MEM-1 to MEM-13, R-8 | |
+| PR 8: Runner hooks for Memory | The runner's hooks for Memory (deterministic run of retention, internal history, fault injection). Enable and pass all Memory cases. Tests replacing the current `memory-event-store.test.ts` | MEM conformance cases, IP 5 item 1 (Memory) | |
+| PR 9: DynamoDB foundation | Creating the three tables (test side), the move to DynamoDB Local (Chapter 6), configuration items (DY-8), layout verification (`layout.json`) | DY-2, DY-3, DY-8, DY-16 to DY-19, P-19, P-40, IP 5 item 2 | |
+| PR 10: DynamoDB writes, reads, and failure classification | Writes, reads, D-5, D-6, D-7, verification of `item-shapes.json` | D-4 to D-7, DY-9 to DY-11, W-3 to W-9, R-1 to R-8, P-25 | |
+| PR 11: DynamoDB retention and fault injection | Retention processing (delete mode, TTL mode), the runner's SDK middleware and fault injection | D-3, D-9, P-18, P-24, S-2 to S-4, IP 5 item 1 (DynamoDB) | |
+| PR 12: Migration | Repoint `index.ts` to `src/next/`. Move `examples` and `packages/tests` to the new API (from LocalStack to DynamoDB Local) | IP 5 item 3 | The old implementation is not yet removed (not published) |
+| PR 13: Removing the old implementation | Remove the old API and old implementation (`shard-*`, `default-serializer`, old `dynamodb-*`, old `memory-*`, the whole Spanner set, LocalStack tests and dependencies) and move `src/next/` to `src/` | Removal point | `package-tests` and `examples` pass with the new API |
+| PR 14: Documentation | Align the README (English and Japanese), schema documents, and migration guide with the new contract (IP 5 items 5 and 6). The procedure document in Chapter 8 | IP-D8 | |
+| Publication | After the owner's approval, publish 5.0.0 manually (implementation plan Chapter 3) | IP 5 | |
 
-- PR 13 で Spanner のコードを外すと、`@google-cloud/spanner` の peer 依存・devDependencies も外れる。段階5で出し直すときに戻す。
+- When the Spanner code is removed in PR 13, the `@google-cloud/spanner` peer dependency and devDependencies are removed as well. They are restored when it is shipped again in stage 5.
 
-## 8. 移行の案内
+## 8. Migration Guidance
 
-### 8.1 対象
+### 8.1 Target
 
-現行メジャー（4.x）の利用者向けの案内。実装計画 7 章（IP-D8）に従い、js の旧配置の DynamoDB には**移行ツールを提供せず、手順書だけを用意する**。手順書は PR 14 で作る。今回は骨子だけ書く。
+Guidance for users of the current major (4.x). Following Chapter 7 of the implementation plan (IP-D8), **no migration tool is provided for js's old-layout DynamoDB, and only a procedure document is prepared**. The procedure document is created in PR 14. This time only the outline is written.
 
-### 8.2 旧配置の特徴
+### 8.2 Characteristics of the Old Layout
 
-- メタデータを埋め込んだペイロード（現行の `default-serializer.ts` は、イベント全体を直列化する）。
-- 利用者の `asString()` に頼る aid。
-- ミリ秒の時刻。
-- 論理シャード付きのキー（`pkey`・`skey`）。
-- 失われた精度や型の情報を、推測で補わない。
+- A payload with embedded metadata (the current `default-serializer.ts` serializes the whole event).
+- An aid that relies on the user's `asString()`.
+- Millisecond time.
+- Keys with logical shards (`pkey`, `skey`).
+- Precision and type information that was lost is not filled in by guessing.
 
-### 8.3 利用者向けの手順の骨子
+### 8.3 Outline of the Procedure for Users
 
-1. 旧版（4.x）のアプリケーションを止めるか、書き込みを止める時間を決める。
-2. 新しい3テーブル（journal・snapshot・head）と GSI を新しい名前で作る。旧テーブルは残す。
-3. 旧 API（4.x）で、集約ごとにイベントとスナップショットを読む。
-4. 利用者のコードで、旧イベントから `EventEnvelope`（`aggregateId`・`seqNr`・`occurredAt`・`manifest`・`payload`）を作る。`manifest` の付け方、`payload` の形（旧のメタデータ埋め込みを外す）は、利用者が決める。
-5. 新 API（5.x）で、`seqNr` の昇順に `persistEvent` で書く。スナップショットは `persistEventAndSnapshot` か、最後のイベントと一緒に書く。
-6. 件数・最後の `seqNr` を旧と新で照合する。
-7. 新版（5.x）に切り替える。旧テーブルは、確認後に利用者が削除する。
-- 新旧で同じライブラリを同時に使えない（同じパッケージ名の別メジャー）ので、旧 API で読むための 4.x と、新 API の 5.x を別のプロセスか、`npm:` の別名で入れる方法を案内する（実装時に動作を確かめる。未確認）。
+1. Stop the old (4.x) application, or decide on a period during which writes are stopped.
+2. Create the three new tables (journal, snapshot, head) and the GSI with new names. Keep the old tables.
+3. With the old API (4.x), read the events and snapshots per aggregate.
+4. In the user's code, build an `EventEnvelope` (`aggregateId`, `seqNr`, `occurredAt`, `manifest`, `payload`) from each old event. How to assign the `manifest` and the shape of the `payload` (removing the old embedded metadata) are decided by the user.
+5. With the new API (5.x), write with `persistEvent` in ascending order of `seqNr`. Write the snapshot with `persistEventAndSnapshot` or together with the last event.
+6. Reconcile the count and the last `seqNr` between old and new.
+7. Switch to the new version (5.x). After confirmation, the user deletes the old tables.
+- The old and new cannot use the same library at the same time (different majors of the same package name), so guidance is given on installing 4.x for reading with the old API and 5.x for the new API in separate processes or under different aliases with `npm:` (behavior to be confirmed at implementation; unverified).
 
-### 8.4 API の移行表
+### 8.4 API Migration Table
 
-2.10 の対応表を、利用者向けに書き直して載せる。`Aggregate` の `version` を使っていた利用者は、`seqNr` へ移す。`expectedVersion` は不要になる。`isCreated` は不要になる。
+Rewrite the mapping table in 2.10 for users and include it. Users who used the `version` of `Aggregate` move to `seqNr`. `expectedVersion` becomes unnecessary. `isCreated` becomes unnecessary.
 
-## 9. 判断が要る点
+## 9. Points Requiring Decisions
 
-オーナーが決めた点（2026-10-06）と、その理由を残す。保留は項目2だけである。設計の途中で決まった点（変更フィード、`occurredAt` の型、`deserialize` の `manifest`、実行器の置き場所、`fnv1a64`）は、本文で確定したので、この章から外した。
+This chapter keeps the points decided by the owner (2026-10-06) and their reasons. Only item 2 is pending. Points decided during the design (change feed, the type of `occurredAt`, the `manifest` of `deserialize`, the location of the runner, `fnv1a64`) were finalized in the body and removed from this chapter.
 
-### 項目1: 失敗の返し方（決定）
+### Item 1: How Failures Are Returned (Decided)
 
-**決定**: 書き込み・読み取り・生成のすべての操作で、失敗を `Result<T, EventStoreError>` の値として返す（選択肢 A）。
+**Decision**: For all write, read, and creation operations, return failures as a `Result<T, EventStoreError>` value (option A).
 
-| 選択肢 | 利点 | 欠点 |
+| Option | Advantages | Disadvantages |
 |:--|:--|:--|
-| A: 全操作を `Result` で返す（採用） | 失敗が型に出る。`type` で分類を網羅的に分岐できる（E-1）。現行の書き込みと揃う | 現行の読み取りの利用者は、例外から `Result` への書き換えが要る |
-| B: 全操作を例外で返す | JS の慣習に近い | 失敗が型に出ない。現行の書き込みの利用者が書き換え |
-| C: 書き込みは `Result`、読み取りと生成は例外 | 利用者の書き換えが最小 | 判別の形が2系統になる。「読み取りと生成の失敗も分類して返す」を弱める |
-| D: 書き込みと読み取りは `Result`、生成は例外 | 生成が簡潔 | 生成の失敗にも分類が要り、2系統になる |
+| A: Return `Result` from all operations (adopted) | Failures appear in the type. Classification can be branched exhaustively by `type` (E-1). Consistent with the current writes | Users of the current reads must rewrite from exceptions to `Result` |
+| B: Return all through exceptions | Closer to JS convention | Failures do not appear in the type. Users of the current writes must rewrite |
+| C: `Result` for writes, exceptions for reads and creation | Minimal rewriting for users | Two systems of discrimination. Weakens "classify and return failures of reads and creation as well" |
+| D: `Result` for writes and reads, exceptions for creation | Creation is concise | Creation failures also need classification, giving two systems |
 
-- 理由: 失敗の分類を型で判別でき（E-1）、現行の書き込みの形を保てる。5.0.0 は破壊的変更なので、読み取りの書き換えは許容できる（実装計画 5 章の「決めたこと（2026-10-06）」）。
+- Reason: failure classification can be discriminated by type (E-1), and the form of the current writes is kept. 5.0.0 is a breaking change, so rewriting reads is acceptable ("Decisions (2026-10-06)" in Chapter 5 of the implementation plan).
 
-### 項目2: Spanner を任意の依存にするエントリポイントの分け方（保留）
+### Item 2: How to Split the Entry Point So That Spanner Is an Optional Dependency (Pending)
 
-段階5で Spanner を出し直すまでに決めればよいので、今回は決めない。案だけを残す。
+This can be decided by the time Spanner is shipped again in stage 5, so it is not decided now. Only the options are kept.
 
-| 選択肢 | 利点 | 欠点 |
+| Option | Advantages | Disadvantages |
 |:--|:--|:--|
-| A: サブパスのエクスポート（`event-store-adapter-js/spanner`） | 利用者は Spanner を使うときだけ import する。1パッケージのまま | `exports` の設定が要る。古い `moduleResolution` の利用者が型を見つけにくい。`typesVersions` の併用が要る可能性 |
-| B: 別パッケージ（`event-store-adapter-js-spanner`） | 依存が完全に分かれる | モノレポのパッケージとリリースの仕組みが増える |
-| C: 現行のまま、メインの入口から出し、peer を任意にする | 変更が最小 | Spanner を入れていない利用者の型検査が壊れる（`skipLibCheck` に依存する） |
+| A: Subpath export (`event-store-adapter-js/spanner`) | Users import Spanner only when they use it. Stays one package | `exports` configuration is required. Users with an old `moduleResolution` have trouble finding the types. May need `typesVersions` as well |
+| B: Separate package (`event-store-adapter-js-spanner`) | Dependencies are completely separate | Adds monorepo packages and release machinery |
+| C: Keep as is, expose from the main entry point, and make the peer optional | Minimal change | Breaks type checking for users who have not installed Spanner (depends on `skipLibCheck`) |
 
-- 推奨: A（保留中の暫定の見立て）。最初のメジャー（5.0.0）には Spanner のコードを出さないので、影響しない。中核の型は Spanner を参照しない。
+- Recommendation: A (a provisional view while pending). The first major (5.0.0) does not ship Spanner code, so this has no effect. The core types do not reference Spanner.
 
-### 項目3: メモリと複数スレッド（MEM-4）（決定）
+### Item 3: Memory and Multiple Threads (MEM-4) (Decided)
 
-**決定**: ハブの memory.md の MEM-4 に、オーナーが js の注記を足した（2026-10-06）。JavaScript ではオブジェクトをスレッドをまたいで共有できないので、js の保存先は1つのスレッドの中だけで共有される。同じスレッドの中で非同期の呼び出しが重なっても、確定前の途中状態を読ませないことで MEM-4 を満たす。スレッドをまたいで共有できる保存先は作らない。
+**Decision**: The owner added a js note to MEM-4 of the hub's memory.md (2026-10-06). In JavaScript, objects cannot be shared across threads, so a js storage is shared only within a single thread. MEM-4 is satisfied by not exposing intermediate states before commit even when asynchronous calls overlap within the same thread. A storage that can be shared across threads is not created.
 
-| 選択肢 | 利点 | 欠点 |
+| Option | Advantages | Disadvantages |
 |:--|:--|:--|
-| A: 同じスレッド内の非同期の重なりを保護する（採用。注記に沿う） | 実装が単純。JS の通常の利用に合う | スレッドをまたぐ共有はない |
-| B: `SharedArrayBuffer` と `Atomics` で、スレッドをまたいで共有する | スレッドをまたぐ共有ができる | 記録の表現と領域の管理が複雑。注記が作らないと定めている |
+| A: Protect against asynchronous overlap within the same thread (adopted; follows the note) | Simple implementation. Fits ordinary JS use | No sharing across threads |
+| B: Share across threads with `SharedArrayBuffer` and `Atomics` | Sharing across threads is possible | Complicated record representation and memory management. The note states that it is not created |
 
-- 理由: 仕様の注記が A を定めている。「同じスレッドだけと読み替える」のではなく、注記に沿って満たす。
+- Reason: the note in the specification defines A. It is satisfied by following the note, not by reinterpreting it as "same thread only".
 
-## 10. 未解決の疑問
+## 10. Open Questions
 
-仕様の読み方が分からない点、仕様と食い違うように見える点。仕様を勝手に解釈して埋めない。指揮役の回答（2026-10-06）と、2026-10-06 の仕様の決定（P-42〜P-44。P-45 は rs の移行の手順なので関係しない）で解けた疑問は、本文へ移した。残るのは、実装のときに確かめる次の 3 つである。
+Points where it is unclear how to read the specification, and points that appear to conflict with it. The specification is not interpreted arbitrarily to fill them in. Questions resolved by the lead's answers (2026-10-06) and by the specification decisions of 2026-10-06 (P-42 to P-44; P-45 is the procedure for the migration of rs and is not relevant) were moved into the body. The following three remain, to be confirmed at implementation.
 
-1. **ミドルウェアの差し込みの段階**: `build` 段階で `maxAttempts: 1` と `replace-request`・`replace-response` を実現できるかは、SDK の版で挙動が変わりうる。実装の最初の PR で、小さな試作で確かめる（5.4）。
-2. **DynamoDB Local 3.3.1 の挙動**: ハブの `tools/spikes/dynamodb-emulators/README.md` に、`ReturnValuesOnConditionCheckFailure = ALL_OLD`、Streams の NEW_IMAGE、強整合の `BatchGetItem`、疎な GSI、TTL の有効化の確認の記録がある。期限切れの削除と `UnprocessedKeys` の発生は調べていない記録である。
-3. **範囲の端の `Date` と T-13**: ミリ秒の `Date` を、ナノ秒の符号付き64bitの範囲で検査する（2.3）。範囲の端（約 1677 年・2262 年）の適合データ（`occurred-at-min`・`occurred-at-max`・`below-min`・`above-max`）で、ミリ秒の丸めの向きにより判定が変わる値があるか。実行器で値を変換して確かめる（未確認）。
+1. **Stage at which middleware is injected**: whether `maxAttempts: 1` and `replace-request` / `replace-response` can be realized at the `build` stage may change behavior depending on the SDK version. This is confirmed by a small prototype in the first implementation PR (5.4).
+2. **Behavior of DynamoDB Local 3.3.1**: the hub's `tools/spikes/dynamodb-emulators/README.md` contains records confirming `ReturnValuesOnConditionCheckFailure = ALL_OLD`, Streams NEW_IMAGE, strongly consistent `BatchGetItem`, a sparse GSI, and enabling TTL. Expiry deletion and the occurrence of `UnprocessedKeys` are recorded as not investigated.
+3. **`Date` at the edges of the range and T-13**: a millisecond `Date` is checked against the nanosecond signed 64-bit range (2.3). Are there values at the edges of the range (about the years 1677 and 2262) in the conformance data (`occurred-at-min`, `occurred-at-max`, `below-min`, `above-max`) whose result changes depending on the direction of millisecond rounding? Confirm by converting the values in the runner (unverified).
 
-解けた疑問:
+Resolved questions:
 
-- 適合データの精度の印の件数: 指揮役のレビューの件数（ミリ秒用の4件）が誤りで、実データの件数（ナノ秒・ミリ秒とも8件）が正しい（5.1）。
-- 公開 API の段階的な変更: PR 12 で `index.ts` を一度に切り替える案は、実装計画 3 章と矛盾しない（指揮役の回答、2026-10-06。7.2・7.3）。
-- 必須要素の欠落（T-2・T-10）の分類: 契約違反にする（共通契約 T-2・T-10、P-42）。`EventEnvelope.create`・`SnapshotEnvelope.create` が実行時に検査する（2.4）。
+- Number of precision-marker cases in the conformance data: the count in the lead's review (4 for milliseconds) was wrong, and the count in the actual data (8 for both nanoseconds and milliseconds) is correct (5.1).
+- Gradual change of the public API: the proposal to switch `index.ts` all at once in PR 12 does not conflict with Chapter 3 of the implementation plan (lead's answer, 2026-10-06; 7.2 and 7.3).
+- Classification of missing required elements (T-2, T-10): treated as a contract violation (common contract T-2, T-10, P-42). `EventEnvelope.create` and `SnapshotEnvelope.create` check at runtime (2.4).
