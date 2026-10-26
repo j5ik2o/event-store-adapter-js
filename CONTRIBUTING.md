@@ -31,7 +31,7 @@ pnpm install --frozen-lockfile
 ```
 
 - Docker is required for the DynamoDB and Spanner tests and for the DynamoDB examples (see [packages/library/README.md](packages/library/README.md)).
-- Python 3 is required for the documentation and conformance data checks.
+- Python 3 is required for the documentation and conformance data checks. `tools/user-docs/check.py` requires Python 3.10 or later.
 
 ## Checks
 

@@ -33,7 +33,7 @@ pnpm install --frozen-lockfile
 ```
 
 - DynamoDB と Spanner の試験、DynamoDB のサンプルには Docker が必要です ([packages/library/README.ja.md](packages/library/README.ja.md) を参照)。
-- 文書と適合データの検査には Python 3 が必要です。
+- 文書と適合データの検査には Python 3 が必要です。 `tools/user-docs/check.py` は Python 3.10 以上が必要です。
 
 ## 検査
 
