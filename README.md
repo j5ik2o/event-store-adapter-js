@@ -22,6 +22,8 @@ pnpm run test:packages
 pnpm run test:examples
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, checks and releases.
+
 Library documentation lives in [packages/library/README.md](packages/library/README.md).
 
 The public entry point provides Memory and DynamoDB factories and four envelope-based operations. See the [migration guide](packages/library/docs/MIGRATION_GUIDE.md) for rewriting existing records into the three-table layout.
