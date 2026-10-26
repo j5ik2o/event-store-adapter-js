@@ -61,6 +61,6 @@ pnpm install --frozen-lockfile
 - コミットの件名は Conventional Commits の形 (`type(scope): description`) で書きます。次の版の水準とリリースノートはこれから導かれます。
 - 版上げは、手動で起動する Bump-Version ワークフローが行います。プルリクエストで `packages/library/package.json` の版を変えないでください。
 - タグ `vX.Y.Z` を push すると Release ワークフローが起動し、ライブラリを npm に公開します。
-- `main` で CI が成功すると、Snapshot ワークフローが `snapshot` の dist-tag で snapshot 版を公開します。
+- Snapshot ワークフローは、`main` への push または定期実行の CI が成功し、公開対象がその CI と同じコミットで、公開直前も `main` の先頭である場合だけ、`snapshot` の dist-tag で snapshot 版を公開します。
 
 English version: [CONTRIBUTING.md](CONTRIBUTING.md)

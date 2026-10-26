@@ -59,6 +59,6 @@ When a change touches only documentation files (`*.md`, `docs/*`, `README*` and 
 - Write commit subjects in the Conventional Commits form (`type(scope): description`). The next version level and the release notes are derived from them.
 - Versions are bumped by the manually started Bump-Version workflow. Do not change the version in `packages/library/package.json` in a pull request.
 - Pushing a tag `vX.Y.Z` starts the Release workflow, which publishes the library to npm.
-- When CI succeeds on `main`, the Snapshot workflow publishes a snapshot version with the `snapshot` dist-tag.
+- The Snapshot workflow publishes with the `snapshot` dist-tag only after successful CI triggered by a push to `main` or a schedule, for the same commit while it is still the tip of `main` immediately before publishing.
 
 Japanese version: [CONTRIBUTING.ja.md](CONTRIBUTING.ja.md)
