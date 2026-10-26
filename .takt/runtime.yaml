@@ -27,17 +27,17 @@ provider:
   defaults: { profile: t2 }
   profiles:
     # T0: 実装。試験の作成と実装
-    t0-test-code:       { provider: claude, model: claude-sonnet-5-5 }
-    t0-production-code: { provider: claude, model: claude-sonnet-5-5 }
+    t0-test-code:       { provider: claude-headless, model: claude-sonnet-5-5 }
+    t0-production-code: { provider: claude-headless, model: claude-sonnet-5-5 }
     # T1: 修正と、構造化出力に対応した provider が要る段(selector と companion で使う)
-    t1: { provider: claude, model: claude-sonnet-5-5 }
+    t1: { provider: claude-headless, model: claude-sonnet-5-5 }
     # T2: 既定。下の割り当てに当たらない段と、試験の作成・再実装・修正の ladder の最後の上げ先
-    t2: { provider: claude, model: claude-opus-5-5 }
+    t2: { provider: claude-headless, model: claude-opus-5-5 }
     # T3: 設計(計画・再計画)と、レビューの裁定・最終判定
-    t3-plan:  { provider: claude, model: claude-opus-5-5 }
-    t3-judge: { provider: claude, model: claude-opus-5-5 }
+    t3-plan:  { provider: claude-headless, model: claude-opus-5-5 }
+    t3-judge: { provider: claude-headless, model: claude-opus-5-5 }
     # レビュー役: 並行に動くレビュー役に 1 つずつ割り当てる
-    review-sonnet:   { provider: claude,   model: claude-sonnet-5-5 }
+    review-sonnet:   { provider: claude-headless,   model: claude-sonnet-5-5 }
     review-deepseek: { provider: opencode, model: opencode-go/deepseek-v4.1-flash }
     review-glm:      { provider: opencode, model: opencode-go/glm-5.3-flash }
   targets:
