@@ -5,8 +5,9 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 const { withDynamoDB } = require("./dynamodb.cjs");
+const { withBigtable } = require("./bigtable.cjs");
 
-test("packed package type-checks and executes from an independent external project", { timeout: 240000 }, async () => {
+test("packed package type-checks and executes from an independent external project", { timeout: 540000 }, async () => {
   const libraryDirectory = path.resolve(__dirname, "../../library");
   const workspaceDirectory = fs.realpathSync(path.resolve(libraryDirectory, "../.."));
   const directory = fs.mkdtempSync(path.join(fs.realpathSync("/tmp"), "eswa-public-"));
@@ -28,6 +29,19 @@ test("packed package type-checks and executes from an independent external proje
     assert.ok(files.includes("package/dist/spanner.d.ts"));
     assert.ok(files.includes("package/dist/sqlite.js"));
     assert.ok(files.includes("package/dist/sqlite.d.ts"));
+    assert.ok(files.includes("package/dist/bigtable.js"));
+    assert.ok(files.includes("package/dist/bigtable.d.ts"));
+    assert.ok(files.includes("package/docs/BIGTABLE_DATABASE_SCHEMA.md"));
+    assert.ok(files.includes("package/docs/BIGTABLE_DATABASE_SCHEMA.ja.md"));
+    for (const [file, patterns] of [
+      ["package/docs/BIGTABLE_DATABASE_SCHEMA.md", [/event-store-adapter-js\/bigtable/, /BigtableEventStore\.initialize/, /BigtableEventStore\.create/]],
+      ["package/docs/BIGTABLE_DATABASE_SCHEMA.ja.md", [/event-store-adapter-js\/bigtable/, /BigtableEventStore\.initialize/, /BigtableEventStore\.create/]],
+      ["package/README.md", [/event-store-adapter-js\/bigtable/]],
+      ["package/README.ja.md", [/event-store-adapter-js\/bigtable/]],
+    ]) {
+      const document = run("tar", ["-xOzf", archive, file], directory);
+      for (const pattern of patterns) assert.match(document, pattern);
+    }
     assert.ok(files.includes("package/docs/SQLITE_DATABASE_SCHEMA.md"));
     assert.ok(files.includes("package/docs/SQLITE_DATABASE_SCHEMA.ja.md"));
     for (const [file, patterns] of [
@@ -63,8 +77,9 @@ test("packed package type-checks and executes from an independent external proje
     }
     const nodeVersion = require("@types/node/package.json").version;
     const sdkVersion = require("@aws-sdk/client-dynamodb/package.json").version;
+    const bigtableVersion = require("@google-cloud/bigtable/package.json").version;
     fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({
-      private: true, dependencies: { "event-store-adapter-js": `file:${archive}`, "@types/node": nodeVersion, "@aws-sdk/client-dynamodb": sdkVersion },
+      private: true, dependencies: { "event-store-adapter-js": `file:${archive}`, "@types/node": nodeVersion, "@aws-sdk/client-dynamodb": sdkVersion, "@google-cloud/bigtable": bigtableVersion },
     }));
     fs.copyFileSync(path.resolve(__dirname, "../fixtures/consume.cjs"), path.join(directory, "consume.cjs"));
     fs.copyFileSync(path.resolve(__dirname, "../fixtures/consume.ts"), path.join(directory, "consume.ts"));
@@ -76,7 +91,9 @@ test("packed package type-checks and executes from an independent external proje
     run("pnpm", ["install", "--ignore-scripts", "--store-dir", store, "--state-dir", path.join(directory, "state")], directory);
     run(process.execPath, [require.resolve("typescript/bin/tsc"), "--project", path.join(directory, "tsconfig.json")], directory);
     await withDynamoDB(async (layout) => {
-      run(process.execPath, [path.join(directory, "consume.cjs")], directory, { ...process.env, ESWA_DYNAMODB_LAYOUT: JSON.stringify(layout) });
+      await withBigtable(async (bigtableLayout) => {
+        run(process.execPath, [path.join(directory, "consume.cjs")], directory, { ...process.env, ESWA_DYNAMODB_LAYOUT: JSON.stringify(layout), ESWA_BIGTABLE_LAYOUT: JSON.stringify(bigtableLayout) });
+      });
     });
     const output = process.env.PUBLIC_PACKAGE_REPORT_DIR;
     if (output) {

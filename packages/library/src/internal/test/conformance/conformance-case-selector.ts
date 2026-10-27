@@ -1,7 +1,4 @@
-import {
-  type ConformanceBackend,
-  targetsOnlyUnprovidedBackends,
-} from "./conformance-backend";
+import type { ConformanceBackend } from "./conformance-backend";
 import type { ConformanceCase } from "./conformance-case";
 
 const targetsBackend = (
@@ -15,10 +12,7 @@ const targetsBackend = (
     return backend === "dynamodb";
   }
   const backends = (c.body as { readonly backends?: unknown }).backends;
-  return (
-    Array.isArray(backends) &&
-    (backends.includes(backend) || targetsOnlyUnprovidedBackends(backends))
-  );
+  return Array.isArray(backends) && backends.includes(backend);
 };
 
 export function selectConformanceCases(

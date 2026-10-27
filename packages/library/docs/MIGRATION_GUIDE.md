@@ -193,3 +193,14 @@ Earlier versions of this library had no SQLite storage, so there is no SQLite da
 4. Open the file with `SqliteEventStore.create({ path })` and use the four operations. Call `close()` when the application stops.
 
 To move records out of another storage into SQLite, write them one aggregate at a time through the public API of the SQLite store, in the same way as the DynamoDB rewrite above.
+
+### Bigtable: new installation
+
+Earlier versions of this library had no Bigtable storage, so there is no Bigtable data to migrate and no migration tool. Start a Bigtable store as a new installation:
+
+1. Install the Bigtable SDK yourself (`@google-cloud/bigtable` `^7.5.0`, an optional peer dependency) and import the entry point `event-store-adapter-js/bigtable`. The main entry point does not load the Bigtable SDK.
+2. Create the journal table (column families `event`, `history`, `config`) and the head table (column families `head`, `snapshot`, `config`) in your instance. Every data column family keeps exactly one version and has no age-based garbage collection rule; see [BIGTABLE_DATABASE_SCHEMA.md](BIGTABLE_DATABASE_SCHEMA.md).
+3. Call `BigtableEventStore.initialize(input)` once. It writes the same configuration row to both tables.
+4. Open the tables with `BigtableEventStore.create(input)` and use the four operations. The caller closes the `Bigtable` client.
+
+To move records out of another storage into Bigtable, write them one aggregate at a time through the public API of the Bigtable store, in the same way as the DynamoDB rewrite above.

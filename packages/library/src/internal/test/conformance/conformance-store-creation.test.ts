@@ -184,3 +184,36 @@ describe("storeCreationOf lock_wait_milliseconds", () => {
     ).toMatchObject({ keep_snapshot_count: 2, layout_version: 1 });
   });
 });
+
+describe("storeCreationOf for bigtable", () => {
+  test("reads store.envelope_limit_bytes", () => {
+    expect(
+      storeCreationOf(find("bigtable-envelope-limit-above-maximum")).config,
+    ).toMatchObject({ envelopeLimitBytes: 8388609 });
+  });
+
+  test("omits envelopeLimitBytes when the case does not set it", () => {
+    expect(
+      "envelopeLimitBytes" in
+        storeCreationOf(find("bigtable-ttl-unsupported")).config,
+    ).toBe(false);
+  });
+
+  test("passes the journal and head seed configuration through", () => {
+    const creation = storeCreationOf(
+      find("bigtable-seeded-envelope-limit-mismatch"),
+    );
+    expect(creation.seedConfiguration).toMatchObject({
+      journal: { envelope_limit_bytes: 2097152 },
+      head: { store_id: expect.any(String) },
+    });
+  });
+
+  test("still rejects a store setting nobody interprets", () => {
+    const c: ConformanceCase = {
+      ...find("bigtable-ttl-unsupported"),
+      body: { id: "x", store: { unknown_setting: 1 } },
+    };
+    expect(() => storeCreationOf(c)).toThrow("unsupported store setting");
+  });
+});

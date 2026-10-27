@@ -7,4 +7,5 @@ export type ConformanceStoreConfig = {
   ttlGraceDays?: number;
   changeFeed?: boolean;
   lockWaitMilliseconds?: number;
+  envelopeLimitBytes?: number;
 };

@@ -199,12 +199,38 @@ async function consumeSqlite() {
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 }
 
-module.exports = { consumeMemory, consumeDynamoDB, consumeSqlite };
+async function consumeBigtable(layout = JSON.parse(process.env.ESWA_BIGTABLE_LAYOUT)) {
+  const { Bigtable } = require("@google-cloud/bigtable");
+  const entry = require("event-store-adapter-js/bigtable");
+  assert.deepEqual(Object.keys(entry), ["BigtableEventStore"]);
+  const { BigtableEventStore } = entry;
+  // 実サービスへ接続しない。エミュレーターの接続先を明示し、指標も送らない。
+  const bigtable = new Bigtable({ projectId: layout.projectId, apiEndpoint: layout.apiEndpoint, metricsEnabled: false });
+  try {
+    const input = { bigtable, instanceId: layout.instanceId, tables: layout.tables, ...serializers() };
+    const ttl = await BigtableEventStore.initialize({ ...input, retention: { count: 1, mode: { type: "ttl", graceSeconds: 60 } } });
+    assert.equal(ttl.type, "err");
+    assert.equal(ttl.error.type, "configuration-error");
+    const missing = await BigtableEventStore.create(input);
+    assert.equal(missing.type, "err");
+    assert.equal(missing.error.type, "configuration-error");
+    unwrap(await BigtableEventStore.initialize(input));
+    const store = unwrap(await BigtableEventStore.create(input));
+    const id = await consumeFourOperations(store);
+    const reopened = unwrap(await BigtableEventStore.create(input));
+    const read = unwrap(await reopened.getLatestSnapshotById(id));
+    assert.equal(read.headSeqNr, 2);
+    assert.equal(read.snapshot.aggregate.plus(1).value, 6);
+  } finally { bigtable.close(); }
+}
+
+module.exports = { consumeMemory, consumeDynamoDB, consumeSqlite, consumeBigtable };
 if (require.main === module) {
   (async () => {
     await consumeMemory();
     await consumeDynamoDB(JSON.parse(process.env.ESWA_DYNAMODB_LAYOUT));
     await consumeSqlite();
+    await consumeBigtable();
     console.log("External package: Unicode IDs, ID access, creation Result/cause, byte copy classification and isolation, four operations, domain serializers, Result/cause, Memory sharing and isolation passed");
   })().catch((error) => { console.error(error); process.exitCode = 1; });
 }

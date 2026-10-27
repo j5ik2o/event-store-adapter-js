@@ -214,3 +214,14 @@ describe("EventStoreError", () => {
     expect(error.message).toContain("0");
   });
 });
+
+describe("contract violation for Bigtable", () => {
+  test("accepts the BT-16 rule for an envelope that exceeds the limit", () => {
+    const error = EventStoreError.contractViolation({
+      rule: "BT-16",
+      seqNr: 2,
+    });
+    expect(error).toMatchObject({ type: "contract-violation", rule: "BT-16" });
+    expect(error.message).toContain("BT-16");
+  });
+});

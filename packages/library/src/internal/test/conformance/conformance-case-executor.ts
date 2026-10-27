@@ -172,16 +172,53 @@ export async function executeConformanceCase(
                     .padStart(16, "0")}`,
                 };
               })()
-            : body.operation === "validateSeqNr"
-              ? binding.validateSeqNrValue(
-                  integerOf(input.seq_nr),
-                  textOf(input.context) as "event" | "value",
-                )
-              : (() => {
-                  throw new Error(
-                    `unsupported value operation ${String(body.operation)}`,
+            : body.operation === "encodeBigtableEventEnvelope"
+              ? (() => {
+                  assert.ok(
+                    binding.encodeBigtableEventEnvelope,
+                    "encodeBigtableEventEnvelope must be connected to the envelope codec",
                   );
-                })();
+                  return binding.encodeBigtableEventEnvelope({
+                    aid: textOf(input.aid),
+                    seqNr: Number(integerOf(input.seq_nr)),
+                    occurredAtNs: BigInt(textOf(input.occurred_at_ns)),
+                    manifest: textOf(input.manifest),
+                    payloadHex: textOf(input.payload_hex),
+                  });
+                })()
+              : body.operation === "encodeBigtableSnapshotEnvelope"
+                ? (() => {
+                    assert.ok(
+                      binding.encodeBigtableSnapshotEnvelope,
+                      "encodeBigtableSnapshotEnvelope must be connected to the envelope codec",
+                    );
+                    return binding.encodeBigtableSnapshotEnvelope({
+                      seqNr: Number(integerOf(input.seq_nr)),
+                      manifest: textOf(input.manifest),
+                      payloadHex: textOf(input.payload_hex),
+                    });
+                  })()
+                : body.operation === "decodeBigtableEnvelope"
+                  ? (() => {
+                      assert.ok(
+                        binding.decodeBigtableEnvelope,
+                        "decodeBigtableEnvelope must be connected to the envelope codec",
+                      );
+                      return binding.decodeBigtableEnvelope({
+                        kind: textOf(input.kind) as "event" | "snapshot",
+                        bytesHex: textOf(input.bytes_hex),
+                      });
+                    })()
+                  : body.operation === "validateSeqNr"
+                    ? binding.validateSeqNrValue(
+                        integerOf(input.seq_nr),
+                        textOf(input.context) as "event" | "value",
+                      )
+                    : (() => {
+                        throw new Error(
+                          `unsupported value operation ${String(body.operation)}`,
+                        );
+                      })();
       expected = expectation;
       actual = result;
       if (expectation.error !== undefined)

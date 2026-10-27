@@ -1,5 +1,7 @@
 import { AggregateId, EventEnvelope, EventStore, type EventStoreError, MemoryStorage, type PayloadSerializer, type Result, SnapshotEnvelope } from "event-store-adapter-js";
 import { SqliteEventStore, type SqliteEventStoreInput } from "event-store-adapter-js/sqlite";
+import type { Bigtable } from "@google-cloud/bigtable";
+import { BigtableEventStore, type BigtableEventStoreInput } from "event-store-adapter-js/bigtable";
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 
 class Amount {
@@ -51,4 +53,16 @@ export async function consumeSqlite(file: string): Promise<number> {
   } finally {
     unwrap(store.close());
   }
+}
+
+export async function consumeBigtable(bigtable: Bigtable, instanceId: string, tables: { journal: string; head: string }): Promise<number> {
+  const input: BigtableEventStoreInput<Amount, Amount> = { bigtable, instanceId, tables, eventSerializer: serializer, snapshotSerializer: serializer, retention: { count: 2 }, envelopeLimitBytes: 1048576 };
+  unwrap(await BigtableEventStore.initialize(input));
+  const store = unwrap(await BigtableEventStore.create(input));
+  const id = unwrap(AggregateId.of("Amount", "1"));
+  const event = unwrap(EventEnvelope.create({ aggregateId: id, seqNr: 1, occurredAt: new Date(), manifest: "Amount.v1", payload: new Amount(5) }));
+  const snapshot = unwrap(SnapshotEnvelope.create({ seqNr: 1, manifest: "Amount.v1", aggregate: new Amount(5) }));
+  unwrap(await store.persistEventAndSnapshot(event, snapshot));
+  const latest = unwrap(await store.getLatestSnapshotById(id));
+  return latest?.snapshot?.aggregate.plus(1).value ?? 0;
 }

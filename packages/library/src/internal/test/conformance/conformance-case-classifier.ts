@@ -1,7 +1,4 @@
-import {
-  type ConformanceBackend,
-  targetsOnlyUnprovidedBackends,
-} from "./conformance-backend";
+import type { ConformanceBackend } from "./conformance-backend";
 import type { ConformanceCase } from "./conformance-case";
 import type { ConformanceJsonValue } from "./conformance-json-value";
 import type { ConformanceStatus } from "./conformance-status";
@@ -63,25 +60,24 @@ export function classifyCase(
   const representation = isRecord(body.representation)
     ? body.representation
     : {};
-  if (targetsOnlyUnprovidedBackends(body.backends)) {
-    return {
-      status: "not-applicable",
-      reason: "この言語は Bigtable の保存先を提供しない",
-    };
-  }
   if (
     c.format === "values" &&
-    BIGTABLE_ENVELOPE_OPERATIONS.includes(String(body.operation))
+    BIGTABLE_ENVELOPE_OPERATIONS.includes(String(body.operation)) &&
+    backend !== "bigtable"
   ) {
     return {
       status: "not-applicable",
-      reason: "この言語は Bigtable の保存先を提供しない",
+      reason: "封筒の形式を持つ保存先（Bigtable）だけが実行する",
     };
   }
-  if (body.operation === "fnv1a64" && backend !== "spanner") {
+  if (
+    body.operation === "fnv1a64" &&
+    backend !== "spanner" &&
+    backend !== "bigtable"
+  ) {
     return {
       status: "not-applicable",
-      reason: "ハッシュを使う保存先（Spanner）だけが実行する",
+      reason: "ハッシュを使う保存先（Spanner・Bigtable）だけが実行する",
     };
   }
   if (representation.time_precision === "nanoseconds") {

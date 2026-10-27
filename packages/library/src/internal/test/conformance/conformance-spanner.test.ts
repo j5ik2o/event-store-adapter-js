@@ -128,11 +128,16 @@ describe("conformance (spanner)", () => {
     }
   });
 
-  test("bigtable cases stay not-applicable with a reason", () => {
-    const bigtableOnly = report.results.filter(
-      (r) => /^BT-/.test(r.rules[0] ?? "") && r.status !== "passed",
-    );
-    for (const r of bigtableOnly) {
+  test("bigtable-only scenarios are not selected for spanner, and the envelope operations are not-applicable with a reason", () => {
+    const bigtableOnly = data.cases
+      .filter((c) => c.source.startsWith("bigtable/"))
+      .map((c) => c.id);
+    for (const id of bigtableOnly) {
+      expect(report.results.find((r) => r.caseId === id)).toBeUndefined();
+    }
+    const envelope = report.results.filter((r) => r.rules[0] === "BT-D6a");
+    expect(envelope).toHaveLength(10);
+    for (const r of envelope) {
       expect(r.status).toBe("not-applicable");
       expect(r.reason).not.toBe("");
     }

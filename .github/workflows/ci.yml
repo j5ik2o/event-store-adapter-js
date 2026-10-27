@@ -134,7 +134,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     needs:
       - changes
       - lint
@@ -189,7 +189,7 @@ jobs:
           const dir = process.env.CONFORMANCE_REPORT_DIR;
           const statuses = ["passed", "failed", "not-applicable", "unverified", "not-representable"];
           const escape = (text) => String(text).replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
-          for (const backend of ["memory", "dynamodb", "sqlite", "spanner"]) {
+          for (const backend of ["memory", "dynamodb", "sqlite", "spanner", "bigtable"]) {
             const report = JSON.parse(
               fs.readFileSync(path.join(dir, `${backend}.json`), "utf8"),
             );

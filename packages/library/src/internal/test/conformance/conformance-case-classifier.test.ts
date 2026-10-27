@@ -43,11 +43,14 @@ describe("classifyCase", () => {
     });
   });
 
-  test("keeps fnv1a64 as unverified on spanner, which uses the hash", () => {
-    expect(
-      classifyCase(valuesCase({ operation: "fnv1a64" }), "spanner").status,
-    ).toBe("unverified");
-  });
+  test.each(["spanner", "bigtable"] as const)(
+    "keeps fnv1a64 as unverified on %s, which uses the hash",
+    (backend) => {
+      expect(
+        classifyCase(valuesCase({ operation: "fnv1a64" }), backend).status,
+      ).toBe("unverified");
+    },
+  );
 
   test("marks nanosecond precision as not-applicable with a reason", () => {
     const r = classifyCase(
@@ -113,19 +116,15 @@ const scenarioCase = (
   body: { id: "s", backends: [...backends], ...extra },
 });
 
-describe("classifyCase for the backends this language does not provide", () => {
-  const reason = "この言語は Bigtable の保存先を提供しない";
-
-  test.each(["memory", "dynamodb", "spanner", "sqlite"] as const)(
-    "marks a scenario targeting only bigtable as not-applicable on %s",
-    (backend) => {
-      const r = classifyCase(
+describe("classifyCase for Bigtable", () => {
+  test("no scenario is excluded because Bigtable is unprovided: a bigtable-only scenario is unverified on bigtable", () => {
+    expect(
+      classifyCase(
         scenarioCase(["bigtable"], { store: { retention_count: 1 } }),
-        backend,
-      );
-      expect(r).toEqual({ status: "not-applicable", reason });
-    },
-  );
+        "bigtable",
+      ).status,
+    ).toBe("unverified");
+  });
 
   test("does not treat a sqlite-only scenario as an unprovided backend any more", () => {
     expect(
@@ -136,39 +135,48 @@ describe("classifyCase for the backends this language does not provide", () => {
     ).toBe("unverified");
   });
 
-  test("does not treat a scenario targeting sqlite and bigtable as unprovided on sqlite", () => {
-    expect(
-      classifyCase(scenarioCase(["sqlite", "bigtable"]), "sqlite").status,
-    ).toBe("unverified");
-  });
-
   test("does not treat a spanner-only scenario as an unprovided backend any more", () => {
     expect(classifyCase(scenarioCase(["spanner"]), "spanner").status).toBe(
       "unverified",
     );
   });
 
-  test("keeps a scenario that also targets a provided backend unverified", () => {
-    const c = scenarioCase(["dynamodb", "bigtable"]);
-    expect(classifyCase(c, "dynamodb").status).toBe("unverified");
+  test.each([
+    "encodeBigtableEventEnvelope",
+    "encodeBigtableSnapshotEnvelope",
+    "decodeBigtableEnvelope",
+  ])("runs the %s operation on bigtable", (operation) => {
+    expect(classifyCase(valuesCase({ operation }), "bigtable").status).toBe(
+      "unverified",
+    );
   });
 
-  test("marks Bigtable envelope operations as not-applicable with a reason", () => {
-    for (const operation of [
-      "encodeBigtableEventEnvelope",
-      "encodeBigtableSnapshotEnvelope",
-      "decodeBigtableEnvelope",
-    ]) {
-      expect(classifyCase(valuesCase({ operation }), "memory")).toEqual({
-        status: "not-applicable",
-        reason: "この言語は Bigtable の保存先を提供しない",
-      });
-    }
-  });
+  test.each([
+    ["memory", "encodeBigtableEventEnvelope"],
+    ["dynamodb", "encodeBigtableSnapshotEnvelope"],
+    ["sqlite", "decodeBigtableEnvelope"],
+    ["spanner", "decodeBigtableEnvelope"],
+  ] as const)(
+    "marks the Bigtable envelope operation on %s as not-applicable with a reason that names the storage format",
+    (backend, operation) => {
+      const r = classifyCase(valuesCase({ operation }), backend);
+      expect(r.status).toBe("not-applicable");
+      expect(r.reason).not.toBe("");
+      expect(r.reason).not.toContain("提供しない");
+    },
+  );
 
   test("does not mark an unknown values operation as not-applicable", () => {
     expect(
       classifyCase(valuesCase({ operation: "encodeUnknown" }), "memory").status,
     ).toBe("unverified");
+  });
+
+  test("keeps the nanosecond representation as not-applicable on bigtable, as on the other backends", () => {
+    const r = classifyCase(
+      valuesCase({ representation: { time_precision: "nanoseconds" } }),
+      "bigtable",
+    );
+    expect(r.status).toBe("not-applicable");
   });
 });

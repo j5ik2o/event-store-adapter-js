@@ -46,8 +46,8 @@ const bindingFor = (
 
 describe("runConformance", () => {
   test.each([
-    ["memory", 34, 67, 101],
-    ["dynamodb", 34, 106, 140],
+    ["memory", 22, 67, 89],
+    ["dynamodb", 22, 106, 128],
   ] as const)(
     "reports %s with %i not-applicable and %i unverified of %i",
     async (backend, notApplicable, unverified, total) => {
@@ -127,14 +127,14 @@ describe("runConformance", () => {
     expect(report.counts).toEqual({
       passed: 67,
       failed: 0,
-      "not-applicable": 34,
+      "not-applicable": 22,
       unverified: 0,
       "not-representable": 0,
     });
     expect(
       report.results.filter((r) => r.status === "passed").map((r) => r.caseId),
     ).toEqual(report.requiredCaseIds);
-    expect(report.backendNotApplicable).toHaveLength(68);
+    expect(report.backendNotApplicable).toHaveLength(80);
     expect(report.backendNotApplicable.every((r) => r.reason.length > 0)).toBe(
       true,
     );
@@ -142,7 +142,7 @@ describe("runConformance", () => {
       report.notApplicableReasons
         .map((entry) => entry.count)
         .sort((a, b) => a - b),
-    ).toEqual([4, 8, 22]);
+    ).toEqual([4, 8, 10]);
   });
 
   test("passes seed items and faults to createStore before creation", async () => {
@@ -276,18 +276,13 @@ describe("runConformance", () => {
   });
 });
 
-test("reports a bigtable-only scenario with unknown settings as not-applicable, not failed", async () => {
+test("a bigtable-only scenario is not selected for memory, so it is neither failed nor excluded as unprovided", async () => {
   const synthetic = {
     id: "bigtable-only",
     rules: ["BT-7"],
     source: "bigtable/journal-write.json",
     format: "scenarios" as const,
-    body: {
-      id: "bigtable-only",
-      backends: ["bigtable"],
-      store: { lock_wait_milliseconds: 100 },
-      steps: [{ op: "holdWriteLock", arguments: {} }],
-    },
+    body: { id: "bigtable-only", backends: ["bigtable"], steps: [] },
   };
   const report = await runConformance({
     data: { ...data, cases: [synthetic as never] },
@@ -297,9 +292,7 @@ test("reports a bigtable-only scenario with unknown settings as not-applicable, 
     implementationCommit: null,
     binding: bindingFor("memory"),
   });
-  expect(report.results).toHaveLength(1);
-  expect(report.results[0]).toMatchObject({ status: "not-applicable" });
-  expect(report.results[0]?.reason).not.toBe("");
+  expect(report.results).toEqual([]);
   expect(report.counts.failed).toBe(0);
   expect(report.requiredCaseIds).toEqual([]);
 });
