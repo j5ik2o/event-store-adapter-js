@@ -18,6 +18,11 @@
       "types": "./dist/spanner.d.ts",
       "require": "./dist/spanner.js",
       "default": "./dist/spanner.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "require": "./dist/sqlite.js",
+      "default": "./dist/sqlite.js"
     }
   },
   "files": [

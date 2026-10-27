@@ -4,6 +4,7 @@
   "storages": [
     "memory",
     "dynamodb",
+    "sqlite",
     "spanner"
   ],
   "extra_documents": [

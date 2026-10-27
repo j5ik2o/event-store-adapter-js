@@ -6,4 +6,5 @@ export type ConformanceStoreConfig = {
   transactionRetryLimit?: number;
   ttlGraceDays?: number;
   changeFeed?: boolean;
+  lockWaitMilliseconds?: number;
 };

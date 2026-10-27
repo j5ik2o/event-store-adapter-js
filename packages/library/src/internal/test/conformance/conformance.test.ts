@@ -135,7 +135,7 @@ describe.each(BACKENDS)("conformance (%s)", (backend) => {
       "not-applicable": 10,
     });
     const unprovidedRules = Object.keys(report.ruleCounts).filter((rule) =>
-      /^(SQ|BT)-/.test(rule),
+      /^BT-/.test(rule),
     );
     expect(unprovidedRules.length).toBeGreaterThan(0);
     for (const rule of unprovidedRules) {
@@ -157,18 +157,18 @@ describe.each(BACKENDS)("conformance (%s)", (backend) => {
     expect(report.counts).toEqual({
       passed: backend === "memory" ? 67 : 106,
       failed: 0,
-      "not-applicable": 41,
+      "not-applicable": 34,
       unverified: 0,
       "not-representable": 0,
     });
     expect(report.backendNotApplicable).toHaveLength(
-      backend === "memory" ? 61 : 22,
+      backend === "memory" ? 68 : 29,
     );
     expect(
       report.notApplicableReasons
         .map((entry) => entry.count)
         .sort((a, b) => a - b),
-    ).toEqual([4, 8, 10, 19]);
+    ).toEqual([4, 8, 22]);
     expect(
       report.results
         .filter((r) => r.status === "not-applicable")

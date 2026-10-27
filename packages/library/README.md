@@ -90,6 +90,29 @@ const store = unwrap(opened);
 
 The caller owns the AWS client.
 
+### SQLite
+
+SQLite lives in a separate entry point, `event-store-adapter-js/sqlite`. It uses the `node:sqlite` module bundled with Node.js 24.15 or later (SQLite 3.51.3 or later), so there is no driver to install, and the main entry point `event-store-adapter-js` does not load `node:sqlite`.
+
+Initialize an empty file once with `SqliteEventStore.initialize`, then open it with `SqliteEventStore.create`. `create` never initializes a file; it verifies the layout and the configuration row (see [SQLITE_DATABASE_SCHEMA.md](docs/SQLITE_DATABASE_SCHEMA.md)), and a missing file is a `storage-error`.
+
+```typescript
+import { SqliteEventStore } from "event-store-adapter-js/sqlite";
+
+const input = {
+  path: "/var/lib/app/events.sqlite3",
+  retention: { count: 3 },
+  lockWaitMilliseconds: 5000,
+  onRetentionFailure: (failure) => console.error(failure.kind, failure.cause),
+};
+unwrap(await SqliteEventStore.initialize(input));
+const store = unwrap(await SqliteEventStore.create(input));
+// ... use the four operations ...
+unwrap(store.close());
+```
+
+The store owns one connection to the file. `close()` can be called repeatedly, and every operation after it is a `storage-error`. `lockWaitMilliseconds` is how long an append waits for another connection's write lock (0 to 2147483647, default 5000); exceeding it is a `storage-error`, never an `optimistic-lock-conflict`. `retention` is `{ count }` with a positive integer `count`; TTL (`mode: { type: "ttl", ... }`) is a `configuration-error`. This version provides no change feed: passing `changeFeed` is a `configuration-error`. The file layout is the same as the Rust version's, so a file written by either implementation can be read and written by the other.
+
 ### Spanner
 
 Spanner lives in a separate entry point, `event-store-adapter-js/spanner`. Install the Spanner SDK yourself; it is an optional peer dependency (`^8.7.1 || ^9.0.0`), and the main entry point `event-store-adapter-js` does not load the Spanner SDK.
@@ -128,6 +151,7 @@ JavaScript time uses `Date` at millisecond precision; DynamoDB stores event epoc
 Snapshot retention runs after a successful snapshot write; event-only DynamoDB writes send no retention requests. Retention failure preserves the successful write and is reported through the logger and `onRetentionFailure`.
 
 - DynamoDB: pass `retention: { count, mode }`. For TTL use `mode: { type: "ttl", graceSeconds: 3600 }` and enable the snapshot table's `ttl` attribute.
+- SQLite: `retention` is `{ count }`; the newest `count` snapshots are kept in history by a separate transaction right after the append commits, and a failure is reported through the logger and `onRetentionFailure`. TTL is not supported.
 - Spanner: `retention` is `{ count, mode }` with a positive integer `count`; the mode is `"delete"` (the default) or `{ type: "ttl", graceDays }`. A retention failure after a successful snapshot write is reported through the logger and `onRetentionFailure`.
 - Memory: configure retention on the shared `MemoryStorage`. Memory supports deletion retention, including cleanup on a later event-only write after a retention failure. It does not support TTL.
 
@@ -137,7 +161,7 @@ Both factories and all four operations return `Result`. DynamoDB creation is asy
 
 ## Migration
 
-Read the [JavaScript migration guide](docs/MIGRATION_GUIDE.md) before moving existing records into new tables. The old shard, version, converter and serializer APIs are outside this entry point. Spanner is provided by `event-store-adapter-js/spanner`; the main entry point does not load the Spanner SDK.
+Read the [JavaScript migration guide](docs/MIGRATION_GUIDE.md) before moving existing records into new tables. The old shard, version, converter and serializer APIs are outside this entry point. Spanner is provided by `event-store-adapter-js/spanner` and SQLite by `event-store-adapter-js/sqlite`; the main entry point loads neither the Spanner SDK nor `node:sqlite`. Earlier versions had no SQLite storage, so there is nothing to migrate: see [SQLite: new installation](docs/MIGRATION_GUIDE.md#sqlite-new-installation).
 
 To move data from the v4 Spanner adapter (the `journal` and `snapshot` tables), use `migrateV4Spanner` from the same entry point; it checks every row first and writes nothing if any row is rejected. See [Spanner 4.x to the v5 Spanner](docs/MIGRATION_GUIDE.md#spanner-4x-to-the-v5-spanner).
 
@@ -156,7 +180,7 @@ pnpm run example:memory
 pnpm run example:dynamodb
 ```
 
-DynamoDB tests and examples use DynamoDB Local 3.3.1 through Testcontainers and require Docker. Spanner tests use the Cloud Spanner emulator through Testcontainers and also require Docker. Package tests also pack, install, type-check and execute the library from an independent external project. Conformance results are saved under the library's `coverage/conformance` directory; set `CONFORMANCE_REPORT_DIR` to choose another output directory.
+DynamoDB tests and examples use DynamoDB Local 3.3.1 through Testcontainers and require Docker. Spanner tests use the Cloud Spanner emulator through Testcontainers and also require Docker. SQLite tests use local files only, need no Docker, and require Node.js 24.15 or later. Package tests also pack, install, type-check and execute the library from an independent external project. Conformance results are saved under the library's `coverage/conformance` directory; set `CONFORMANCE_REPORT_DIR` to choose another output directory.
 
 ## License
 

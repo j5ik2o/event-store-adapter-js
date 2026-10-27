@@ -30,6 +30,7 @@ const KNOWN_STORE_KEYS: readonly string[] = [
   "change_feed",
   "transaction_retry_limit",
   "ttl_grace_days",
+  "lock_wait_milliseconds",
 ];
 const KNOWN_SEED_KEYS: readonly string[] = [
   "items",
@@ -66,6 +67,11 @@ export function storeCreationOf(c: ConformanceCase): ConformanceStoreCreation {
     "transaction_retry_limit",
   );
   const ttlGraceDays = jsonAt(c.body, "store", "ttl_grace_days");
+  const lockWaitMilliseconds = jsonAt(
+    c.body,
+    "store",
+    "lock_wait_milliseconds",
+  );
   const seedConfiguration = jsonAt(c.body, "seed", "configuration");
   const rowDeletionPolicyDays = jsonAt(
     c.body,
@@ -84,6 +90,9 @@ export function storeCreationOf(c: ConformanceCase): ConformanceStoreCreation {
         ? { transactionRetryLimit }
         : {}),
       ...(typeof ttlGraceDays === "number" ? { ttlGraceDays } : {}),
+      ...(typeof lockWaitMilliseconds === "number"
+        ? { lockWaitMilliseconds }
+        : {}),
     },
     seedItems: arrayAt(c.body, "seed", "items"),
     faults: arrayAt(c.body, "faults"),

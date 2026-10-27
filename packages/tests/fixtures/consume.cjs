@@ -166,11 +166,45 @@ async function consumeDynamoDB(layout) {
   } finally { client.destroy(); }
 }
 
-module.exports = { consumeMemory, consumeDynamoDB };
+async function consumeSqlite() {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const { SqliteEventStore } = require("event-store-adapter-js/sqlite");
+  assert.deepEqual(Object.keys(require("event-store-adapter-js/sqlite")), ["SqliteEventStore"]);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "eswa-sqlite-"));
+  const file = path.join(directory, "store.sqlite3");
+  try {
+    const ttl = await SqliteEventStore.initialize({ path: file, retention: { count: 1, mode: { type: "ttl", graceSeconds: 60 } } });
+    assert.equal(ttl.type, "err");
+    assert.equal(ttl.error.type, "configuration-error");
+    const feed = await SqliteEventStore.initialize({ path: file, changeFeed: true });
+    assert.equal(feed.type, "err");
+    assert.equal(feed.error.type, "configuration-error");
+    assert.equal(fs.existsSync(file), false);
+    const missing = await SqliteEventStore.create({ path: file, ...serializers() });
+    assert.equal(missing.type, "err");
+    assert.equal(missing.error.type, "storage-error");
+    unwrap(await SqliteEventStore.initialize({ path: file, ...serializers() }));
+    const store = unwrap(await SqliteEventStore.create({ path: file, ...serializers() }));
+    const id = await consumeFourOperations(store);
+    assert.equal(store.close().type, "ok");
+    assert.equal(store.close().type, "ok");
+    const reopened = unwrap(await SqliteEventStore.create({ path: file, ...serializers() }));
+    try {
+      const read = unwrap(await reopened.getLatestSnapshotById(id));
+      assert.equal(read.headSeqNr, 2);
+      assert.equal(read.snapshot.aggregate.plus(1).value, 6);
+    } finally { reopened.close(); }
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+}
+
+module.exports = { consumeMemory, consumeDynamoDB, consumeSqlite };
 if (require.main === module) {
   (async () => {
     await consumeMemory();
     await consumeDynamoDB(JSON.parse(process.env.ESWA_DYNAMODB_LAYOUT));
+    await consumeSqlite();
     console.log("External package: Unicode IDs, ID access, creation Result/cause, byte copy classification and isolation, four operations, domain serializers, Result/cause, Memory sharing and isolation passed");
   })().catch((error) => { console.error(error); process.exitCode = 1; });
 }
