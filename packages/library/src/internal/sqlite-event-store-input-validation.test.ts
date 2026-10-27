@@ -113,3 +113,43 @@ test("accepts an input without changeFeed even when the key is absent", () => {
   expect("changeFeed" in base).toBe(false);
   expect(validateSqliteEventStoreInput(base).type).toBe("ok");
 });
+
+test.each([
+  ["null", null],
+  ["an array", []],
+  ["a string", "path"],
+  ["a number", 1],
+])("rejects %s as the whole input with fieldName input", (_, input) => {
+  expect(
+    validateSqliteEventStoreInput(input as unknown as { path: string }),
+  ).toMatchObject({
+    type: "err",
+    error: { type: "configuration-error", fieldName: "input" },
+  });
+});
+
+test("rejects a serializer that has no serialize and deserialize with fieldName eventSerializer", () => {
+  expect(
+    validateSqliteEventStoreInput({
+      ...base,
+      eventSerializer: {} as never,
+    }),
+  ).toMatchObject({
+    type: "err",
+    error: { type: "configuration-error", fieldName: "eventSerializer" },
+  });
+});
+
+test("a getter that throws is a configuration error naming the property and keeping the cause", () => {
+  const cause = new Error("getter failed");
+  const input = {
+    path: "/tmp/store.sqlite3",
+    get logger(): never {
+      throw cause;
+    },
+  };
+  expect(validateSqliteEventStoreInput(input as never)).toMatchObject({
+    type: "err",
+    error: { type: "configuration-error", fieldName: "logger", cause },
+  });
+});

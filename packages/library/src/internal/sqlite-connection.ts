@@ -18,10 +18,55 @@ export function meetsMinimumSqliteVersion(version: string): boolean {
   return true;
 }
 
-function pragmaValue(db: DatabaseSync, name: string): unknown {
-  const row = db.prepare(`PRAGMA ${name}`).get();
-  return row === undefined ? undefined : Object.values(row)[0];
-}
+type ConnectionRequirement = Readonly<{
+  /** 設定の文。版の確認のように設定しないものは省く。 */
+  set?: string;
+  query: string;
+  accepts: (value: unknown) => boolean;
+  failure: string;
+}>;
+
+const pragmaRequirement = (
+  name: string,
+  value: string | number,
+  accepts: (value: unknown) => boolean,
+): ConnectionRequirement => ({
+  set: `PRAGMA ${name} = ${value}`,
+  query: `PRAGMA ${name}`,
+  accepts,
+  failure: `PRAGMA ${name} does not have the required value`,
+});
+
+/**
+ * 接続ごとに満たす条件を、確かめる順に並べる（SQ-1・SQ-14・SQ-15）。
+ * 版を最初に確かめる。locking_mode は journal_mode を WAL にする前に NORMAL へ設定する。
+ */
+const connectionRequirements = (
+  lockWaitMilliseconds: number,
+): readonly ConnectionRequirement[] => [
+  {
+    query: "SELECT sqlite_version()",
+    accepts: (value) => meetsMinimumSqliteVersion(String(value)),
+    failure: "SQLite 3.51.3 or later is required",
+  },
+  pragmaRequirement(
+    "busy_timeout",
+    lockWaitMilliseconds,
+    (v) => v === lockWaitMilliseconds,
+  ),
+  pragmaRequirement(
+    "locking_mode",
+    "NORMAL",
+    (v) => String(v).toLowerCase() === "normal",
+  ),
+  pragmaRequirement(
+    "journal_mode",
+    "WAL",
+    (v) => String(v).toLowerCase() === "wal",
+  ),
+  pragmaRequirement("synchronous", "FULL", (v) => v === 2),
+  pragmaRequirement("read_uncommitted", 0, (v) => v === 0),
+];
 
 /**
  * 接続を 1 本開き、版と PRAGMA を設定して読み直す（SQ-1・SQ-14・SQ-15）。
@@ -45,38 +90,17 @@ export function openSqliteConnection(
       );
     }
     db = new DatabaseSync(absolute);
-    const version = String(
-      (db.prepare("SELECT sqlite_version() AS v").get() as { v: unknown }).v,
-    );
-    if (!meetsMinimumSqliteVersion(version)) {
-      db.close();
-      return Result.err(
-        EventStoreError.configuration(
-          "database",
-          `SQLite 3.51.3 or later is required, but the bundled version is ${version}`,
-        ),
-      );
-    }
-    db.exec(`PRAGMA busy_timeout = ${lockWaitMilliseconds}`);
-    db.exec("PRAGMA locking_mode = NORMAL");
-    db.exec("PRAGMA journal_mode = WAL");
-    db.exec("PRAGMA synchronous = FULL");
-    db.exec("PRAGMA read_uncommitted = 0");
-    const expected: readonly [string, (value: unknown) => boolean][] = [
-      ["busy_timeout", (v) => v === lockWaitMilliseconds],
-      ["locking_mode", (v) => String(v).toLowerCase() === "normal"],
-      ["journal_mode", (v) => String(v).toLowerCase() === "wal"],
-      ["synchronous", (v) => v === 2],
-      ["read_uncommitted", (v) => v === 0],
-    ];
-    for (const [name, accepts] of expected) {
-      if (!accepts(pragmaValue(db, name))) {
+    for (const requirement of connectionRequirements(lockWaitMilliseconds)) {
+      if (requirement.set !== undefined) db.exec(requirement.set);
+      // どの問い合わせも 1 行 1 列を返す。
+      const row = db.prepare(requirement.query).get() as Record<
+        string,
+        unknown
+      >;
+      if (!requirement.accepts(Object.values(row)[0])) {
         db.close();
         return Result.err(
-          EventStoreError.configuration(
-            "database",
-            `PRAGMA ${name} does not have the required value`,
-          ),
+          EventStoreError.configuration("database", requirement.failure),
         );
       }
     }

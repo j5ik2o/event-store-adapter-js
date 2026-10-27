@@ -1,5 +1,4 @@
 import type { DatabaseSync } from "node:sqlite";
-import { AggregateId } from "../aggregate-id";
 import type { EventEnvelope } from "../event-envelope";
 import type { EventStore } from "../event-store";
 import { EventStoreError } from "../event-store-error";
@@ -229,8 +228,8 @@ async function persistSqliteEvent<PE, PS>(
   snapshot: SnapshotEnvelope<PS> | undefined,
   hooks?: SqliteEventStoreHooks,
 ): Promise<Result<void, EventStoreError>> {
-  const aid = AggregateId.asString(event.aggregateId);
-  if (aid.type === "err") return aid;
+  // 検証済みの ID なので、文字列の組み立てで失敗しない。
+  const aid = `${event.aggregateId.typeName}-${event.aggregateId.value}`;
   const eventBytes = serialize(
     settings.eventSerializer,
     event.payload,
@@ -248,7 +247,7 @@ async function persistSqliteEvent<PE, PS>(
   const result = appendInTransaction(
     db.value,
     {
-      aid: aid.value,
+      aid,
       typeName: event.aggregateId.typeName,
       seqNr: event.seqNr,
       nanos: BigInt(event.occurredAt.getTime()) * NANOS_PER_MILLI,
@@ -272,14 +271,14 @@ async function persistSqliteEvent<PE, PS>(
     // SQ-11: 整理の失敗は、確定済みの追記の成功を変えず、別の経路で通知する。
     const retained = retainSqliteSnapshots(
       db.value,
-      aid.value,
+      aid,
       snapshot.seqNr,
       settings.retentionCount,
       hooks,
     );
     if (retained.type === "err")
       await notifyRetentionFailure(
-        aid.value,
+        aid,
         retained.error,
         settings.logger,
         settings.onRetentionFailure,

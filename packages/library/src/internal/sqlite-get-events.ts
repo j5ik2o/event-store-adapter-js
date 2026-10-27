@@ -1,4 +1,3 @@
-import { AggregateId } from "../aggregate-id";
 import type { EventEnvelope } from "../event-envelope";
 import type { EventStore } from "../event-store";
 import { EventStoreError } from "../event-store-error";
@@ -36,8 +35,8 @@ export function createSqliteGetEvents<PE, PS>(
     if (validatedId.type === "err") return validatedId;
     const start = validateSeqNr(seqNr);
     if (start.type === "err") return start;
-    const aid = AggregateId.asString(validatedId.value);
-    if (aid.type === "err") return aid;
+    // 検証済みの ID なので、文字列の組み立てで失敗しない。
+    const aid = `${validatedId.value.typeName}-${validatedId.value.value}`;
     const usable = usableSqliteConnection(connection);
     if (usable.type === "err") return usable;
     const db = usable.value;
@@ -51,7 +50,7 @@ export function createSqliteGetEvents<PE, PS>(
       try {
         const heads = db.prepare("SELECT seq_nr FROM head WHERE aid = ?");
         heads.setReadBigInts(true);
-        const headRow = heads.get(aid.value);
+        const headRow = heads.get(aid);
         hooks?.afterReadHead?.("events");
         if (headRow === undefined) return Result.ok([]);
         const stored = sqliteStoredInteger(
@@ -68,7 +67,7 @@ export function createSqliteGetEvents<PE, PS>(
           "SELECT seq_nr, occurred_at_ns, manifest, payload FROM journal WHERE aid = ? AND seq_nr >= ? AND seq_nr <= ? ORDER BY seq_nr",
         );
         journal.setReadBigInts(true);
-        rows = journal.all(aid.value, from, head);
+        rows = journal.all(aid, from, head);
       } finally {
         endSqliteTransaction(db);
       }

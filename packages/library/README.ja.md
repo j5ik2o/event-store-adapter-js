@@ -99,9 +99,12 @@ SQLiteは別の入口 `event-store-adapter-js/sqlite` で提供します。Node.
 空のファイルを `SqliteEventStore.initialize` で一度だけ初期化し、`SqliteEventStore.create` で開きます。`create` はファイルを初期化せず、配置と設定の行を照合するだけです（[SQLITE_DATABASE_SCHEMA.ja.md](docs/SQLITE_DATABASE_SCHEMA.ja.md) を参照）。ファイルが無ければ `storage-error` になります。
 
 ```typescript
-import { SqliteEventStore } from "event-store-adapter-js/sqlite";
+import {
+  SqliteEventStore,
+  type SqliteEventStoreInput,
+} from "event-store-adapter-js/sqlite";
 
-const input = {
+const input: SqliteEventStoreInput<unknown, unknown> = {
   path: "/var/lib/app/events.sqlite3",
   retention: { count: 3 },
   lockWaitMilliseconds: 5000,
@@ -113,7 +116,7 @@ const store = unwrap(await SqliteEventStore.create(input));
 unwrap(store.close());
 ```
 
-ストアはファイルへの接続を1本所有します。`close()` は何度呼んでも構いません。閉じた後の操作は `storage-error` になります。`lockWaitMilliseconds` は、追記が別の接続の書き込みロックを待つ時間です（0から2147483647、既定は5000）。超過は `storage-error` で、`optimistic-lock-conflict` にはなりません。`retention` は `{ count }` で、`count` は正の整数です。TTL（`mode: { type: "ttl", ... }`）は `configuration-error` になります。この版は変更フィードを提供しません。`changeFeed` を指定すると `configuration-error` になります。ファイルの配置はRust版と同じなので、どちらの実装が書いたファイルも、もう一方で読み書きできます。
+ストアはファイルへの接続を1本所有します。`close()` は何度呼んでも構いません。閉じた後の操作は `storage-error` になります。`lockWaitMilliseconds` は、追記が別の接続の書き込みロックを待つ時間です（0から2147483647、既定は5000）。超過は `storage-error` で、`optimistic-lock-conflict` にはなりません。`node:sqlite` は同期 API なので、追記がロックを待つあいだはスレッドを占有し、Node.js のイベントループが止まります。サーバーでは短い値にしてください。`retention` は `{ count }` で、`count` は正の整数です。TTL（`mode: { type: "ttl", ... }`）は `configuration-error` になります。この版は変更フィードを提供しません。`changeFeed` を指定すると `configuration-error` になります。ファイルの配置はRust版と同じなので、どちらの実装が書いたファイルも、もう一方で読み書きできます。
 
 ### Spanner
 

@@ -97,9 +97,12 @@ SQLite lives in a separate entry point, `event-store-adapter-js/sqlite`. It uses
 Initialize an empty file once with `SqliteEventStore.initialize`, then open it with `SqliteEventStore.create`. `create` never initializes a file; it verifies the layout and the configuration row (see [SQLITE_DATABASE_SCHEMA.md](docs/SQLITE_DATABASE_SCHEMA.md)), and a missing file is a `storage-error`.
 
 ```typescript
-import { SqliteEventStore } from "event-store-adapter-js/sqlite";
+import {
+  SqliteEventStore,
+  type SqliteEventStoreInput,
+} from "event-store-adapter-js/sqlite";
 
-const input = {
+const input: SqliteEventStoreInput<unknown, unknown> = {
   path: "/var/lib/app/events.sqlite3",
   retention: { count: 3 },
   lockWaitMilliseconds: 5000,
@@ -111,7 +114,7 @@ const store = unwrap(await SqliteEventStore.create(input));
 unwrap(store.close());
 ```
 
-The store owns one connection to the file. `close()` can be called repeatedly, and every operation after it is a `storage-error`. `lockWaitMilliseconds` is how long an append waits for another connection's write lock (0 to 2147483647, default 5000); exceeding it is a `storage-error`, never an `optimistic-lock-conflict`. `retention` is `{ count }` with a positive integer `count`; TTL (`mode: { type: "ttl", ... }`) is a `configuration-error`. This version provides no change feed: passing `changeFeed` is a `configuration-error`. The file layout is the same as the Rust version's, so a file written by either implementation can be read and written by the other.
+The store owns one connection to the file. `close()` can be called repeatedly, and every operation after it is a `storage-error`. `lockWaitMilliseconds` is how long an append waits for another connection's write lock (0 to 2147483647, default 5000); exceeding it is a `storage-error`, never an `optimistic-lock-conflict`. `node:sqlite` is a synchronous API, so while an append waits for the lock it occupies the thread and stops the Node.js event loop; use a short value in servers. `retention` is `{ count }` with a positive integer `count`; TTL (`mode: { type: "ttl", ... }`) is a `configuration-error`. This version provides no change feed: passing `changeFeed` is a `configuration-error`. The file layout is the same as the Rust version's, so a file written by either implementation can be read and written by the other.
 
 ### Spanner
 

@@ -1,8 +1,9 @@
-import { writeFileSync } from "node:fs";
+import { closeSync, openSync, writeFileSync, writeSync } from "node:fs";
 import { SqliteEventStore } from "../sqlite-event-store";
 import {
   defaultConfigRow,
   RUST_DDL,
+  readSqliteRows,
   SQLITE_STORE_ID,
   type SqliteConfigRow,
   sqliteContentSnapshot,
@@ -10,7 +11,7 @@ import {
   writeSqliteFile,
 } from "./test/sqlite-fixture";
 
-let temp = sqliteTempDirectory();
+let temp: ReturnType<typeof sqliteTempDirectory>;
 beforeEach(() => {
   temp = sqliteTempDirectory();
 });
@@ -137,5 +138,53 @@ describe("layout problems found on open (SQ-OPEN, SQ-16)", () => {
     writeFileSync(temp.file(), "this is not a database file at all".repeat(20));
     const created = await open();
     expect(created.type).toBe("err");
+  });
+});
+
+describe("opening a rejected file (SQ-1, SQ-14, SQ-2)", () => {
+  const journalMode = (): unknown =>
+    readSqliteRows(temp.file(), "PRAGMA journal_mode")[0]?.journal_mode;
+
+  test("a rejected file keeps its tables and rows, but opening switches journal_mode from delete to wal", async () => {
+    writeSqliteFile(temp.file(), {
+      config: row({ keep_snapshot_count: 3 }),
+    });
+    const before = sqliteContentSnapshot(temp.file());
+    expect(journalMode()).toBe("delete");
+    expect(await open({ count: 5 })).toMatchObject({
+      type: "err",
+      error: { type: "configuration-error" },
+    });
+    expect(sqliteContentSnapshot(temp.file())).toBe(before);
+    expect(journalMode()).toBe("wal");
+  });
+
+  test("a file whose config table pages are damaged is a storage error, not a configuration error", () => {
+    writeSqliteFile(temp.file());
+    const [{ rootpage }] = readSqliteRows(
+      temp.file(),
+      "SELECT rootpage FROM sqlite_schema WHERE name = 'config'",
+    ) as [{ rootpage: bigint }];
+    const [{ page_size: pageSize }] = readSqliteRows(
+      temp.file(),
+      "PRAGMA page_size",
+    ) as [{ page_size: bigint }];
+    const fd = openSync(temp.file(), "r+");
+    try {
+      const size = Number(pageSize);
+      writeSync(
+        fd,
+        Buffer.alloc(size, 0xff),
+        0,
+        size,
+        (Number(rootpage) - 1) * size,
+      );
+    } finally {
+      closeSync(fd);
+    }
+    return expect(open()).resolves.toMatchObject({
+      type: "err",
+      error: { type: "storage-error" },
+    });
   });
 });

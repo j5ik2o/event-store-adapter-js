@@ -17,7 +17,7 @@ import {
   writeSqliteRows,
 } from "./test/sqlite-fixture";
 
-let temp = sqliteTempDirectory();
+let temp: ReturnType<typeof sqliteTempDirectory>;
 const opened: SqliteEventStore[] = [];
 beforeEach(() => {
   temp = sqliteTempDirectory();
@@ -681,5 +681,346 @@ describe("stored values (SQ-VALUES)", () => {
         (r) => r.aid,
       ),
     ).toEqual(["Order-%", "Order-1", "Order-10", "User-A", "User-a"]);
+  });
+});
+
+// 開いた後に別の接続が表を型のない表へ差し替え、保存された値が壊れている状況を実ファイルで作る。
+function replaceTableAfterOpen(
+  table: string,
+  columns: string,
+  values: string,
+): void {
+  writeSqliteRows(
+    file(),
+    `ALTER TABLE ${table} RENAME TO ${table}_moved; CREATE TABLE ${table} (${columns}); INSERT INTO ${table} VALUES ${values}`,
+  );
+}
+
+const withoutChecks = (sql: string): string =>
+  `PRAGMA ignore_check_constraints = ON; ${sql}`;
+
+describe("argument and stored value guards (read and append)", () => {
+  test("getEventsByIdSinceSeqNr rejects an aggregate id whose typeName contains '-' as a contract violation", async () => {
+    const store = await newStore();
+    expect(
+      await store.getEventsByIdSinceSeqNr(idOf("A-B", "1"), 1),
+    ).toMatchObject({ type: "err", error: { type: "contract-violation" } });
+  });
+
+  test("getEventsByIdSinceSeqNr rejects a start number that is not a safe integer", async () => {
+    const store = await newStore();
+    expect(
+      await store.getEventsByIdSinceSeqNr(idOf("Order", "1"), -1),
+    ).toMatchObject({ type: "err", error: { type: "contract-violation" } });
+  });
+
+  test("getLatestSnapshotById rejects an aggregate id whose typeName contains '-'", async () => {
+    const store = await newStore();
+    expect(await store.getLatestSnapshotById(idOf("A-B", "1"))).toMatchObject({
+      type: "err",
+      error: { type: "contract-violation" },
+    });
+  });
+
+  test("a head number 0 on disk is a storage error when reading events", async () => {
+    const store = await newStore();
+    ok(await store.persistEvent(sqliteEventOf(1)));
+    writeSqliteRows(file(), withoutChecks("UPDATE head SET seq_nr = 0"));
+    expect(
+      await store.getEventsByIdSinceSeqNr(idOf("Order", "1"), 1),
+    ).toMatchObject({ type: "err", error: { type: "storage-error" } });
+  });
+
+  test("a head number 0 on disk is a storage error when reading the latest snapshot", async () => {
+    const store = await newStore();
+    ok(await store.persistEvent(sqliteEventOf(1)));
+    writeSqliteRows(file(), withoutChecks("UPDATE head SET seq_nr = 0"));
+    expect(await store.getLatestSnapshotById(idOf("Order", "1"))).toMatchObject(
+      { type: "err", error: { type: "storage-error" } },
+    );
+  });
+
+  test("a head whose type_name differs from the requested typeName is a storage error", async () => {
+    const store = await newStore();
+    ok(await store.persistEvent(sqliteEventOf(1)));
+    writeSqliteRows(file(), "UPDATE head SET type_name = 'Other'");
+    expect(await store.getLatestSnapshotById(idOf("Order", "1"))).toMatchObject(
+      { type: "err", error: { type: "storage-error" } },
+    );
+  });
+
+  test("a journal row with a text seq_nr is a storage error", async () => {
+    const store = await newStore();
+    ok(await store.persistEvent(sqliteEventOf(1)));
+    replaceTableAfterOpen(
+      "journal",
+      "aid, seq_nr, occurred_at_ns, manifest, payload",
+      "('Order-1', 'one', 0, 'event/v1', x'7b7d')",
+    );
+    expect(
+      await store.getEventsByIdSinceSeqNr(idOf("Order", "1"), 1),
+    ).toMatchObject({ type: "err", error: { type: "storage-error" } });
+  });
+
+  test("a journal row whose seq_nr is stored as a real number is a storage error", async () => {
+    const store = await newStore();
+    ok(await store.persistEvent(sqliteEventOf(1)));
+    replaceTableAfterOpen(
+      "journal",
+      "aid, seq_nr, occurred_at_ns, manifest, payload",
+      "('Order-1', 1.0, 0, 'event/v1', x'7b7d')",
+    );
+    expect(
+      await store.getEventsByIdSinceSeqNr(idOf("Order", "1"), 1),
+    ).toMatchObject({ type: "err", error: { type: "storage-error" } });
+  });
+
+  test("a journal row with a text occurred_at_ns is a storage error", async () => {
+    const store = await newStore();
+    ok(await store.persistEvent(sqliteEventOf(1)));
+    replaceTableAfterOpen(
+      "journal",
+      "aid, seq_nr, occurred_at_ns, manifest, payload",
+      "('Order-1', 1, 'noon', 'event/v1', x'7b7d')",
+    );
+    expect(
+      await store.getEventsByIdSinceSeqNr(idOf("Order", "1"), 1),
+    ).toMatchObject({ type: "err", error: { type: "storage-error" } });
+  });
+
+  test("a journal row whose manifest is not text is a storage error", async () => {
+    const store = await newStore();
+    ok(await store.persistEvent(sqliteEventOf(1)));
+    replaceTableAfterOpen(
+      "journal",
+      "aid, seq_nr, occurred_at_ns, manifest, payload",
+      "('Order-1', 1, 0, 42, x'7b7d')",
+    );
+    expect(
+      await store.getEventsByIdSinceSeqNr(idOf("Order", "1"), 1),
+    ).toMatchObject({ type: "err", error: { type: "storage-error" } });
+  });
+
+  test("a snapshot_current row with a text seq_nr is a storage error", async () => {
+    const store = await newStore();
+    ok(
+      await store.persistEventAndSnapshot(
+        sqliteEventOf(1),
+        sqliteSnapshotOf(1),
+      ),
+    );
+    replaceTableAfterOpen(
+      "snapshot_current",
+      "aid, seq_nr, manifest, payload",
+      "('Order-1', 'one', 'snapshot/v1', x'7b7d')",
+    );
+    expect(await store.getLatestSnapshotById(idOf("Order", "1"))).toMatchObject(
+      { type: "err", error: { type: "storage-error" } },
+    );
+  });
+
+  test("a snapshot_current row whose manifest is not text is a storage error", async () => {
+    const store = await newStore();
+    ok(
+      await store.persistEventAndSnapshot(
+        sqliteEventOf(1),
+        sqliteSnapshotOf(1),
+      ),
+    );
+    replaceTableAfterOpen(
+      "snapshot_current",
+      "aid, seq_nr, manifest, payload",
+      "('Order-1', 1, 42, x'7b7d')",
+    );
+    expect(await store.getLatestSnapshotById(idOf("Order", "1"))).toMatchObject(
+      { type: "err", error: { type: "storage-error" } },
+    );
+  });
+
+  test("a head number 0 on disk fails the append as a storage error and publishes nothing", async () => {
+    const store = await newStore();
+    ok(await store.persistEvent(sqliteEventOf(1)));
+    writeSqliteRows(file(), withoutChecks("UPDATE head SET seq_nr = 0"));
+    expect(await store.persistEvent(sqliteEventOf(2))).toMatchObject({
+      type: "err",
+      error: { type: "storage-error" },
+    });
+    expect(
+      readSqliteRows(file(), "SELECT count(*) AS n FROM journal")[0]?.n,
+    ).toBe(BigInt(1));
+  });
+
+  test("a journal row ahead of the head makes the primary key collide and is an optimistic lock conflict", async () => {
+    const store = await newStore();
+    ok(await store.persistEvent(sqliteEventOf(1)));
+    writeSqliteRows(
+      file(),
+      "INSERT INTO journal (aid, seq_nr, occurred_at_ns, manifest, payload) VALUES ('Order-1', 2, 0, 'event/v1', x'7b7d')",
+    );
+    expect(await store.persistEvent(sqliteEventOf(2))).toMatchObject({
+      type: "err",
+      error: { type: "optimistic-lock-conflict" },
+    });
+    expect(readSqliteRows(file(), "SELECT seq_nr FROM head")[0]?.seq_nr).toBe(
+      BigInt(1),
+    );
+  });
+
+  test("a trigger that aborts the journal insert is a storage error and nothing is committed", async () => {
+    const store = await newStore();
+    writeSqliteRows(
+      file(),
+      "CREATE TRIGGER refuse BEFORE INSERT ON journal BEGIN SELECT RAISE(ABORT, 'refused'); END",
+    );
+    expect(await store.persistEvent(sqliteEventOf(1))).toMatchObject({
+      type: "err",
+      error: { type: "storage-error" },
+    });
+    expect(readSqliteRows(file(), "SELECT count(*) AS n FROM head")[0]?.n).toBe(
+      BigInt(0),
+    );
+  });
+
+  test("a serializer that returns something other than a Uint8Array is a serialization error and writes nothing", async () => {
+    const store = await newStore({
+      eventSerializer: {
+        serialize: () => "not bytes" as unknown as Uint8Array,
+        deserialize: () => ({}),
+      },
+    });
+    expect(await store.persistEvent(sqliteEventOf(1))).toMatchObject({
+      type: "err",
+      error: { type: "serialization-error" },
+    });
+    expect(readSqliteRows(file(), "SELECT count(*) AS n FROM head")[0]?.n).toBe(
+      BigInt(0),
+    );
+  });
+});
+
+describe("storage failures while reading and appending", () => {
+  test("a renamed journal table while reading events is a storage error", async () => {
+    const store = await newStore();
+    ok(await store.persistEvent(sqliteEventOf(1)));
+    writeSqliteRows(file(), "ALTER TABLE journal RENAME TO journal_moved");
+    expect(
+      await store.getEventsByIdSinceSeqNr(idOf("Order", "1"), 1),
+    ).toMatchObject({ type: "err", error: { type: "storage-error" } });
+  });
+
+  test("a journal that lost a row below the head is a storage error", async () => {
+    const store = await newStore();
+    ok(await store.persistEvent(sqliteEventOf(1)));
+    ok(await store.persistEvent(sqliteEventOf(2)));
+    ok(await store.persistEvent(sqliteEventOf(3)));
+    writeSqliteRows(file(), "DELETE FROM journal WHERE seq_nr = 2");
+    expect(
+      await store.getEventsByIdSinceSeqNr(idOf("Order", "1"), 1),
+    ).toMatchObject({ type: "err", error: { type: "storage-error" } });
+  });
+
+  test("a renamed head table while reading the latest snapshot is a storage error", async () => {
+    const store = await newStore();
+    ok(await store.persistEvent(sqliteEventOf(1)));
+    writeSqliteRows(file(), "ALTER TABLE head RENAME TO head_moved");
+    expect(await store.getLatestSnapshotById(idOf("Order", "1"))).toMatchObject(
+      { type: "err", error: { type: "storage-error" } },
+    );
+  });
+
+  test("a snapshot serializer that throws on read is a serialization error", async () => {
+    const store = await newStore({
+      snapshotSerializer: {
+        serialize: () => new Uint8Array([123, 125]),
+        deserialize: () => {
+          throw new Error("cannot restore");
+        },
+      },
+    });
+    ok(
+      await store.persistEventAndSnapshot(
+        sqliteEventOf(1),
+        sqliteSnapshotOf(1),
+      ),
+    );
+    expect(await store.getLatestSnapshotById(idOf("Order", "1"))).toMatchObject(
+      { type: "err", error: { type: "serialization-error" } },
+    );
+  });
+
+  test("a snapshot serializer that returns something other than a Uint8Array is a serialization error and writes nothing", async () => {
+    const store = await newStore({
+      snapshotSerializer: {
+        serialize: () => "not bytes" as unknown as Uint8Array,
+        deserialize: () => ({}),
+      },
+    });
+    expect(
+      await store.persistEventAndSnapshot(
+        sqliteEventOf(1),
+        sqliteSnapshotOf(1),
+      ),
+    ).toMatchObject({ type: "err", error: { type: "serialization-error" } });
+    expect(readSqliteRows(file(), "SELECT count(*) AS n FROM head")[0]?.n).toBe(
+      BigInt(0),
+    );
+  });
+
+  test("an event with an invalid sequence number is a contract violation and writes nothing", async () => {
+    const store = await newStore();
+    expect(await store.persistEvent(sqliteEventOf(0))).toMatchObject({
+      type: "err",
+      error: { type: "contract-violation" },
+    });
+    expect(readSqliteRows(file(), "SELECT count(*) AS n FROM head")[0]?.n).toBe(
+      BigInt(0),
+    );
+  });
+});
+
+describe("initialize and close failures", () => {
+  test("initialize on a path whose parent directory does not exist is a storage error", async () => {
+    const missing = `${temp.directory}/no-such-directory/store.sqlite3`;
+    expect(await SqliteEventStore.initialize({ path: missing })).toMatchObject({
+      type: "err",
+      error: { type: "storage-error" },
+    });
+    expect(existsSync(missing)).toBe(false);
+  });
+
+  test("create on a path whose parent directory does not exist is a storage error", async () => {
+    const missing = `${temp.directory}/no-such-directory/store.sqlite3`;
+    expect(await SqliteEventStore.create({ path: missing })).toMatchObject({
+      type: "err",
+      error: { type: "storage-error" },
+    });
+  });
+
+  test("initialize that cannot take the write lock is a storage error and leaves the file empty", async () => {
+    const holder = new DatabaseSync(file());
+    try {
+      // 先に WAL にしておく。そうしないと失敗が接続を開く段階の journal_mode の切り替えで起こる。
+      holder.exec("PRAGMA journal_mode = WAL");
+      holder.exec("BEGIN IMMEDIATE");
+      expect(
+        await SqliteEventStore.initialize(input({ lockWaitMilliseconds: 0 })),
+      ).toMatchObject({ type: "err", error: { type: "storage-error" } });
+    } finally {
+      holder.exec("ROLLBACK");
+      holder.close();
+    }
+    expect(
+      readSqliteRows(file(), "SELECT count(*) AS n FROM sqlite_schema")[0]?.n,
+    ).toBe(BigInt(0));
+  });
+
+  test("close is idempotent and every operation after it is a storage error", async () => {
+    const store = await newStore();
+    expect(store.close().type).toBe("ok");
+    expect(store.close().type).toBe("ok");
+    expect(await store.persistEvent(sqliteEventOf(1))).toMatchObject({
+      type: "err",
+      error: { type: "storage-error" },
+    });
   });
 });

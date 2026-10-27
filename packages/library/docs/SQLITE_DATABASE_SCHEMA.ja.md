@@ -49,7 +49,7 @@ const opened = await SqliteEventStore.create(input);
 ## 記録
 
 - `journal` はすべてのイベントを持ちます。`head` は最新のイベントの番号・時刻・manifest・payload と `type_name` を持ちます。
-- `snapshot_current` は最新のスナップショットを持ちます。`snapshot_history` は、`keep_snapshot_count` を設定したときだけ、古いスナップショットを持ちます。
+- `snapshot_current` は最新のスナップショットを持ちます。`snapshot_history` は、`keep_snapshot_count` を設定したときだけ書きます。このとき最新のスナップショットも `snapshot_current` と `snapshot_history` の両方に保存し、残す `count` 件に数えます。
 - 整数は `BigInt` で結び付けて読み、保存クラスは `integer` です。`manifest` は `text`、`payload` は `blob` です。
 - `occurred_at_ns` は、ミリ秒の時刻に 1,000,000 を掛けた値です。読むときは、負の無限大方向へ切り捨ててミリ秒にします（-1 ns は -1 ms）。
 

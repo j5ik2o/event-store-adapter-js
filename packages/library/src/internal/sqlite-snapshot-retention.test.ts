@@ -9,9 +9,10 @@ import {
   sqliteEventOf,
   sqliteSnapshotOf,
   sqliteTempDirectory,
+  writeSqliteRows,
 } from "./test/sqlite-fixture";
 
-let temp = sqliteTempDirectory();
+let temp: ReturnType<typeof sqliteTempDirectory>;
 const opened: SqliteEventStore[] = [];
 beforeEach(() => {
   temp = sqliteTempDirectory();
@@ -272,5 +273,42 @@ describe("retention failure (SQ-11, S-4)", () => {
     } finally {
       consoleError.mockRestore();
     }
+  });
+});
+
+describe("a history row with an invalid number (SQ-11)", () => {
+  test("is reported through the logger and onRetentionFailure, keeps the append successful, and deletes nothing", async () => {
+    const failures: RetentionFailure[] = [];
+    const logger = {
+      debug: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+    const store = await newStore({
+      retention: { count: 1 },
+      onRetentionFailure: (f) => failures.push(f),
+      logger,
+    });
+    await appendSnapshots(store, 1, 1);
+    writeSqliteRows(
+      temp.file(),
+      "PRAGMA ignore_check_constraints = ON; INSERT INTO snapshot_history (aid, seq_nr, manifest, payload) VALUES ('Order-1', 0, 'snapshot/v1', x'7b7d')",
+    );
+    const result = await store.persistEventAndSnapshot(
+      sqliteEventOf(2),
+      sqliteSnapshotOf(2),
+    );
+    expect(result.type).toBe("ok");
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatchObject({
+      kind: "retention-failure",
+      aggregateId: "Order-1",
+    });
+    expect(logger.error).toHaveBeenCalled();
+    expect(historySeqNrs()).toEqual([BigInt(0), BigInt(1), BigInt(2)]);
+    expect(
+      readSqliteRows(temp.file(), "SELECT seq_nr FROM head")[0]?.seq_nr,
+    ).toBe(BigInt(2));
   });
 });

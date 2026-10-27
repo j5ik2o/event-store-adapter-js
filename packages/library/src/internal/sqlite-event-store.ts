@@ -38,34 +38,28 @@ export async function initializeSqliteStoreInternal<PE = unknown, PS = unknown>(
   const db = opened.value;
   try {
     db.exec("BEGIN IMMEDIATE");
-    try {
-      if (!isSqliteDatabaseUninitialized(db)) {
-        endSqliteTransaction(db);
-        return Result.err(
-          EventStoreError.configuration(
-            "path",
-            "the database file already holds objects and cannot be initialized",
-          ),
-        );
-      }
-      createSqliteTables(db);
-      db.prepare(
-        "INSERT INTO config (singleton, store_id, layout_version, keep_snapshot_count, retention_mode, change_feed_enabled) VALUES (1, ?, 1, ?, 'delete', 0)",
-      ).run(
-        randomUUID().toLowerCase(),
-        settings.value.retentionCount === undefined
-          ? null
-          : BigInt(settings.value.retentionCount),
-      );
-      db.exec("COMMIT");
-      return Result.ok(undefined);
-    } catch (cause) {
+    if (!isSqliteDatabaseUninitialized(db)) {
       endSqliteTransaction(db);
       return Result.err(
-        EventStoreError.storage("SQLite store could not be initialized", cause),
+        EventStoreError.configuration(
+          "path",
+          "the database file already holds objects and cannot be initialized",
+        ),
       );
     }
+    createSqliteTables(db);
+    db.prepare(
+      "INSERT INTO config (singleton, store_id, layout_version, keep_snapshot_count, retention_mode, change_feed_enabled) VALUES (1, ?, 1, ?, 'delete', 0)",
+    ).run(
+      randomUUID().toLowerCase(),
+      settings.value.retentionCount === undefined
+        ? null
+        : BigInt(settings.value.retentionCount),
+    );
+    db.exec("COMMIT");
+    return Result.ok(undefined);
   } catch (cause) {
+    endSqliteTransaction(db);
     return Result.err(
       EventStoreError.storage("SQLite store could not be initialized", cause),
     );
@@ -78,7 +72,10 @@ export async function initializeSqliteStoreInternal<PE = unknown, PS = unknown>(
   }
 }
 
-/** 照合後の 4 操作と close を返す内部入口。ファイルは初期化せず、変更もしない。 */
+/**
+ * 照合後の 4 操作と close を返す内部入口。ファイルは初期化せず、表と行も変更しない。
+ * ただし接続を開くときに journal_mode を WAL にするので、照合で拒否するファイルも WAL に切り替わる（SQ-1・SQ-14）。
+ */
 export async function openSqliteEventStoreInternal<PE = unknown, PS = unknown>(
   input: SqliteEventStoreInput<PE, PS>,
   hooks?: SqliteEventStoreHooks,
@@ -126,19 +123,12 @@ export async function openSqliteEventStoreInternal<PE = unknown, PS = unknown>(
         hooks,
       ),
       close(): Result<void, EventStoreError> {
-        if (connection.closed) return Result.ok(undefined);
-        try {
+        // closed の旗で二度目の close を防ぐ。node:sqlite は開いている接続の close で投げない。
+        if (!connection.closed) {
           connection.db.close();
           connection.closed = true;
-          return Result.ok(undefined);
-        } catch (cause) {
-          return Result.err(
-            EventStoreError.storage(
-              "SQLite connection could not be closed",
-              cause,
-            ),
-          );
         }
+        return Result.ok(undefined);
       },
     }),
   );

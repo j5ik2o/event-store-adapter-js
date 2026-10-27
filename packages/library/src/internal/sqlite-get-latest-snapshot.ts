@@ -1,4 +1,3 @@
-import { AggregateId } from "../aggregate-id";
 import type { EventStore } from "../event-store";
 import { EventStoreError } from "../event-store-error";
 import { Result } from "../result";
@@ -27,8 +26,8 @@ export function createSqliteGetLatestSnapshot<PE, PS>(
   return async (aggregateId) => {
     const validatedId = validateAggregateId(aggregateId);
     if (validatedId.type === "err") return validatedId;
-    const aid = AggregateId.asString(validatedId.value);
-    if (aid.type === "err") return aid;
+    // 検証済みの ID なので、文字列の組み立てで失敗しない。
+    const aid = `${validatedId.value.typeName}-${validatedId.value.value}`;
     const usable = usableSqliteConnection(connection);
     if (usable.type === "err") return usable;
     const db = usable.value;
@@ -43,14 +42,14 @@ export function createSqliteGetLatestSnapshot<PE, PS>(
           "SELECT type_name, seq_nr FROM head WHERE aid = ?",
         );
         heads.setReadBigInts(true);
-        headRow = heads.get(aid.value);
+        headRow = heads.get(aid);
         hooks?.afterReadHead?.("snapshot");
         if (headRow !== undefined) {
           const currents = db.prepare(
             "SELECT seq_nr, manifest, payload FROM snapshot_current WHERE aid = ?",
           );
           currents.setReadBigInts(true);
-          currentRow = currents.get(aid.value);
+          currentRow = currents.get(aid);
         }
       } finally {
         endSqliteTransaction(db);

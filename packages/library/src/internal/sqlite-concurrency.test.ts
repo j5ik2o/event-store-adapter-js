@@ -8,7 +8,7 @@ import {
   sqliteTempDirectory,
 } from "./test/sqlite-fixture";
 
-let temp = sqliteTempDirectory();
+let temp: ReturnType<typeof sqliteTempDirectory>;
 const opened: SqliteEventStore[] = [];
 beforeEach(() => {
   temp = sqliteTempDirectory();

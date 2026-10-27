@@ -10,7 +10,7 @@ import {
   writeSqliteFile,
 } from "./test/sqlite-fixture";
 
-let temp = sqliteTempDirectory();
+let temp: ReturnType<typeof sqliteTempDirectory>;
 beforeEach(() => {
   temp = sqliteTempDirectory();
 });

@@ -8,7 +8,7 @@ import {
 import { sqliteErrorCode } from "./sqlite-error-code";
 import { sqliteTempDirectory } from "./test/sqlite-fixture";
 
-let temp = sqliteTempDirectory();
+let temp: ReturnType<typeof sqliteTempDirectory>;
 beforeEach(() => {
   temp = sqliteTempDirectory();
 });
@@ -156,5 +156,35 @@ describe("openSqliteConnection", () => {
     writeFileSync(file, "this is not a database file at all".repeat(10));
     const opened = openSqliteConnection(file, 5000, "existing");
     expect(opened.type).toBe("err");
+  });
+
+  test("a busy_timeout that SQLite does not read back as written is a configuration error on the database, and the connection is closed", () => {
+    const file = temp.file();
+    const opened = openSqliteConnection(file, -1, "create");
+    expect(opened).toMatchObject({
+      type: "err",
+      error: { type: "configuration-error", fieldName: "database" },
+    });
+    // 接続が閉じられていれば、別の接続が書き込みロックをすぐ取れる。
+    const other = new DatabaseSync(file);
+    try {
+      other.exec("BEGIN IMMEDIATE");
+      other.exec("ROLLBACK");
+    } finally {
+      other.close();
+    }
+  });
+
+  test("a path whose parent directory does not exist is a storage error in create mode", () => {
+    const file = path.join(
+      temp.directory,
+      "no-such-directory",
+      "store.sqlite3",
+    );
+    expect(openSqliteConnection(file, 5000, "create")).toMatchObject({
+      type: "err",
+      error: { type: "storage-error" },
+    });
+    expect(existsSync(path.dirname(file))).toBe(false);
   });
 });

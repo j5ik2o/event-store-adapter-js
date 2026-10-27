@@ -13,7 +13,7 @@ import {
   writeSqliteFile,
 } from "./test/sqlite-fixture";
 
-let temp = sqliteTempDirectory();
+let temp: ReturnType<typeof sqliteTempDirectory>;
 beforeEach(() => {
   temp = sqliteTempDirectory();
 });
@@ -228,6 +228,52 @@ describe("aid collation (SQ-2)", () => {
       ddl: {
         journal: journalWith(
           "aid TEXT NOT NULL CHECK (aid COLLATE NOCASE = aid) DEFAULT 'COLLATE NOCASE' /* COLLATE NOCASE */ -- COLLATE RTRIM\n",
+          "aid",
+        ),
+      },
+    });
+    const store = await openFile();
+    expect(store.type).toBe("ok");
+    if (store.type === "ok") store.value.close();
+  });
+
+  test("reads a string-literal collation name as the column collation, and leaves the file untouched", async () => {
+    writeSqliteFile(temp.file(), {
+      ddl: {
+        journal: journalWith(
+          "aid TEXT COLLATE 'NOCASE' NOT NULL",
+          "aid COLLATE BINARY",
+        ),
+      },
+    });
+    const before = sqliteContentSnapshot(temp.file());
+    expect(await openFile()).toMatchObject({
+      type: "err",
+      error: { type: "configuration-error" },
+    });
+    expect(sqliteContentSnapshot(temp.file())).toBe(before);
+  });
+
+  test("reads a double-quoted collation name as the column collation", async () => {
+    writeSqliteFile(temp.file(), {
+      ddl: {
+        journal: journalWith(
+          'aid TEXT COLLATE "NOCASE" NOT NULL',
+          "aid COLLATE BINARY",
+        ),
+      },
+    });
+    expect(await openFile()).toMatchObject({
+      type: "err",
+      error: { type: "configuration-error" },
+    });
+  });
+
+  test("does not count COLLATE inside a string literal that contains an escaped quote", async () => {
+    writeSqliteFile(temp.file(), {
+      ddl: {
+        journal: journalWith(
+          "aid TEXT NOT NULL CHECK (aid <> 'it''s COLLATE NOCASE')",
           "aid",
         ),
       },

@@ -119,10 +119,10 @@ const isBinary = (name: unknown): boolean =>
 
 /** aid の照合順序が、列の宣言でも主キーの索引でも BINARY かを返す（SQ-2）。 */
 function aidCollationsAreBinary(db: DatabaseSync, table: string): boolean {
+  // 直前に pragma_table_list と pragma_table_info で表と列を確かめているので、表の SQL は必ずある。
   const schema = db
     .prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?")
-    .get(table) as { sql: unknown } | undefined;
-  if (typeof schema?.sql !== "string") return false;
+    .get(table) as { sql: string };
   if (!isBinary(declaredColumnCollation(schema.sql, "aid"))) return false;
   const keys = db
     .prepare(

@@ -47,7 +47,7 @@ const opened = await SqliteEventStore.create(input);
 ## Records
 
 - `journal` holds every event. `head` holds the latest event's number, time, manifest and payload, and `type_name`.
-- `snapshot_current` holds the latest snapshot. `snapshot_history` holds older snapshots only when `keep_snapshot_count` is set.
+- `snapshot_current` holds the latest snapshot. `snapshot_history` is written only when `keep_snapshot_count` is set; the latest snapshot is then stored in both `snapshot_current` and `snapshot_history`, and it counts toward the retained `count`.
 - Integers are bound and read as `BigInt` and have the `integer` storage class. `manifest` is `text` and `payload` is a `blob`.
 - `occurred_at_ns` is the millisecond time multiplied by 1,000,000. Reading it rounds toward negative infinity to milliseconds (-1 ns is -1 ms).
 
