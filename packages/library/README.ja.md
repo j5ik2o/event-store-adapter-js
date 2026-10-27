@@ -92,6 +92,32 @@ const store = unwrap(opened);
 
 AWSクライアントは呼び出し側で管理します。
 
+### SQLite
+
+SQLiteは別の入口 `event-store-adapter-js/sqlite` で提供します。Node.js 24.15以上に同梱の `node:sqlite`（SQLite 3.51.3以上）を使うので、導入するドライバーはありません。元の入口 `event-store-adapter-js` は `node:sqlite` を読み込みません。
+
+空のファイルを `SqliteEventStore.initialize` で一度だけ初期化し、`SqliteEventStore.create` で開きます。`create` はファイルを初期化せず、配置と設定の行を照合するだけです（[SQLITE_DATABASE_SCHEMA.ja.md](docs/SQLITE_DATABASE_SCHEMA.ja.md) を参照）。ファイルが無ければ `storage-error` になります。
+
+```typescript
+import {
+  SqliteEventStore,
+  type SqliteEventStoreInput,
+} from "event-store-adapter-js/sqlite";
+
+const input: SqliteEventStoreInput<unknown, unknown> = {
+  path: "/var/lib/app/events.sqlite3",
+  retention: { count: 3 },
+  lockWaitMilliseconds: 5000,
+  onRetentionFailure: (failure) => console.error(failure.kind, failure.cause),
+};
+unwrap(await SqliteEventStore.initialize(input));
+const store = unwrap(await SqliteEventStore.create(input));
+// ... 4つの操作を使う ...
+unwrap(store.close());
+```
+
+ストアはファイルへの接続を1本所有します。`close()` は何度呼んでも構いません。閉じた後の操作は `storage-error` になります。`lockWaitMilliseconds` は、追記が別の接続の書き込みロックを待つ時間です（0から2147483647、既定は5000）。超過は `storage-error` で、`optimistic-lock-conflict` にはなりません。`node:sqlite` は同期 API なので、追記がロックを待つあいだはスレッドを占有し、Node.js のイベントループが止まります。サーバーでは短い値にしてください。`retention` は `{ count }` で、`count` は正の整数です。TTL（`mode: { type: "ttl", ... }`）は `configuration-error` になります。この版は変更フィードを提供しません。`changeFeed` を指定すると `configuration-error` になります。ファイルの配置はRust版と同じなので、どちらの実装が書いたファイルも、もう一方で読み書きできます。
+
 ### Spanner
 
 Spannerは別の入口 `event-store-adapter-js/spanner` で提供します。Spannerの SDK は利用者が導入してください。任意のpeer依存（`^8.7.1 || ^9.0.0`）です。元の入口 `event-store-adapter-js` は Spanner の SDK を読み込みません。
@@ -130,6 +156,7 @@ JavaScriptの時刻はミリ秒精度の `Date` です。DynamoDBのイベント
 snapshotの書き込み成功後に保持処理を行い、DynamoDBのevent-only書き込みでは保持要求を送りません。保持失敗でも確定済み書き込みは成功し、loggerと `onRetentionFailure` へ通知します。
 
 - DynamoDB: `retention: { count, mode }` を指定します。TTL方式は `mode: { type: "ttl", graceSeconds: 3600 }` とし、snapshot表の `ttl` を有効化してください。
+- SQLite: `retention` は `{ count }` です。追記の確定直後に別のトランザクションで、新しい `count` 件のスナップショットだけを履歴に残します。失敗はloggerと `onRetentionFailure` へ通知します。TTLには対応しません。
 - Spanner: `retention` は `{ count, mode }` で、`count` は正の整数です。modeは `"delete"`（既定）または `{ type: "ttl", graceDays }` です。スナップショットの書き込みが成功した後の保持の失敗は、loggerと `onRetentionFailure` へ通知します。
 - Memory: 共有する `MemoryStorage` に保持設定を指定します。Memoryは削除方式の保持に対応し、保持失敗で残った履歴は後のevent-only書き込みでも処理します。TTLには対応しません。
 
@@ -139,7 +166,7 @@ snapshotの書き込み成功後に保持処理を行い、DynamoDBのevent-only
 
 ## 移行
 
-既存データを新しい表へ移す際は [JavaScript移行ガイド](docs/MIGRATION_GUIDE.ja.md) を参照してください。旧shard・version・converter・serializer APIはこの公開入口に含みません。Spannerは `event-store-adapter-js/spanner` の入口で提供し、元の入口は Spanner の SDK を読み込みません。
+既存データを新しい表へ移す際は [JavaScript移行ガイド](docs/MIGRATION_GUIDE.ja.md) を参照してください。旧shard・version・converter・serializer APIはこの公開入口に含みません。Spannerは `event-store-adapter-js/spanner`、SQLiteは `event-store-adapter-js/sqlite` の入口で提供し、元の入口は Spanner の SDK も `node:sqlite` も読み込みません。旧版にSQLiteの保存先はないので、移行するデータはありません。[SQLite: 新規導入](docs/MIGRATION_GUIDE.ja.md#sqlite-新規導入) を参照してください。
 
 v4 の Spanner アダプタ（`journal` と `snapshot` の 2 テーブル）のデータを移すには、同じ入口の `migrateV4Spanner` を使います。先に全行を検査し、拒む理由が 1 件でもあれば何も書きません。手順は [Spanner 4.x から v5 の Spanner へ](docs/MIGRATION_GUIDE.ja.md#spanner-4x-から-v5-の-spanner-へ) を参照してください。
 
@@ -158,7 +185,7 @@ pnpm run example:memory
 pnpm run example:dynamodb
 ```
 
-DynamoDB試験と実例はTestcontainersからDynamoDB Local 3.3.1を起動するためDockerが必要です。Spanner試験もTestcontainersからCloud Spannerエミュレーターを起動するため、Dockerが必要です。package試験はpack成果物を独立した外部プロジェクトへ導入し、型検査と実行も行います。全適合の結果はlibraryの `coverage/conformance` へ保存します。`CONFORMANCE_REPORT_DIR` で保存先を指定できます。
+DynamoDB試験と実例はTestcontainersからDynamoDB Local 3.3.1を起動するためDockerが必要です。Spanner試験もTestcontainersからCloud Spannerエミュレーターを起動するため、Dockerが必要です。SQLite試験はローカルのファイルだけを使い、Dockerは不要で、Node.js 24.15以上が必要です。package試験はpack成果物を独立した外部プロジェクトへ導入し、型検査と実行も行います。全適合の結果はlibraryの `coverage/conformance` へ保存します。`CONFORMANCE_REPORT_DIR` で保存先を指定できます。
 
 ## ライセンス
 

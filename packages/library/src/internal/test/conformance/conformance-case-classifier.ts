@@ -66,7 +66,7 @@ export function classifyCase(
   if (targetsOnlyUnprovidedBackends(body.backends)) {
     return {
       status: "not-applicable",
-      reason: "この言語は SQLite・Bigtable の保存先を提供しない",
+      reason: "この言語は Bigtable の保存先を提供しない",
     };
   }
   if (

@@ -1,4 +1,5 @@
 import { AggregateId, EventEnvelope, EventStore, type EventStoreError, MemoryStorage, type PayloadSerializer, type Result, SnapshotEnvelope } from "event-store-adapter-js";
+import { SqliteEventStore, type SqliteEventStoreInput } from "event-store-adapter-js/sqlite";
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 
 class Amount {
@@ -33,4 +34,21 @@ export async function consume(client: DynamoDBClient): Promise<number> {
     if (amount.plus(1).value !== 6) throw new Error("domain");
   }
   return 6;
+}
+
+export async function consumeSqlite(file: string): Promise<number> {
+  const input: SqliteEventStoreInput<Amount, Amount> = { path: file, eventSerializer: serializer, snapshotSerializer: serializer, retention: { count: 2 }, lockWaitMilliseconds: 1000 };
+  unwrap(await SqliteEventStore.initialize(input));
+  const store = unwrap(await SqliteEventStore.create(input));
+  try {
+    const id = unwrap(AggregateId.of("Amount", "1"));
+    const event = unwrap(EventEnvelope.create({ aggregateId: id, seqNr: 1, occurredAt: new Date(), manifest: "Amount.v1", payload: new Amount(5) }));
+    const snapshot = unwrap(SnapshotEnvelope.create({ seqNr: 1, manifest: "Amount.v1", aggregate: new Amount(5) }));
+    unwrap(await store.persistEventAndSnapshot(event, snapshot));
+    const latest = unwrap(await store.getLatestSnapshotById(id));
+    const amount: Amount | undefined = latest?.snapshot?.aggregate;
+    return amount?.plus(1).value ?? 0;
+  } finally {
+    unwrap(store.close());
+  }
 }

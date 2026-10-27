@@ -342,12 +342,12 @@ describe("steps and settings this runner does not know", () => {
 
   test("fails a memory scenario that uses a store setting it does not know", async () => {
     const result = await executeConformanceCase(
-      withBody({ store: { lock_wait_milliseconds: 100 } }),
+      withBody({ store: { unknown_store_setting: 100 } }),
       binding,
     );
     expect(result.status).toBe("failed");
     expect(result.reason).toContain(
-      "unsupported store setting lock_wait_milliseconds",
+      "unsupported store setting unknown_store_setting",
     );
   });
 });
@@ -439,6 +439,71 @@ describe("fnv1a64 values operation", () => {
   test("fails, not passes, when the binding has no fnv1a64", async () => {
     const result = await executeConformanceCase(
       caseOf("hash-fnv1a64-1"),
+      binding,
+    );
+    expect(result.status).toBe("failed");
+  });
+});
+
+// ロックを保持している間は追記を保存先エラーにする偽の実装。ロック操作の配線だけを確かめる。
+class LockingMemoryBinding extends ConformanceMemoryBinding {
+  readonly calls: string[] = [];
+  override async createStore(
+    ...args: Parameters<ConformanceMemoryBinding["createStore"]>
+  ) {
+    const created = await super.createStore(...args);
+    if (created.outcome.kind !== "ok") return created;
+    const inner = created.outcome.value;
+    let locked = false;
+    const store: ConformanceStore<unknown, unknown> = {
+      ...inner,
+      persistEvent: async (event) =>
+        locked
+          ? {
+              kind: "error",
+              category: "storage",
+              message: "database is locked",
+            }
+          : inner.persistEvent(event),
+      persistEventAndSnapshot: (event, snapshot) =>
+        inner.persistEventAndSnapshot(event, snapshot),
+      getLatestSnapshotById: (id) => inner.getLatestSnapshotById(id),
+      getEventsByIdSinceSeqNr: (id, seqNr) =>
+        inner.getEventsByIdSinceSeqNr(id, seqNr),
+    };
+    const hooks: ConformanceHooks = {
+      ...created.hooks,
+      holdWriteLock: async () => {
+        this.calls.push("hold");
+        locked = true;
+      },
+      releaseWriteLock: async () => {
+        this.calls.push("release");
+        locked = false;
+      },
+    };
+    return {
+      ...created,
+      outcome: { kind: "ok" as const, value: store },
+      hooks,
+    };
+  }
+}
+
+describe("SQ-7 write lock operations", () => {
+  test("holdWriteLock and releaseWriteLock run the hooks in order and the case passes", async () => {
+    const lockable = new LockingMemoryBinding();
+    const result = await executeConformanceCase(
+      caseOf("sqlite-write-lock-busy"),
+      lockable,
+    );
+    expect(result).toMatchObject({ status: "passed", reason: "" });
+    expect(lockable.calls).toEqual(["hold", "release"]);
+  });
+
+  test("a binding without the lock hooks fails the case instead of passing it", async () => {
+    const result = await executeConformanceCase(
+      caseOf("sqlite-write-lock-busy"),
       binding,
     );
     expect(result.status).toBe("failed");

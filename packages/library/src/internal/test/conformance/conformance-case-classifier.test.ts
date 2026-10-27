@@ -22,6 +22,27 @@ describe("classifyCase", () => {
     },
   );
 
+  test("marks fnv1a64 as not-applicable on sqlite, which does not use the hash", () => {
+    const r = classifyCase(valuesCase({ operation: "fnv1a64" }), "sqlite");
+    expect(r.status).toBe("not-applicable");
+    expect(r.reason).not.toBe("");
+  });
+
+  test("marks nanosecond representation as not-applicable on sqlite because Date has millisecond precision", () => {
+    const c: ConformanceCase = {
+      ...scenarioCase(["sqlite"]),
+      body: {
+        id: "s",
+        backends: ["sqlite"],
+        representation: { time_precision: "nanoseconds" },
+      },
+    };
+    expect(classifyCase(c, "sqlite")).toEqual({
+      status: "not-applicable",
+      reason: "Date はミリ秒精度である",
+    });
+  });
+
   test("keeps fnv1a64 as unverified on spanner, which uses the hash", () => {
     expect(
       classifyCase(valuesCase({ operation: "fnv1a64" }), "spanner").status,
@@ -93,27 +114,33 @@ const scenarioCase = (
 });
 
 describe("classifyCase for the backends this language does not provide", () => {
-  const reason = "この言語は SQLite・Bigtable の保存先を提供しない";
+  const reason = "この言語は Bigtable の保存先を提供しない";
 
-  test.each(["memory", "dynamodb"] as const)(
-    "marks a scenario targeting only sqlite as not-applicable on %s",
+  test.each(["memory", "dynamodb", "spanner", "sqlite"] as const)(
+    "marks a scenario targeting only bigtable as not-applicable on %s",
     (backend) => {
       const r = classifyCase(
-        scenarioCase(["sqlite"], { store: { lock_wait_milliseconds: 100 } }),
+        scenarioCase(["bigtable"], { store: { retention_count: 1 } }),
         backend,
       );
       expect(r).toEqual({ status: "not-applicable", reason });
     },
   );
 
-  test.each(["memory", "dynamodb", "spanner"] as const)(
-    "marks a scenario targeting sqlite and bigtable as not-applicable on %s",
-    (backend) => {
-      expect(
-        classifyCase(scenarioCase(["sqlite", "bigtable"]), backend),
-      ).toEqual({ status: "not-applicable", reason });
-    },
-  );
+  test("does not treat a sqlite-only scenario as an unprovided backend any more", () => {
+    expect(
+      classifyCase(
+        scenarioCase(["sqlite"], { store: { lock_wait_milliseconds: 100 } }),
+        "sqlite",
+      ).status,
+    ).toBe("unverified");
+  });
+
+  test("does not treat a scenario targeting sqlite and bigtable as unprovided on sqlite", () => {
+    expect(
+      classifyCase(scenarioCase(["sqlite", "bigtable"]), "sqlite").status,
+    ).toBe("unverified");
+  });
 
   test("does not treat a spanner-only scenario as an unprovided backend any more", () => {
     expect(classifyCase(scenarioCase(["spanner"]), "spanner").status).toBe(
@@ -122,7 +149,7 @@ describe("classifyCase for the backends this language does not provide", () => {
   });
 
   test("keeps a scenario that also targets a provided backend unverified", () => {
-    const c = scenarioCase(["dynamodb", "sqlite"]);
+    const c = scenarioCase(["dynamodb", "bigtable"]);
     expect(classifyCase(c, "dynamodb").status).toBe("unverified");
   });
 

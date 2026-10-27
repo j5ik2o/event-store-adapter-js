@@ -82,8 +82,8 @@ describe("storeCreationOf unknown entries", () => {
 
   test("rejects a store setting this runner does not interpret", () => {
     expect(() =>
-      storeCreationOf(caseWith({ store: { lock_wait_milliseconds: 100 } })),
-    ).toThrow("unsupported store setting lock_wait_milliseconds");
+      storeCreationOf(caseWith({ store: { unknown_store_setting: 100 } })),
+    ).toThrow("unsupported store setting unknown_store_setting");
   });
 
   test("rejects a seed entry this runner does not interpret", () => {
@@ -158,5 +158,29 @@ describe("storeCreationOf for spanner", () => {
     expect("ttlGraceDays" in creation.config).toBe(false);
     expect(creation.seedConfiguration).toBeUndefined();
     expect(creation.rowDeletionPolicyDays).toBeUndefined();
+  });
+});
+
+describe("storeCreationOf lock_wait_milliseconds", () => {
+  test("reads store.lock_wait_milliseconds into the config", () => {
+    expect(storeCreationOf(find("sqlite-write-lock-busy")).config).toEqual({
+      retentionCount: null,
+      retentionMode: "delete",
+      lockWaitMilliseconds: 100,
+    });
+  });
+
+  test("omits lockWaitMilliseconds when the case does not set it", () => {
+    expect(
+      "lockWaitMilliseconds" in
+        storeCreationOf(find("sqlite-seeded-configuration-match")).config,
+    ).toBe(false);
+  });
+
+  test("passes the seeded configuration of a sqlite case before creation", () => {
+    expect(
+      storeCreationOf(find("sqlite-seeded-keep-count-mismatch"))
+        .seedConfiguration,
+    ).toMatchObject({ keep_snapshot_count: 2, layout_version: 1 });
   });
 });

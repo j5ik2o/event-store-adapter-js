@@ -20,6 +20,9 @@ export interface ConformanceHooks {
   }>;
   takeRetentionFailures?(): readonly string[];
   setClockEpochSeconds?(s: number): void;
+  /** 別の接続が同じファイルの書き込みロックを保持する（SQLite の SQ-7）。 */
+  holdWriteLock?(): Promise<void>;
+  releaseWriteLock?(): Promise<void>;
   createStore?(request: {
     name: string;
     storage: "new" | "shared";

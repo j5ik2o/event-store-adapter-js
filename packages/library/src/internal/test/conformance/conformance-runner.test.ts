@@ -46,8 +46,8 @@ const bindingFor = (
 
 describe("runConformance", () => {
   test.each([
-    ["memory", 41, 67, 108],
-    ["dynamodb", 41, 106, 147],
+    ["memory", 34, 67, 101],
+    ["dynamodb", 34, 106, 140],
   ] as const)(
     "reports %s with %i not-applicable and %i unverified of %i",
     async (backend, notApplicable, unverified, total) => {
@@ -127,14 +127,14 @@ describe("runConformance", () => {
     expect(report.counts).toEqual({
       passed: 67,
       failed: 0,
-      "not-applicable": 41,
+      "not-applicable": 34,
       unverified: 0,
       "not-representable": 0,
     });
     expect(
       report.results.filter((r) => r.status === "passed").map((r) => r.caseId),
     ).toEqual(report.requiredCaseIds);
-    expect(report.backendNotApplicable).toHaveLength(61);
+    expect(report.backendNotApplicable).toHaveLength(68);
     expect(report.backendNotApplicable.every((r) => r.reason.length > 0)).toBe(
       true,
     );
@@ -142,7 +142,7 @@ describe("runConformance", () => {
       report.notApplicableReasons
         .map((entry) => entry.count)
         .sort((a, b) => a - b),
-    ).toEqual([4, 8, 10, 19]);
+    ).toEqual([4, 8, 22]);
   });
 
   test("passes seed items and faults to createStore before creation", async () => {
@@ -276,15 +276,15 @@ describe("runConformance", () => {
   });
 });
 
-test("reports a sqlite-only scenario with unknown settings as not-applicable, not failed", async () => {
+test("reports a bigtable-only scenario with unknown settings as not-applicable, not failed", async () => {
   const synthetic = {
-    id: "sqlite-only",
-    rules: ["SQ-7"],
-    source: "sqlite/write-lock.json",
+    id: "bigtable-only",
+    rules: ["BT-7"],
+    source: "bigtable/journal-write.json",
     format: "scenarios" as const,
     body: {
-      id: "sqlite-only",
-      backends: ["sqlite"],
+      id: "bigtable-only",
+      backends: ["bigtable"],
       store: { lock_wait_milliseconds: 100 },
       steps: [{ op: "holdWriteLock", arguments: {} }],
     },

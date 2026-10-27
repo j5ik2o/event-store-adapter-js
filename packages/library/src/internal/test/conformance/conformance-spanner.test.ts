@@ -128,11 +128,11 @@ describe("conformance (spanner)", () => {
     }
   });
 
-  test("sqlite and bigtable cases stay not-applicable with a reason", () => {
-    const sqliteOrBigtable = report.results.filter(
-      (r) => /^(SQ|BT)-/.test(r.rules[0] ?? "") && r.status !== "passed",
+  test("bigtable cases stay not-applicable with a reason", () => {
+    const bigtableOnly = report.results.filter(
+      (r) => /^BT-/.test(r.rules[0] ?? "") && r.status !== "passed",
     );
-    for (const r of sqliteOrBigtable) {
+    for (const r of bigtableOnly) {
       expect(r.status).toBe("not-applicable");
       expect(r.reason).not.toBe("");
     }

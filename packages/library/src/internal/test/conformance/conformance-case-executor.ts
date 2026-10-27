@@ -320,6 +320,17 @@ export async function executeConformanceCase(
             stores = made.stores;
             actual = made.outcome;
           } else if (
+            step.op === "holdWriteLock" ||
+            step.op === "releaseWriteLock"
+          ) {
+            const lock =
+              step.op === "holdWriteLock"
+                ? created.hooks.holdWriteLock
+                : created.hooks.releaseWriteLock;
+            assert.ok(lock, `${String(step.op)} hook must be connected`);
+            await lock();
+            actual = { kind: "ok", value: undefined };
+          } else if (
             step.op === "mutateWrittenPayload" ||
             step.op === "mutateReadPayload"
           ) {

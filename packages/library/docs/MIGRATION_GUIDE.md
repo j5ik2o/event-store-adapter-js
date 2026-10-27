@@ -182,3 +182,14 @@ Steps 8 and 9 continue the procedure in [Spanner 4.x to the v5 Spanner](#spanner
 9. Switch the application to the new prefix only after the function returned a successful report. Keep the v4 tables until you have confirmed that they can be cleaned up.
 
 Partial migration and recovery: the function writes each event with its own transaction through the public API, one aggregate at a time in ascending order of the new `aid`. If a storage failure (`error`) or a failed read-back (`verification-failed`) happens after writing has started, the target keeps the rows already written; the function does not roll them back. The check runs before any write, so a `rejected` result leaves the target untouched. To recover from a partial migration, do not reuse the target as it is, because it now has rows and will be rejected. Drop and recreate the five tables, or create them under another new prefix, initialize them again, and run the function again with the same input. The v4 tables are unchanged, so you can repeat this.
+
+### SQLite: new installation
+
+Earlier versions of this library had no SQLite storage, so there is no SQLite data to migrate and no migration tool. Start a SQLite store as a new installation:
+
+1. Use Node.js 24.15 or later. The `node:sqlite` module bundled with it provides SQLite 3.51.3 or later, and there is no driver to install.
+2. Import the entry point `event-store-adapter-js/sqlite`. The main entry point does not load `node:sqlite`.
+3. Call `SqliteEventStore.initialize({ path })` once for an empty file. It creates the five tables and the configuration row; see [SQLITE_DATABASE_SCHEMA.md](SQLITE_DATABASE_SCHEMA.md).
+4. Open the file with `SqliteEventStore.create({ path })` and use the four operations. Call `close()` when the application stops.
+
+To move records out of another storage into SQLite, write them one aggregate at a time through the public API of the SQLite store, in the same way as the DynamoDB rewrite above.

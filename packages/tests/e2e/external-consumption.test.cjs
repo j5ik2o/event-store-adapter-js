@@ -26,6 +26,19 @@ test("packed package type-checks and executes from an independent external proje
     assert.ok(!files.some((file) => /\/internal\/test\/|\.test\.(js|d\.ts)$/.test(file)));
     assert.ok(files.includes("package/dist/spanner.js"));
     assert.ok(files.includes("package/dist/spanner.d.ts"));
+    assert.ok(files.includes("package/dist/sqlite.js"));
+    assert.ok(files.includes("package/dist/sqlite.d.ts"));
+    assert.ok(files.includes("package/docs/SQLITE_DATABASE_SCHEMA.md"));
+    assert.ok(files.includes("package/docs/SQLITE_DATABASE_SCHEMA.ja.md"));
+    for (const [file, patterns] of [
+      ["package/docs/SQLITE_DATABASE_SCHEMA.md", [/event-store-adapter-js\/sqlite/, /SqliteEventStore\.initialize/, /SqliteEventStore\.create/]],
+      ["package/docs/SQLITE_DATABASE_SCHEMA.ja.md", [/event-store-adapter-js\/sqlite/, /SqliteEventStore\.initialize/, /SqliteEventStore\.create/]],
+      ["package/README.md", [/event-store-adapter-js\/sqlite/]],
+      ["package/README.ja.md", [/event-store-adapter-js\/sqlite/]],
+    ]) {
+      const document = run("tar", ["-xOzf", archive, file], directory);
+      for (const pattern of patterns) assert.match(document, pattern);
+    }
     assert.ok(!files.some((file) => /\/next\/|shard-|default-serializer|\/dist\/(aggregate|event|types|event-serializer|snapshot-serializer)\.(js|d\.ts)$/.test(file)));
     for (const [file, guidance, readme, sdkNotLoaded] of [
       ["package/docs/SPANNER_DATABASE_SCHEMA.md", [/event-store-adapter-js\/spanner/, /SpannerEventStore\.create/], "package/README.md", /does not load the Spanner SDK/],
