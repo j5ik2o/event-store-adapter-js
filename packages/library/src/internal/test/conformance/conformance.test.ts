@@ -157,18 +157,18 @@ describe.each(BACKENDS)("conformance (%s)", (backend) => {
     expect(report.counts).toEqual({
       passed: backend === "memory" ? 67 : 106,
       failed: 0,
-      "not-applicable": 34,
+      "not-applicable": 22,
       unverified: 0,
       "not-representable": 0,
     });
     expect(report.backendNotApplicable).toHaveLength(
-      backend === "memory" ? 68 : 29,
+      backend === "memory" ? 80 : 41,
     );
     expect(
       report.notApplicableReasons
         .map((entry) => entry.count)
         .sort((a, b) => a - b),
-    ).toEqual([4, 8, 22]);
+    ).toEqual([4, 8, 10]);
     expect(
       report.results
         .filter((r) => r.status === "not-applicable")

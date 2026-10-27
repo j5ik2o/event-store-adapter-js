@@ -12,6 +12,7 @@ import { ConformanceFaultRegistry } from "./conformance-fault-registry";
 import type { ConformanceHooks } from "./conformance-hooks";
 import { ConformanceMemoryBinding } from "./conformance-memory-binding";
 import type { ConformanceStore } from "./conformance-store";
+import type { ConformanceStoreBinding } from "./conformance-store-binding";
 
 const binding = new ConformanceMemoryBinding();
 const fixtures = {
@@ -440,6 +441,68 @@ describe("fnv1a64 values operation", () => {
     const result = await executeConformanceCase(
       caseOf("hash-fnv1a64-1"),
       binding,
+    );
+    expect(result.status).toBe("failed");
+  });
+});
+
+describe("Bigtable envelope values operations", () => {
+  const withEnvelope = (
+    over: Partial<ConformanceStoreBinding<unknown, unknown>>,
+  ) => Object.assign(Object.create(binding), over) as ConformanceMemoryBinding;
+  const real =
+    require("../../bigtable-envelope") as typeof import("../../bigtable-envelope");
+  const fromHex = (hex: string) => Buffer.from(hex, "hex");
+  const realBinding = () =>
+    withEnvelope({
+      encodeBigtableEventEnvelope: (i) => ({
+        kind: "ok" as const,
+        value: Buffer.from(
+          real.encodeEventEnvelope({
+            aid: i.aid,
+            seqNr: i.seqNr,
+            occurredAtNs: i.occurredAtNs,
+            manifest: i.manifest,
+            payload: fromHex(i.payloadHex),
+          }),
+        ).toString("hex"),
+      }),
+    });
+
+  test("an event encode case passes when the binding returns the table value, and fails when it returns another", async () => {
+    const id = "bigtable-envelope-event-empty";
+    const passing = await executeConformanceCase(caseOf(id), realBinding());
+    expect(passing).toMatchObject({ status: "passed", reason: "" });
+    const wrong = await executeConformanceCase(
+      caseOf(id),
+      withEnvelope({
+        encodeBigtableEventEnvelope: () => ({
+          kind: "ok" as const,
+          value: "00",
+        }),
+      }),
+    );
+    expect(wrong.status).toBe("failed");
+  });
+
+  test.each([
+    "bigtable-envelope-event-empty",
+    "bigtable-envelope-snapshot-empty",
+    "bigtable-envelope-event-trailing-bytes",
+  ])(
+    "%s fails, not passes, when the binding has no envelope operation",
+    async (id) => {
+      const result = await executeConformanceCase(caseOf(id), binding);
+      expect(result.status).toBe("failed");
+    },
+  );
+
+  test("a decode case that expects a storage error fails when the binding decodes it successfully", async () => {
+    const result = await executeConformanceCase(
+      caseOf("bigtable-envelope-event-trailing-bytes"),
+      withEnvelope({
+        decodeBigtableEnvelope: () => ({ kind: "ok" as const, value: {} }),
+      }),
     );
     expect(result.status).toBe("failed");
   });

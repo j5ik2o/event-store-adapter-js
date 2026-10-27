@@ -5,7 +5,8 @@
     "memory",
     "dynamodb",
     "sqlite",
-    "spanner"
+    "spanner",
+    "bigtable"
   ],
   "extra_documents": [
     "docs/GCP_EVENT_INTEGRATION.md",

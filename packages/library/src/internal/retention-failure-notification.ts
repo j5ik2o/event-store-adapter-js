@@ -1,7 +1,7 @@
 import type { Logger } from "../logger";
 import type { RetentionFailure } from "../retention-failure";
 
-async function logNotificationFailure(
+export async function logNotificationFailure(
   logger: Logger,
   cause: unknown,
 ): Promise<void> {

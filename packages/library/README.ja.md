@@ -8,7 +8,7 @@
 
 ## 概要
 
-Memory、DynamoDB、Spannerのイベントストアです。[共通契約 v5](https://github.com/j5ik2o/event-store-adapter/blob/main/docs/spec/README.md) に従います。メジャーの番号 5 は、共通契約の版と同じです。
+Memory、DynamoDB、SQLite、Spanner、Bigtableのイベントストアです。[共通契約 v5](https://github.com/j5ik2o/event-store-adapter/blob/main/docs/spec/README.md) に従います。メジャーの番号 5 は、共通契約の版と同じです。
 
 [English](./README.md)
 
@@ -144,6 +144,96 @@ const store = unwrap(opened);
 `database` は `@google-cloud/spanner` の `Database` で、`tablePrefix` から5つのテーブル名を導きます。`Database` は呼び出し側が管理し、閉じるのも呼び出し側です。結果は `Result<EventStore, EventStoreError>` で、テーブルや設定の欠けと食い違いは `configuration-error` になります。`retention` は `{ count, mode }` で、`count` は正の整数です。modeは `"delete"`（既定）または `{ type: "ttl", graceDays }`（正の整数の日数）です。`transactionRetryLimit` はABORTEDになったトランザクションの再実行の上限で、既定は5、最初の試行は数えません。
 
 この版は変更フィードを提供しません。`changeFeed` を指定すると `configuration-error` になり、設定の行は `change_feed_enabled` を `FALSE` で記録します。
+### Bigtable
+
+Bigtable は別の入口 `event-store-adapter-js/bigtable` にあります。Bigtable の SDK は利用者がインストールします。省略可能な peer 依存（`^7.5.0`）で、主な入口 `event-store-adapter-js` は Bigtable の SDK を読み込みません。
+
+```shell
+npm install event-store-adapter-js @google-cloud/bigtable
+```
+
+ストアを開く前に、列ファミリ付きの 2 つのテーブルを作ります（手順は [BIGTABLE_DATABASE_SCHEMA.ja.md](docs/BIGTABLE_DATABASE_SCHEMA.ja.md)）。`BigtableEventStore.initialize` は両方のテーブルへ設定行を 1 回だけ書きます。`BigtableEventStore.create` はテーブルも行も作らず、列ファミリと設定行を照合するだけです。初回は新しいストアを用意します。
+
+<!-- bigtable-example:first-run -->
+```typescript
+import { Bigtable } from "@google-cloud/bigtable";
+import {
+  BigtableEventStore,
+  type BigtableEventStoreInput,
+} from "event-store-adapter-js/bigtable";
+
+type OrderEvent = { added: number };
+type OrderSnapshot = { total: number };
+
+export async function main(): Promise<number> {
+  // Against the real service, pass your projectId and let Google's libraries authenticate. Point at an emulator with BIGTABLE_EMULATOR_HOST.
+  const bigtable = new Bigtable({ projectId: "my-project", metricsEnabled: false });
+  const input: BigtableEventStoreInput<OrderEvent, OrderSnapshot> = {
+    bigtable,
+    instanceId: "my-instance",
+    tables: { journal: "my-journal-table", head: "my-head-table" },
+    retention: { count: 3 },
+  };
+  try {
+    const initialized = await BigtableEventStore.initialize(input);
+    if (initialized.type === "err") throw new Error(initialized.error.message);
+    const created = await BigtableEventStore.create(input);
+    if (created.type === "err") throw new Error(created.error.message);
+    const store = created.value;
+    const aggregateId = { typeName: "Order", value: "1" };
+    const first = await store.persistEventAndSnapshot(
+      { aggregateId, seqNr: 1, occurredAt: new Date(), manifest: "OrderEvent.v1", payload: { added: 2 } },
+      { seqNr: 1, manifest: "Order.v1", aggregate: { total: 2 } },
+    );
+    if (first.type === "err") throw new Error(first.error.message);
+    const second = await store.persistEvent({
+      aggregateId, seqNr: 2, occurredAt: new Date(), manifest: "OrderEvent.v1", payload: { added: 3 },
+    });
+    if (second.type === "err") throw new Error(second.error.message);
+    const events = await store.getEventsByIdSinceSeqNr(aggregateId, 1);
+    if (events.type === "err") throw new Error(events.error.message);
+    return events.value.length; // 2
+  } finally {
+    await bigtable.close();
+  }
+}
+```
+
+再起動したら、同じ設定で同じテーブルを開きます。もう一度初期化してはいけません。
+
+<!-- bigtable-example:reopen -->
+```typescript
+import { Bigtable } from "@google-cloud/bigtable";
+import {
+  BigtableEventStore,
+  type BigtableEventStoreInput,
+} from "event-store-adapter-js/bigtable";
+
+type OrderEvent = { added: number };
+type OrderSnapshot = { total: number };
+
+export async function main(): Promise<number> {
+  const bigtable = new Bigtable({ projectId: "my-project", metricsEnabled: false });
+  // Open with the same settings. Do not call initialize again.
+  const input: BigtableEventStoreInput<OrderEvent, OrderSnapshot> = {
+    bigtable,
+    instanceId: "my-instance",
+    tables: { journal: "my-journal-table", head: "my-head-table" },
+    retention: { count: 3 },
+  };
+  try {
+    const created = await BigtableEventStore.create(input);
+    if (created.type === "err") throw new Error(created.error.message);
+    const latest = await created.value.getLatestSnapshotById({ typeName: "Order", value: "1" });
+    if (latest.type === "err") throw new Error(latest.error.message);
+    return latest.value?.headSeqNr ?? 0; // 2
+  } finally {
+    await bigtable.close();
+  }
+}
+```
+
+`Bigtable` クライアントは呼び出し側が所有し、閉じます。`envelopeLimitBytes`（17 から 8388608、既定は 1048576）は、イベントやスナップショットが作る封筒の最大バイト数です。超えると規則 `BT-16` の `contract-violation` になります。この値は設定行に記録されるので、別の値で開くと `configuration-error` です。`retention` は `{ count }` で、TTL は `configuration-error` です。この版は変更フィードを提供しないので、`changeFeed` を渡すと `configuration-error` です。要求ごとに認証するときは `accessToken` を渡します。データと管理のすべての要求の直前に 1 回呼ばれ、結果が `authorization: Bearer <トークン>` として送られます。失敗したときや、ヘッダーにできない値を返したときは、要求を送らず `storage-error` になります。追記の確定後に、新しい末尾の行を journal へ書き出せなかった失敗は、`onJournalWriteFailure` と logger に通知され、追記は成功のままです。行の配置は Rust 版と同じなので、どちらの実装も同じテーブルを読み書きできます。
 
 ## 直列化
 
@@ -157,6 +247,7 @@ snapshotの書き込み成功後に保持処理を行い、DynamoDBのevent-only
 
 - DynamoDB: `retention: { count, mode }` を指定します。TTL方式は `mode: { type: "ttl", graceSeconds: 3600 }` とし、snapshot表の `ttl` を有効化してください。
 - SQLite: `retention` は `{ count }` です。追記の確定直後に別のトランザクションで、新しい `count` 件のスナップショットだけを履歴に残します。失敗はloggerと `onRetentionFailure` へ通知します。TTLには対応しません。
+- Bigtable: `retention` は `{ count }` です。追記の確定直後に別の手順で、新しい `count` 件のスナップショットだけを履歴に残します。失敗はloggerと `onRetentionFailure` へ通知します。TTLには対応しません。
 - Spanner: `retention` は `{ count, mode }` で、`count` は正の整数です。modeは `"delete"`（既定）または `{ type: "ttl", graceDays }` です。スナップショットの書き込みが成功した後の保持の失敗は、loggerと `onRetentionFailure` へ通知します。
 - Memory: 共有する `MemoryStorage` に保持設定を指定します。Memoryは削除方式の保持に対応し、保持失敗で残った履歴は後のevent-only書き込みでも処理します。TTLには対応しません。
 
@@ -166,7 +257,7 @@ snapshotの書き込み成功後に保持処理を行い、DynamoDBのevent-only
 
 ## 移行
 
-既存データを新しい表へ移す際は [JavaScript移行ガイド](docs/MIGRATION_GUIDE.ja.md) を参照してください。旧shard・version・converter・serializer APIはこの公開入口に含みません。Spannerは `event-store-adapter-js/spanner`、SQLiteは `event-store-adapter-js/sqlite` の入口で提供し、元の入口は Spanner の SDK も `node:sqlite` も読み込みません。旧版にSQLiteの保存先はないので、移行するデータはありません。[SQLite: 新規導入](docs/MIGRATION_GUIDE.ja.md#sqlite-新規導入) を参照してください。
+既存データを新しい表へ移す際は [JavaScript移行ガイド](docs/MIGRATION_GUIDE.ja.md) を参照してください。旧shard・version・converter・serializer APIはこの公開入口に含みません。Spannerは `event-store-adapter-js/spanner`、SQLiteは `event-store-adapter-js/sqlite` の入口で提供し、元の入口は Spanner の SDK も `node:sqlite` も読み込みません。旧版にSQLiteの保存先はないので、移行するデータはありません。[SQLite: 新規導入](docs/MIGRATION_GUIDE.ja.md#sqlite-新規導入) を参照してください。Bigtableは `event-store-adapter-js/bigtable` の入口で提供し、元の入口は Bigtable の SDK も読み込みません。旧版にBigtableの保存先はないので、移行するデータも移行ツールもありません。[Bigtable: 新規導入](docs/MIGRATION_GUIDE.ja.md#bigtable-新規導入) を参照してください。
 
 v4 の Spanner アダプタ（`journal` と `snapshot` の 2 テーブル）のデータを移すには、同じ入口の `migrateV4Spanner` を使います。先に全行を検査し、拒む理由が 1 件でもあれば何も書きません。手順は [Spanner 4.x から v5 の Spanner へ](docs/MIGRATION_GUIDE.ja.md#spanner-4x-から-v5-の-spanner-へ) を参照してください。
 
@@ -185,7 +276,7 @@ pnpm run example:memory
 pnpm run example:dynamodb
 ```
 
-DynamoDB試験と実例はTestcontainersからDynamoDB Local 3.3.1を起動するためDockerが必要です。Spanner試験もTestcontainersからCloud Spannerエミュレーターを起動するため、Dockerが必要です。SQLite試験はローカルのファイルだけを使い、Dockerは不要で、Node.js 24.15以上が必要です。package試験はpack成果物を独立した外部プロジェクトへ導入し、型検査と実行も行います。全適合の結果はlibraryの `coverage/conformance` へ保存します。`CONFORMANCE_REPORT_DIR` で保存先を指定できます。
+DynamoDB試験と実例はTestcontainersからDynamoDB Local 3.3.1を起動するためDockerが必要です。Spanner試験もTestcontainersからCloud Spannerエミュレーターを起動するため、Dockerが必要です。Bigtable試験もTestcontainersからCloud Bigtableエミュレーターを起動するため、Dockerが必要です。SQLite試験はローカルのファイルだけを使い、Dockerは不要で、Node.js 24.15以上が必要です。package試験はpack成果物を独立した外部プロジェクトへ導入し、型検査と実行も行います。全適合の結果はlibraryの `coverage/conformance` へ保存します。`CONFORMANCE_REPORT_DIR` で保存先を指定できます。
 
 ## ライセンス
 

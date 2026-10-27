@@ -6,6 +6,7 @@ allowBuilds:
   cpu-features: false
   protobufjs: false
   ssh2: false
+  sse4_crc32: false
   unrs-resolver: false
 minimumReleaseAgeExclude:
   - "@aws-sdk/client-dynamodb"

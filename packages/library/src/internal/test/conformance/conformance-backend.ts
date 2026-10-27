@@ -1,19 +1,14 @@
-export type ConformanceBackend = "memory" | "dynamodb" | "sqlite" | "spanner";
+export type ConformanceBackend =
+  | "memory"
+  | "dynamodb"
+  | "sqlite"
+  | "spanner"
+  | "bigtable";
 
 export const CONFORMANCE_BACKENDS: readonly ConformanceBackend[] = [
   "memory",
   "dynamodb",
   "sqlite",
   "spanner",
+  "bigtable",
 ];
-
-// この言語が提供しない保存先（Bigtable）だけを対象とする場面か
-export function targetsOnlyUnprovidedBackends(backends: unknown): boolean {
-  return (
-    Array.isArray(backends) &&
-    backends.length > 0 &&
-    !backends.some((b) =>
-      CONFORMANCE_BACKENDS.includes(b as ConformanceBackend),
-    )
-  );
-}

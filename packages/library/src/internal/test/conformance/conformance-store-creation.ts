@@ -31,6 +31,7 @@ const KNOWN_STORE_KEYS: readonly string[] = [
   "transaction_retry_limit",
   "ttl_grace_days",
   "lock_wait_milliseconds",
+  "envelope_limit_bytes",
 ];
 const KNOWN_SEED_KEYS: readonly string[] = [
   "items",
@@ -72,6 +73,7 @@ export function storeCreationOf(c: ConformanceCase): ConformanceStoreCreation {
     "store",
     "lock_wait_milliseconds",
   );
+  const envelopeLimitBytes = jsonAt(c.body, "store", "envelope_limit_bytes");
   const seedConfiguration = jsonAt(c.body, "seed", "configuration");
   const rowDeletionPolicyDays = jsonAt(
     c.body,
@@ -92,6 +94,10 @@ export function storeCreationOf(c: ConformanceCase): ConformanceStoreCreation {
       ...(typeof ttlGraceDays === "number" ? { ttlGraceDays } : {}),
       ...(typeof lockWaitMilliseconds === "number"
         ? { lockWaitMilliseconds }
+        : {}),
+      ...(typeof envelopeLimitBytes === "number" ||
+      typeof envelopeLimitBytes === "bigint"
+        ? { envelopeLimitBytes: Number(envelopeLimitBytes) }
         : {}),
     },
     seedItems: arrayAt(c.body, "seed", "items"),

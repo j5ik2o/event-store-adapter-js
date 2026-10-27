@@ -195,3 +195,14 @@ exportと書直し結果のイベント件数、連続番号、終端head番号�
 4. `SqliteEventStore.create({ path })` でファイルを開き、4つの操作を使います。アプリケーションを止めるときに `close()` を呼びます。
 
 ほかの保存先の記録をSQLiteへ移すときは、上のDynamoDBの書き直しと同じように、SQLiteのストアの公開APIを使って集約ごとに書いてください。
+
+### Bigtable: 新規導入
+
+旧版のライブラリにBigtableの保存先はないので、移行するBigtableのデータも移行ツールもありません。Bigtableのストアは新規導入として始めてください。
+
+1. Bigtable の SDK（省略可能な peer 依存の `@google-cloud/bigtable` `^7.5.0`）を利用者が導入し、入口 `event-store-adapter-js/bigtable` を import します。元の入口は Bigtable の SDK を読み込みません。
+2. インスタンスに、journal のテーブル（列ファミリ `event`・`history`・`config`）と head のテーブル（列ファミリ `head`・`snapshot`・`config`）を作ります。データの列ファミリはどれも最大 1 版だけを残し、年齢による GC の規則を持ちません。詳しくは [BIGTABLE_DATABASE_SCHEMA.ja.md](BIGTABLE_DATABASE_SCHEMA.ja.md) を参照してください。
+3. `BigtableEventStore.initialize(input)` を一度だけ呼びます。同じ設定行が両方のテーブルに書かれます。
+4. `BigtableEventStore.create(input)` でテーブルを開き、4つの操作を使います。`Bigtable` クライアントは呼び出し側が閉じます。
+
+ほかの保存先の記録をBigtableへ移すときは、上のDynamoDBの書き直しと同じように、Bigtableのストアの公開APIを使って集約ごとに書いてください。

@@ -141,7 +141,14 @@ describe("conformance (sqlite)", () => {
     }
   });
 
-  test("only bigtable cases stay not-applicable for being unprovided", () => {
+  test("bigtable-only scenarios are not selected for sqlite, and no result says a backend is unprovided", () => {
+    const bigtableOnly = data.cases
+      .filter((c) => c.source.startsWith("bigtable/"))
+      .map((c) => c.id);
+    expect(bigtableOnly).toHaveLength(12);
+    for (const id of bigtableOnly) {
+      expect(report.results.find((r) => r.caseId === id)).toBeUndefined();
+    }
     const bigtable = report.results.filter(
       (r) => /^BT-/.test(r.rules[0] ?? "") && r.status !== "passed",
     );
@@ -150,11 +157,7 @@ describe("conformance (sqlite)", () => {
       expect(r.reason).not.toBe("");
     }
     expect(
-      report.results.filter(
-        (r) =>
-          r.status === "not-applicable" &&
-          r.reason === "この言語は SQLite・Bigtable の保存先を提供しない",
-      ),
+      report.results.filter((r) => r.reason.includes("提供しない")),
     ).toEqual([]);
   });
 });

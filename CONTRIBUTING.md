@@ -30,7 +30,7 @@ corepack enable
 pnpm install --frozen-lockfile
 ```
 
-- Docker is required for the DynamoDB and Spanner tests and for the DynamoDB examples (see [packages/library/README.md](packages/library/README.md)). The SQLite tests use local files only and need no Docker, but they need Node.js 24.15 or later, whose bundled `node:sqlite` provides SQLite 3.51.3 or later.
+- Docker is required for the DynamoDB, Spanner and Bigtable tests and for the DynamoDB examples (see [packages/library/README.md](packages/library/README.md)). The SQLite tests use local files only and need no Docker, but they need Node.js 24.15 or later, whose bundled `node:sqlite` provides SQLite 3.51.3 or later.
 - Python 3 is required for the documentation and conformance data checks. `tools/user-docs/check.py` requires Python 3.10 or later.
 
 ## Checks

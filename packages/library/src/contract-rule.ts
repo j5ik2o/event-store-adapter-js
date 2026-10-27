@@ -8,4 +8,5 @@ export type ContractRule =
   | "W-6"
   | "W-8"
   | "W-9"
-  | "D-7";
+  | "D-7"
+  | "BT-16";

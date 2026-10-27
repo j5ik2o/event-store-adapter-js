@@ -23,6 +23,11 @@
       "types": "./dist/sqlite.d.ts",
       "require": "./dist/sqlite.js",
       "default": "./dist/sqlite.js"
+    },
+    "./bigtable": {
+      "types": "./dist/bigtable.d.ts",
+      "require": "./dist/bigtable.js",
+      "default": "./dist/bigtable.js"
     }
   },
   "files": [
@@ -59,6 +64,7 @@
   "license": "MIT",
   "devDependencies": {
     "@biomejs/biome": "2.6.3",
+    "@google-cloud/bigtable": "^7.5.0",
     "@google-cloud/spanner": "^9.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
@@ -77,10 +83,14 @@
     "@aws-sdk/client-dynamodb": "^3.413.0"
   },
   "peerDependencies": {
-    "@google-cloud/spanner": "^8.7.1 || ^9.0.0"
+    "@google-cloud/spanner": "^8.7.1 || ^9.0.0",
+    "@google-cloud/bigtable": "^7.5.0"
   },
   "peerDependenciesMeta": {
     "@google-cloud/spanner": {
+      "optional": true
+    },
+    "@google-cloud/bigtable": {
       "optional": true
     }
   }
