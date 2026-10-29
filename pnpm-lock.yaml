@@ -170,7 +170,7 @@ importers:
     dependencies:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.413.0
-        version: 3.1157.0
+        version: 3.1158.0
       event-store-adapter-js:
         specifier: workspace:*
         version: link:../library
@@ -195,7 +195,7 @@ importers:
     dependencies:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.413.0
-        version: 3.1157.0
+        version: 3.1158.0
     devDependencies:
       '@biomejs/biome':
         specifier: 2.6.3
@@ -251,7 +251,7 @@ importers:
     devDependencies:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.413.0
-        version: 3.1157.0
+        version: 3.1158.0
       '@google-cloud/bigtable':
         specifier: ^7.5.0
         version: 7.5.0(@opentelemetry/core@1.30.1(@opentelemetry/api@1.9.1))(supports-color@8.1.1)
@@ -271,8 +271,8 @@ packages:
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
 
-  '@aws-sdk/client-dynamodb@3.1157.0':
-    resolution: {integrity: sha512-QZ85AGwkByXEuWjUFSoe52RXCF1Pu3HZgfruZVmcl4w726UQCDObYQ6vzTwvTXDjr7dfJfN2hP64dc5rhWFcTw==}
+  '@aws-sdk/client-dynamodb@3.1158.0':
+    resolution: {integrity: sha512-2nTIBFPBr5zv3cmSLZn4WExi9X4Ddoi2K9LWYUtHfj30v3XBhEmgkYcESHfJR8uzdzBUAI1N/sDFSkqA1gTASg==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.978.6':
@@ -3121,7 +3121,7 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@aws-sdk/client-dynamodb@3.1157.0':
+  '@aws-sdk/client-dynamodb@3.1158.0':
     dependencies:
       '@aws-sdk/core': 3.978.6
       '@aws-sdk/credential-provider-node': 3.972.89
