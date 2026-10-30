@@ -63,7 +63,7 @@
   "author": "Junichi Kato <j5ik2o@gmail.com>",
   "license": "MIT OR Apache-2.0",
   "devDependencies": {
-    "@biomejs/biome": "2.6.3",
+    "@biomejs/biome": "2.6.4",
     "@google-cloud/bigtable": "^7.5.0",
     "@google-cloud/spanner": "^9.0.0",
     "@types/jest": "^30.0.0",
