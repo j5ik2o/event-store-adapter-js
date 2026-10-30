@@ -202,7 +202,7 @@ importers:
         version: 2.6.4
       '@google-cloud/bigtable':
         specifier: ^7.5.0
-        version: 7.5.0(@opentelemetry/core@1.30.1(@opentelemetry/api@1.9.1))(supports-color@8.1.1)
+        version: 7.5.1(@opentelemetry/core@1.30.1(@opentelemetry/api@1.9.1))(supports-color@8.1.1)
       '@google-cloud/spanner':
         specifier: ^9.0.0
         version: 9.1.0(supports-color@8.1.1)
@@ -254,7 +254,7 @@ importers:
         version: 3.1159.0
       '@google-cloud/bigtable':
         specifier: ^7.5.0
-        version: 7.5.0(@opentelemetry/core@1.30.1(@opentelemetry/api@1.9.1))(supports-color@8.1.1)
+        version: 7.5.1(@opentelemetry/core@1.30.1(@opentelemetry/api@1.9.1))(supports-color@8.1.1)
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
@@ -642,12 +642,12 @@ packages:
     resolution: {integrity: sha512-rZAP3aVgB9ds9KOeUSL+zZ21hPmo8dh6fnIFwRQj5EAZl9gzR7wxYbYXYysAM8CTqGmUGyp2S4kUdV17MnGuWQ==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
 
-  '@google-cloud/bigtable-api@0.3.0':
-    resolution: {integrity: sha512-sw9cLk0Tho+/3hmCuvf2Pj0LL2vt5w6EaC+GzVlcvrc42RnhMuvH0zXrCh0x6ddHS7iQeqr5JIMQg29BlRwnBw==}
+  '@google-cloud/bigtable-api@0.11.1':
+    resolution: {integrity: sha512-yjMB7RlJUnMlONhGV3KX2zxqEeQO9k2+6dSaOvJDi/0uJBOtbAbixC9z4TBr6Xb4L2Yzt2+GphxEcfV3g9mANw==}
     engines: {node: '>=22'}
 
-  '@google-cloud/bigtable@7.5.0':
-    resolution: {integrity: sha512-0bJwmGW6CEj8bYz1VwP1rEI+da2EJwKcDpDRWDP414OgX8WY7pOjISZt6pHXQIeubnF0w+zfyN9lw52pJSh2Bw==}
+  '@google-cloud/bigtable@7.5.1':
+    resolution: {integrity: sha512-cR+ZdM3NvB/JgD0A89xkQPWqwRkHxXd09qw4+3/GzwJg1JjVQxMyw+PYqurJSeuSMvVLTQrOrE6lOpa3eRrIlA==}
     engines: {node: '>=22'}
 
   '@google-cloud/common@8.2.0':
@@ -3620,15 +3620,15 @@ snapshots:
       '@eslint/core': 1.2.1
       levn: 0.4.1
 
-  '@google-cloud/bigtable-api@0.3.0(supports-color@8.1.1)':
+  '@google-cloud/bigtable-api@0.11.1(supports-color@8.1.1)':
     dependencies:
       google-gax: 6.12.1(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@google-cloud/bigtable@7.5.0(@opentelemetry/core@1.30.1(@opentelemetry/api@1.9.1))(supports-color@8.1.1)':
+  '@google-cloud/bigtable@7.5.1(@opentelemetry/core@1.30.1(@opentelemetry/api@1.9.1))(supports-color@8.1.1)':
     dependencies:
-      '@google-cloud/bigtable-api': 0.3.0(supports-color@8.1.1)
+      '@google-cloud/bigtable-api': 0.11.1(supports-color@8.1.1)
       '@google-cloud/monitoring': 6.2.0(supports-color@8.1.1)
       '@google-cloud/opentelemetry-cloud-monitoring-exporter': 0.20.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@1.30.1(@opentelemetry/api@1.9.1))(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.1))(supports-color@8.1.1)
       '@google-cloud/opentelemetry-resource-util': 2.4.0(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.1))(supports-color@8.1.1)
@@ -5243,7 +5243,7 @@ snapshots:
       node-fetch: 3.3.2
       object-hash: 3.0.0
       proto3-json-serializer: 4.1.0
-      protobufjs: 7.6.1
+      protobufjs: 7.6.6
       retry-request: 9.1.0
     transitivePeerDependencies:
       - supports-color
@@ -6028,7 +6028,7 @@ snapshots:
 
   proto3-json-serializer@4.1.0:
     dependencies:
-      protobufjs: 7.6.1
+      protobufjs: 7.6.6
 
   protobufjs@7.6.1:
     dependencies:
