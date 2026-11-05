@@ -220,7 +220,7 @@ export class ConformanceDynamoDBObservation {
     assert.deepEqual(
       structuredClone(actual),
       structuredClone(expected),
-      message,
+      message ?? "",
     );
   }
 

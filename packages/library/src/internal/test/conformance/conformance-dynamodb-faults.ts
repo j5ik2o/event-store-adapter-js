@@ -6,6 +6,7 @@ import {
   type DynamoDBClient,
   DynamoDBServiceException,
   GetItemCommand,
+  type GetItemCommandOutput,
   PutItemCommand,
   type QueryCommandInput,
   type QueryCommandOutput,
@@ -267,7 +268,7 @@ export class ConformanceDynamoDBFaults {
       assert.ok(aid);
       const items: Record<string, AttributeValue>[] = [];
       for (const value of listOf(plan.pages[plan.page])) {
-        const read = await this.observer.send(
+        const read: GetItemCommandOutput = await this.observer.send(
           new GetItemCommand({
             TableName: this.tables.snapshot,
             Key: { aid, skey: { N: integerOf(value).toString() } },
