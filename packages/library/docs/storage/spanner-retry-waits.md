@@ -9,3 +9,5 @@ Missing or invalid metadata uses equal jitter. Retry caps are 50, 100, 200, 400,
 A monotonic clock checks elapsed time after each timer wake. An early wake schedules the positive remainder. Timers retain their references and can keep the process alive while the operation is pending. Dropping the Promise or racing it against a timeout does not cancel retries. This adds no AbortSignal, total deadline, SDK runner, or transaction priority continuity.
 
 Transaction acquisition failures, domain rejections, non-ABORTED failures, and failures after commit retain their existing error behavior. After-commit effects run once on success. The policy follows [common ADR 0009](https://github.com/j5ik2o/event-store-adapter/blob/ea561f8d2a1d008a9196e8b189268741fbc0c9ff/docs/adr/0009-bound-manual-spanner-aborted-retry-waits.md). Production contention benefits and real Spanner behavior have not been measured for this change.
+
+The peer verification script removes each temporary dependency tree on success or failure. Its JSON records the executed paths, descriptor hash, and lockfile hash before successful cleanup; those paths are no longer available afterward.

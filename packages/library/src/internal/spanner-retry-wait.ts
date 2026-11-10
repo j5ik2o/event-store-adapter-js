@@ -12,6 +12,8 @@ export const retryClock: RetryClock = {
     new Promise((resolve) => setTimeout(resolve, milliseconds)),
 };
 
+export const MAX_SERVER_RETRY_WAIT_MS = 60000;
+
 const retryInfo = Root.fromJSON(retryInfoSchema).lookupType(
   "google.rpc.RetryInfo",
 );
@@ -40,7 +42,7 @@ export function durationWait(duration: unknown): RetryWait | undefined {
     return undefined;
   const milliseconds =
     seconds * BigInt(1000) + (BigInt(nanos) + BigInt(999999)) / BigInt(1000000);
-  return milliseconds > BigInt(60000)
+  return milliseconds > BigInt(MAX_SERVER_RETRY_WAIT_MS)
     ? { kind: "stop" }
     : { kind: "server", milliseconds: Math.max(1, Number(milliseconds)) };
 }
@@ -107,7 +109,9 @@ export async function waitForRetry(
   const started = clock.now();
   let remaining = milliseconds;
   do {
-    await clock.sleep(Math.min(60000, Math.max(1, Math.ceil(remaining))));
+    await clock.sleep(
+      Math.min(MAX_SERVER_RETRY_WAIT_MS, Math.max(1, Math.ceil(remaining))),
+    );
     remaining = milliseconds - (clock.now() - started);
   } while (remaining > 0);
 }

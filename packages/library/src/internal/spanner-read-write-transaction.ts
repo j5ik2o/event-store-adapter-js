@@ -5,6 +5,7 @@ import type { RetryClock } from "./retry-clock";
 import type { SpannerEventStoreHooks } from "./spanner-event-store-hooks";
 import {
   decideRetryWait,
+  MAX_SERVER_RETRY_WAIT_MS,
   retryClock,
   waitForRetry,
 } from "./spanner-retry-wait";
@@ -88,7 +89,7 @@ export async function runSpannerReadWriteTransaction<T>(
     if (wait.kind === "stop") {
       return Result.err(
         EventStoreError.storage(
-          "server retry delay exceeds supported wait of 60000ms",
+          `server retry delay exceeds supported wait of ${MAX_SERVER_RETRY_WAIT_MS}ms`,
           abortedCause,
         ),
       );
