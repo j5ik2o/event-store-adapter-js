@@ -7,7 +7,7 @@ const { execFileSync } = require("node:child_process");
 const { createHash } = require("node:crypto");
 
 (async () => {
-  for (const version of ["8.7.1", "9.1.0"]) {
+  for (const version of ["8.7.1", "9.0.0", "9.1.0"]) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), `esa-retry-${version}-`));
     execFileSync("npm", ["install", "--prefix", root, "--ignore-scripts", "--no-audit", "--no-fund", `@google-cloud/spanner@${version}`, "protobufjs@7.6.6"], { stdio: "pipe" });
     fs.cpSync(path.join(__dirname, "../dist"), path.join(root, "dist"), { recursive: true });
@@ -67,6 +67,21 @@ const { createHash } = require("node:crypto");
         assert.deepEqual(waits, [expected]);
         assert.deepEqual(order, ["get", "body", "rollback", "end", "sleep", "get", "body", "commit", "after", "end"]);
       }
+      cases += 1;
+    }
+    for (const hex of ["0a020d3d", "0a02153d", "0a01083d", "083d", "0a002a03ff"]) {
+      const malformed = Buffer.from(hex, "hex");
+      const cause = makeCause([malformed, encode({ nanos: 1000001 })]);
+      assert.deepEqual(decideRetryWait(cause, 1, () => 0), { kind: "server", milliseconds: 2 });
+      assert.deepEqual(decideRetryWait(makeCause([malformed]), 1, () => 0), { kind: "fallback", milliseconds: 25 });
+      let attempts = 0, now = 0;
+      const waits = [];
+      const result = await run({ getTransaction: async () => [{ commit: async () => {}, rollback: async () => {}, end() {} }] }, 1,
+        async () => { if (++attempts === 1) throw cause; return "done"; }, undefined,
+        { random: () => 0, now: () => now, sleep: async ms => { waits.push(ms); now += ms; } });
+      assert.deepEqual(result, { type: "ok", value: "done" });
+      assert.deepEqual(waits, [2]);
+      assert.equal(attempts, 2);
       cases += 1;
     }
     const longFirst = makeCause([encode({ seconds: 61 }), encode({ nanos: 1 })]);

@@ -3,6 +3,7 @@ import { Root } from "protobufjs/light";
 import type { RetryClock } from "./retry-clock";
 import type { RetryWait } from "./retry-wait";
 import { retryInfoSchema } from "./spanner-retry-info-schema";
+import { validateRetryInfoWire } from "./spanner-retry-info-wire";
 
 export const retryClock: RetryClock = {
   random: () => Math.random(),
@@ -61,6 +62,7 @@ function serverWait(cause: unknown): RetryWait | undefined {
     for (const entry of entries) {
       if (!(entry instanceof Uint8Array)) continue;
       try {
+        validateRetryInfoWire(entry);
         // String conversion preserves the decoder's int64 Long without rounding.
         const decoded: unknown = retryInfo.toObject(retryInfo.decode(entry), {
           longs: String,

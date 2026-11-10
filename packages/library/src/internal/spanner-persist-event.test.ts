@@ -129,3 +129,38 @@ test.each([false, true])(
     }
   },
 );
+
+test("malformed retry metadata does not stop an append before its next valid hint", async () => {
+  jest.useFakeTimers();
+  try {
+    const first = transaction();
+    const second = transaction();
+    first.commit.mockRejectedValue(
+      Object.assign(Error("aborted"), {
+        code: 10,
+        metadata: {
+          get: () => [
+            Buffer.from("0a020d3d", "hex"),
+            Buffer.from("0a0410c1843d", "hex"),
+          ],
+        },
+      }),
+    );
+    const getTransaction = jest
+      .fn()
+      .mockResolvedValueOnce([first])
+      .mockResolvedValueOnce([second]);
+    const operation = createSpannerPersistEvent(
+      settingsOf({ getTransaction } as never),
+    )(event);
+    await jest.runAllTimersAsync();
+    expect((await operation).type).toBe("ok");
+    expect(getTransaction).toHaveBeenCalledTimes(2);
+    expect(first.rollback).toHaveBeenCalledTimes(1);
+    expect(first.end).toHaveBeenCalledTimes(1);
+    expect(second.batchUpdate.mock.calls).toEqual(first.batchUpdate.mock.calls);
+    expect(second.commit).toHaveBeenCalledTimes(1);
+  } finally {
+    jest.useRealTimers();
+  }
+});
