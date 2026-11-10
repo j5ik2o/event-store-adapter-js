@@ -76,3 +76,56 @@ test("when the retention transaction cannot be acquired after a committed append
     }),
   );
 });
+
+test.each([false, true])(
+  "ABORTED append rechecks head and preserves envelope, concurrent head=%s",
+  async (advanced) => {
+    jest.useFakeTimers();
+    try {
+      const first = transaction();
+      const second = transaction();
+      first.commit.mockRejectedValue(
+        Object.assign(Error("aborted"), { code: 10 }),
+      );
+      if (advanced) second.run.mockResolvedValue([[{ seq_nr: "1" }]] as never);
+      const getTransaction = jest
+        .fn()
+        .mockResolvedValueOnce([first])
+        .mockResolvedValueOnce([second]);
+      const beforeCommit = jest.fn();
+      const afterCommit = jest.fn();
+      const input = { ...event, payload: { immutable: true } };
+      const operation = createSpannerPersistEvent(
+        settingsOf({ getTransaction } as never),
+        { beforeCommit, afterCommit },
+      )(input);
+      await jest.runAllTimersAsync();
+      const result = await operation;
+      expect(first.run).toHaveBeenCalledTimes(1);
+      expect(second.run).toHaveBeenCalledTimes(1);
+      expect(getTransaction).toHaveBeenCalledTimes(2);
+      expect(first.rollback).toHaveBeenCalledTimes(1);
+      expect(first.end).toHaveBeenCalledTimes(1);
+      expect(second.end).toHaveBeenCalledTimes(1);
+      expect(input).toEqual({ ...event, payload: { immutable: true } });
+      if (advanced) {
+        expect(result).toMatchObject({
+          type: "err",
+          error: { type: "optimistic-lock-conflict" },
+        });
+        expect(second.batchUpdate).not.toHaveBeenCalled();
+        expect(second.commit).not.toHaveBeenCalled();
+        expect(afterCommit).not.toHaveBeenCalled();
+      } else {
+        expect(result.type).toBe("ok");
+        expect(second.batchUpdate.mock.calls).toEqual(
+          first.batchUpdate.mock.calls,
+        );
+        expect(beforeCommit).toHaveBeenCalledTimes(2);
+        expect(afterCommit).toHaveBeenCalledTimes(1);
+      }
+    } finally {
+      jest.useRealTimers();
+    }
+  },
+);
