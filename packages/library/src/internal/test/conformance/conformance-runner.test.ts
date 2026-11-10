@@ -47,7 +47,7 @@ const bindingFor = (
 describe("runConformance", () => {
   test.each([
     ["memory", 22, 67, 89],
-    ["dynamodb", 22, 106, 128],
+    ["dynamodb", 22, 110, 132],
   ] as const)(
     "reports %s with %i not-applicable and %i unverified of %i",
     async (backend, notApplicable, unverified, total) => {
@@ -134,7 +134,7 @@ describe("runConformance", () => {
     expect(
       report.results.filter((r) => r.status === "passed").map((r) => r.caseId),
     ).toEqual(report.requiredCaseIds);
-    expect(report.backendNotApplicable).toHaveLength(80);
+    expect(report.backendNotApplicable).toHaveLength(84);
     expect(report.backendNotApplicable.every((r) => r.reason.length > 0)).toBe(
       true,
     );
@@ -166,6 +166,7 @@ describe("runConformance", () => {
     const report = await run("memory");
     expect(report.exclusions.map((e) => e.rule)).toEqual([
       "W-5",
+      "W-10",
       "R-7",
       "T-5",
       "T-6",
@@ -230,7 +231,7 @@ describe("runConformance", () => {
     expect(summary).toContain("abc123");
     expect(summary).toContain("W-5");
     expect(summary).toContain("R-7");
-    expect(summary).toContain("expected 1.3.0");
+    expect(summary).toContain("expected 1.4.0");
   });
 
   test("keeps per-backend status for the same case id", async () => {

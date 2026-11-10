@@ -1,6 +1,6 @@
 {
   "format": "coverage",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "required_rules": [
     "T-1",
     "T-3",
@@ -55,6 +55,11 @@
       "rule": "W-5",
       "status": "deleted",
       "reason": "versionの廃止により共通契約3.3で削除済みであり、番号を再利用しない。"
+    },
+    {
+      "rule": "W-10",
+      "status": "api-surface",
+      "reason": "観測できる部分は、ほかの規則のケースで確かめている。確定済みの seq_nr への追記が楽観ロックになり、確定済みのイベントが変わらないことは、W-7 の core-duplicate-update-event と core-existing-create-event が確かめる。保持処理がジャーナルのイベントを消さないことは、core-retention-delete-1 と core-retention-delete-2 が確かめる。場面で表せないのは、書き換え・削除の操作が存在しないことだけである（存在しない操作は呼べない）。ハブの api-surface/ は 4 つの操作があることを照合するが、余分な操作は検査しないので、この部分には現時点で自動検査がない。"
     },
     {
       "rule": "R-7",

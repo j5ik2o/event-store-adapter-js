@@ -27,14 +27,14 @@ describe("loadConformanceData", () => {
     }
   });
 
-  test("loads 169 cases from the real data (40 values, 128 scenarios, 1 layout)", () => {
+  test("loads 173 cases from the real data (40 values, 132 scenarios, 1 layout)", () => {
     const data = loadConformanceData(root);
-    expect(data.version).toBe("1.3.0");
-    expect(data.cases).toHaveLength(169);
+    expect(data.version).toBe("1.4.0");
+    expect(data.cases).toHaveLength(173);
     const count = (f: string) =>
       data.cases.filter((c) => c.format === f).length;
     expect(count("values")).toBe(40);
-    expect(count("scenarios")).toBe(128);
+    expect(count("scenarios")).toBe(132);
     expect(count("layout")).toBe(1);
   });
 
@@ -51,7 +51,7 @@ describe("loadConformanceData", () => {
 
   test("fails when a file version is rewritten", () => {
     rewrite("values/aid.json", (t) =>
-      t.replace('"version": "1.3.0"', '"version": "2.0.0"'),
+      t.replace('"version": "1.4.0"', '"version": "2.0.0"'),
     );
     expect(() => loadConformanceData(copy as string)).toThrow();
   });
@@ -59,8 +59,8 @@ describe("loadConformanceData", () => {
   test("fails when a duplicate key is inserted", () => {
     rewrite("values/aid.json", (t) =>
       t.replace(
-        '"version": "1.3.0",',
-        '"version": "1.3.0", "version": "1.3.0",',
+        '"version": "1.4.0",',
+        '"version": "1.4.0", "version": "1.4.0",',
       ),
     );
     expect(() => loadConformanceData(copy as string)).toThrow();
@@ -70,7 +70,7 @@ describe("loadConformanceData", () => {
     const dir = makeCopy();
     const extra = {
       format: "scenarios",
-      version: "1.3.0",
+      version: "1.4.0",
       cases: [
         {
           id: "extra-time-case",
@@ -134,7 +134,7 @@ describe("loadConformanceData", () => {
       path.join(dir, "scenarios", "extra.json"),
       JSON.stringify({
         format: "scenarios",
-        version: "1.3.0",
+        version: "1.4.0",
         cases: [
           {
             id: "bad",
@@ -167,6 +167,7 @@ describe("loadConformanceData", () => {
     const { exclusions } = loadConformanceData(root);
     expect(exclusions.map((e) => [e.rule, e.status])).toEqual([
       ["W-5", "deleted"],
+      ["W-10", "api-surface"],
       ["R-7", "caller-obligation"],
       ["T-5", "api-surface"],
       ["T-6", "api-surface"],

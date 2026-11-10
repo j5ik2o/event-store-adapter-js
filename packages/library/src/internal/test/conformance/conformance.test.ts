@@ -147,22 +147,44 @@ describe.each(BACKENDS)("conformance (%s)", (backend) => {
     }
   });
 
+  test("the cases added in data 1.4.0 are required and passed (dynamodb) or not applicable (memory)", () => {
+    const added = [
+      "dynamodb-item-size-event-under-limit",
+      "dynamodb-item-size-event-over-limit",
+      "dynamodb-item-size-snapshot-under-limit",
+      "dynamodb-item-size-snapshot-over-limit",
+    ];
+    if (backend === "memory") {
+      expect(report.backendNotApplicable.map((r) => r.caseId)).toEqual(
+        expect.arrayContaining(added),
+      );
+      return;
+    }
+    expect(report.requiredCaseIds).toEqual(expect.arrayContaining(added));
+    expect(
+      report.results
+        .filter((r) => added.includes(r.caseId))
+        .map((r) => r.status),
+    ).toEqual(["passed", "passed", "passed", "passed"]);
+    expect(report.ruleCounts["D-7"]).toMatchObject({ passed: 9, failed: 0 });
+  });
+
   test("required results exactly cover all applicable cases", () => {
     expect(report.requiredCaseIds).toHaveLength(
-      backend === "memory" ? 67 : 106,
+      backend === "memory" ? 67 : 110,
     );
     expect(
       report.results.filter((r) => r.status === "passed").map((r) => r.caseId),
     ).toEqual(report.requiredCaseIds);
     expect(report.counts).toEqual({
-      passed: backend === "memory" ? 67 : 106,
+      passed: backend === "memory" ? 67 : 110,
       failed: 0,
       "not-applicable": 22,
       unverified: 0,
       "not-representable": 0,
     });
     expect(report.backendNotApplicable).toHaveLength(
-      backend === "memory" ? 80 : 41,
+      backend === "memory" ? 84 : 41,
     );
     expect(
       report.notApplicableReasons
