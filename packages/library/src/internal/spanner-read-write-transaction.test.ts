@@ -388,3 +388,35 @@ test("early timer wake reserves remainder before the next body and success hooks
   expect(beforeCommit).toHaveBeenCalledTimes(1);
   expect(afterCommit).toHaveBeenCalledTimes(1);
 });
+
+test("a valid first long hint stops after cleanup without spending another attempt", async () => {
+  const clock = virtualClock();
+  const { database, getTransaction, transactions } = fakeDatabase();
+  const cause = Object.assign(aborted(), {
+    metadata: {
+      get: () => [Buffer.from("0a02083d", "hex"), Buffer.from("0a00", "hex")],
+    },
+  });
+  const result = await runSpannerReadWriteTransaction(
+    database,
+    5,
+    async () => {
+      throw cause;
+    },
+    undefined,
+    clock,
+  );
+  expect(result).toMatchObject({
+    type: "err",
+    error: {
+      type: "storage-error",
+      cause,
+      message: expect.stringContaining("server retry delay"),
+    },
+  });
+  expect(getTransaction).toHaveBeenCalledTimes(1);
+  expect(transactions[0].rollback).toHaveBeenCalledTimes(1);
+  expect(transactions[0].end).toHaveBeenCalledTimes(1);
+  expect(clock.random).not.toHaveBeenCalled();
+  expect(clock.sleep).not.toHaveBeenCalled();
+});

@@ -172,30 +172,32 @@ test.each(["0a020d3d", "0a02153d", "0a01083d", "083d", "0a002a03ff"])(
   },
 );
 
-test.each(["1801", "190000000000000000", "1a02ffff", "1b08011c", "1d00000000"])(
-  "preserves legal unknown fields %s in both messages",
-  (hex) => {
-    const unknown = Buffer.from(hex, "hex");
-    const duration = Buffer.concat([Buffer.from([0x10, 1]), unknown]);
-    const encoded = Buffer.concat([
-      Buffer.from([0x0a, duration.length]),
-      duration,
-    ]);
-    for (const entry of [
-      Buffer.concat([hint({ nanos: 1 }), unknown]),
-      encoded,
-    ]) {
-      expect(
-        decideRetryWait(cause(entry), 1, () => {
-          throw Error("random");
-        }),
-      ).toEqual({ kind: "server", milliseconds: 1 });
-    }
-  },
-);
+test.each([
+  "1801",
+  "190000000000000000",
+  "1a02ffff",
+  "1b08011c",
+  "1b230801241c",
+  "1d00000000",
+])("preserves legal unknown fields %s in both messages", (hex) => {
+  const unknown = Buffer.from(hex, "hex");
+  const duration = Buffer.concat([Buffer.from([0x10, 1]), unknown]);
+  const encoded = Buffer.concat([
+    Buffer.from([0x0a, duration.length]),
+    duration,
+  ]);
+  for (const entry of [Buffer.concat([hint({ nanos: 1 }), unknown]), encoded]) {
+    expect(
+      decideRetryWait(cause(entry), 1, () => {
+        throw Error("random");
+      }),
+    ).toEqual({ kind: "server", milliseconds: 1 });
+  }
+});
 
 test.each([
   "0a001b24",
+  "0a05ff",
   "0a001b",
   "0a001c",
   "0a001900",

@@ -5,14 +5,13 @@ export function validateRetryInfoWire(bytes: Uint8Array): void {
   };
   const varint = (end: number): bigint => {
     let value = BigInt(0);
-    for (let shift = 0; shift <= 63; shift += 7) {
+    for (let shift = 0; ; shift += 7) {
       if (position >= end) return invalid();
       const byte = bytes[position++];
       if (shift === 63 && byte > 1) return invalid();
       value |= BigInt(byte & 127) << BigInt(shift);
       if ((byte & 128) === 0) return value;
     }
-    return invalid();
   };
   const uint32 = (end: number): number => {
     const value = varint(end);
