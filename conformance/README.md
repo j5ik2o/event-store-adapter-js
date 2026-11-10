@@ -1,6 +1,6 @@
 # 適合テストデータ v1
 
-共通契約・DynamoDB プロファイル・メモリプロファイル・SQLite プロファイル・Spanner プロファイル・Bigtable プロファイルの期待値を、言語に依存しない UTF-8 の JSON で配るデータである。データの版は `1.3.0` である。[共通契約](../docs/spec/core-contract.md)・[DynamoDB プロファイル](../docs/spec/storage/dynamodb.md)・[メモリプロファイル](../docs/spec/storage/memory.md)・[SQLite プロファイル](../docs/spec/storage/sqlite.md)・[Spanner プロファイル](../docs/spec/storage/spanner.md)・[Bigtable プロファイル](../docs/spec/storage/bigtable.md)が規範であり、このデータは規則を追加しない。[ハッシュ仕様](../docs/spec/storage/hash.md)が収録を求める FNV-1a 64 の4件と、Bigtable の封筒の固定バイナリ形式の値の表（BT-D6a）も含める。値40件、操作場面128件（共通42件・DynamoDB固有45件・メモリ固有7件・SQLite固有7件・Spanner固有14件・Bigtable固有12件・SQLite・Spanner・Bigtable に共通の共有1件）、配置1件の計169件で、75規則を対象とする。7つの仕様の文書が定義する124規則は、すべてがケースか `coverage.json` の対象外の理由を持つ。共通の場面は `memory`・`dynamodb`・`sqlite`・`spanner`・`bigtable` の5つの保存先を対象とする。今回の検証はデータと道具だけを対象とし、言語実装や保存先には実行しない。
+共通契約・DynamoDB プロファイル・メモリプロファイル・SQLite プロファイル・Spanner プロファイル・Bigtable プロファイルの期待値を、言語に依存しない UTF-8 の JSON で配るデータである。データの版は `1.4.0` である。[共通契約](../docs/spec/core-contract.md)・[DynamoDB プロファイル](../docs/spec/storage/dynamodb.md)・[メモリプロファイル](../docs/spec/storage/memory.md)・[SQLite プロファイル](../docs/spec/storage/sqlite.md)・[Spanner プロファイル](../docs/spec/storage/spanner.md)・[Bigtable プロファイル](../docs/spec/storage/bigtable.md)が規範であり、このデータは規則を追加しない。[ハッシュ仕様](../docs/spec/storage/hash.md)が収録を求める FNV-1a 64 の4件と、Bigtable の封筒の固定バイナリ形式の値の表（BT-D6a）も含める。値40件、操作場面132件（共通42件・DynamoDB固有49件・メモリ固有7件・SQLite固有7件・Spanner固有14件・Bigtable固有12件・SQLite・Spanner・Bigtable に共通の共有1件）、配置1件の計173件で、75規則を対象とする。7つの仕様の文書が定義する125規則は、すべてがケースか `coverage.json` の対象外の理由を持つ。共通の場面は `memory`・`dynamodb`・`sqlite`・`spanner`・`bigtable` の5つの保存先を対象とする。今回の検証はデータと道具だけを対象とし、言語実装や保存先には実行しない。
 
 ## ファイルと形式
 
@@ -153,7 +153,7 @@ payload と `snapshot.aggregate` は任意の JSON 値である。実行器は�
 
 `generators` の各要素は、ケースを根とする JSON Pointer の `target`、Unicode の1文字を表す `character`、UTF-8 の総バイト数 `byte_length` を持つ。例として `{"target":"/fixtures/events/e1/payload","character":"x","byte_length":420000}` は、空文字列の payload を420000個の x に置き換える。対象は fixtures のイベント・スナップショット内に既にある空文字列に限り、各ポインタは1回だけ指定する。文字の UTF-8 幅で割り切れないバイト数はデータの誤りである。オブジェクトの属性や配列要素にも指定でき、ポインタの `~0`・`~1` を復号する。展開前の JSON で Schema を検査し、展開後の値で操作を実行する。参照実装は `tools/conformance/data.py` の `materialize` である。
 
-D-7 の400KBと DY-11 の1MBは、DynamoDB の2進単位である。項目上限は409600バイト、読み取りのページ上限は1048576バイトとなる。[AWS の上限の説明](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Constraints.html)。`dynamodb-item-size-head-overhead` は、journal が上限内に収まっても head の type_name の追加で上限を超えるケースである。head は payload・aid・type_name の値だけでも410046バイト以上になる。これは属性名やコンテナの分も数える前の下限であり、厳密な境界の丸めを期待するものではない。[AWS の項目サイズの説明](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/CapacityUnitCalculations.html)。
+D-7 の400KBと DY-11 の1MBは、DynamoDB の2進単位である。項目上限は409600バイト、読み取りのページ上限は1048576バイトとなる。[AWS の上限の説明](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Constraints.html)。`dynamodb-item-size-head-overhead` は、journal が上限内に収まっても head の type_name の追加で上限を超えるケースである。head は payload・aid・type_name の値だけでも410046バイト以上になる。これは属性名やコンテナの分も数える前の下限であり、厳密な境界の丸めを期待するものではない。[AWS の項目サイズの説明](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/CapacityUnitCalculations.html)。`dynamodb-item-size-event-under-limit`・`dynamodb-item-size-snapshot-under-limit`・`dynamodb-item-size-event-over-limit`・`dynamodb-item-size-snapshot-over-limit` は、上限の数バイト下と数バイト上で、書き込み前の検査の結果が割れないことを確かめる。D-7 の見積もりは上界であり、言語ごとに数え方が違う。rs・go・java は数値を常に21バイトと数え、js は型の1バイトと10進の桁数と2バイトを数える。このため、同じ項目でも js の見積もりは小さく、event のケースの head で27バイト、snapshot のケースの現在のスナップショットで36バイト小さい。`under-limit` のケースは、全言語の見積もりが上限以下になる位置に置き、書き込みの成功を期待する。最も大きい見積もりが上限の3バイト下になる。`over-limit` のケースは、全言語の見積もりが上限を超える位置に置き、契約違反を期待する。最も小さい見積もりが上限の3バイト上になる。両者の間は、実装によって判断が割れてよい範囲なので、ケースを置かない。
 
 ### エラーの対応
 
@@ -169,7 +169,7 @@ D-7 の400KBと DY-11 の1MBは、DynamoDB の2進単位である。項目上限
 
 メッセージの検査が規則番号や aid の一部で偶然通らないよう、aid の値は原則 `Order-9`、飛び番は7や42にする。検証器は、規則番号・aid の全文を要求する要素を除き、must_contain の値が同じ場面の aid やエラー規則番号の部分文字列なら拒否する。空文字列も拒否する。
 
-`dynamodb-item-size-*` は分類 `contract-violation` だけを期待する。D-7 はサイズ超過の判断番号であり、必須の規則番号ではないため、`error.rule` やメッセージの必要条件は付けない。`message` がないエラー期待は、分類だけを比較する。
+`dynamodb-item-size-*` の上限を超えるケースは、分類 `contract-violation` だけを期待する。D-7 はサイズ超過の判断番号であり、必須の規則番号ではないため、`error.rule` やメッセージの必要条件は付けない。`message` がないエラー期待は、分類だけを比較する。
 
 楽観ロックでは、aid と追記しようとした番号をメッセージで検査し、ヘッド番号は必須にしない。生の SDK エラー文・接続文字列・資格情報を模した試験用 sentinel は `must_not_contain` で拒否する。言い回しを固定せずに、メッセージに含まれる全データ値を判別する方法は定義できないため、v1 は `context_only` を持たない。これらのメッセージ条件は E-2 の必要条件を検査するものであり、任意の追加情報が一切ないことまで自動で証明するものではない。
 
@@ -284,7 +284,7 @@ uv run --project tools/conformance --locked python tools/conformance/validate.py
 
 `tools/conformance/reference_model.py` は、集約ごとのヘッド番号、ジャーナル、現在のスナップショット、履歴とTTL期限を状態として操作列を再生する。モデルは期待値を状態の更新に使わない。成功・エラー分類・規則番号・読み取りの全封筒・保持履歴・失敗通知を、独立に計算した結果と比較する。時刻の値域や項目サイズの明らかな超過、確定前の失敗、取り消し理由、履歴ページ、BatchGetItem の応答差し替えも扱う。
 
-`commit` の応答の消失（`replace-response`）は、差し込みの約束（送った要求の副作用は残る）に従い、書き込みを確定したものとして扱う。保持の更新・削除応答の失敗では確定状態が仕様から決まらないため、その操作と以後の状態依存操作を理由付きで飛ばす。現在の128場面では、この理由で飛ばす操作はない。Spanner のやり直しの上限、Bigtable の封筒の上限、Bigtable の書き出しの失敗の意味（新しい末尾の書き出しの失敗は追記の成功を変えない）、Spanner・Bigtable の記録した設定の食い違いも、モデルが独立に計算して期待と比較する。SDK要求の実測、物理属性の型、メッセージの実際の文言はモデルの対象外であり、場面ごとに実行器へ委ねる検査として明示する。項目サイズは既存ケースの属性値だけで上限超過を確かめ、厳密な境界のサイズ計算は扱わない。
+`commit` の応答の消失（`replace-response`）は、差し込みの約束（送った要求の副作用は残る）に従い、書き込みを確定したものとして扱う。保持の更新・削除応答の失敗では確定状態が仕様から決まらないため、その操作と以後の状態依存操作を理由付きで飛ばす。現在の132場面では、この理由で飛ばす操作はない。Spanner のやり直しの上限、Bigtable の封筒の上限、Bigtable の書き出しの失敗の意味（新しい末尾の書き出しの失敗は追記の成功を変えない）、Spanner・Bigtable の記録した設定の食い違いも、モデルが独立に計算して期待と比較する。SDK要求の実測、物理属性の型、メッセージの実際の文言はモデルの対象外であり、場面ごとに実行器へ委ねる検査として明示する。項目サイズは既存ケースの属性値だけで上限超過を確かめ、厳密な境界のサイズ計算は扱わない。
 
 T-13 の値域は整数のナノ秒で検査する。言語の時刻型へ変換した後の丸め・往復は実行器の検査であり、モデルが丸め方向を決めることはない。FNV-1a 64 の表は仕様の計算で別途照合する。Bigtable の封筒の固定バイナリ形式（ADR-0008、BT-D6a）は values/bigtable-envelope.json の値の表に収録し、`tools/conformance/data.py` が仕様の4章から独立に符号化・復元して期待値を照合する。
 

@@ -1,6 +1,6 @@
 {
   "format": "scenarios",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "cases": [
     {
       "id": "dynamodb-condition-equal",
@@ -1139,6 +1139,336 @@
           "target": "/fixtures/events/e1/payload",
           "character": "x",
           "byte_length": 408000
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-item-size-event-under-limit",
+      "rules": [
+        "D-7"
+      ],
+      "description": "payloadのASCII文字列は409453文字（JSONで409455バイト）である。headの項目は、数値を最大の21バイトに数える上界でも409597バイトで、上限409600バイトを下回る。どの言語の上界でも上限以下なので、送信前に拒まず書き込む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": "",
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        }
+      ],
+      "generators": [
+        {
+          "target": "/fixtures/events/e1/payload",
+          "character": "x",
+          "byte_length": 409453
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-item-size-event-over-limit",
+      "rules": [
+        "D-7",
+        "E-1",
+        "E-3",
+        "H-1"
+      ],
+      "description": "payloadのASCII文字列は409486文字（JSONで409488バイト）である。headの項目は、言語ごとの上界のうち最も小さいものでも409603バイトで、上限409600バイトを超える。どの言語の上界でも上限を超えるので、送信前に契約違反として拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": "",
+            "manifest": ""
+          }
+        },
+        "snapshots": {}
+      },
+      "steps": [
+        {
+          "op": "persistEvent",
+          "arguments": {
+            "event": "e1"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation"
+            }
+          },
+          "observe": {
+            "no_requests_in_phases": [
+              "commit",
+              "retention-query",
+              "retention-delete",
+              "retention-mark"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ],
+      "generators": [
+        {
+          "target": "/fixtures/events/e1/payload",
+          "character": "x",
+          "byte_length": 409486
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-item-size-snapshot-under-limit",
+      "rules": [
+        "D-7"
+      ],
+      "description": "スナップショットの集約状態のASCII文字列は409482文字（JSONで409484バイト）である。現在のスナップショットの項目は、数値を最大の21バイトに数える上界でも409597バイトで、上限409600バイトを下回る。どの言語の上界でも上限以下なので、送信前に拒まず書き込む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": "",
+            "seq_nr": 1,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "result": "success"
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "snapshot",
+            "head_seq_nr": 1,
+            "snapshot": "s1"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": [
+              "e1"
+            ]
+          }
+        }
+      ],
+      "generators": [
+        {
+          "target": "/fixtures/snapshots/s1/aggregate",
+          "character": "x",
+          "byte_length": 409482
+        }
+      ]
+    },
+    {
+      "id": "dynamodb-item-size-snapshot-over-limit",
+      "rules": [
+        "D-7",
+        "E-1",
+        "E-3",
+        "H-1"
+      ],
+      "description": "スナップショットの集約状態のASCII文字列は409524文字（JSONで409526バイト）である。現在のスナップショットの項目は、言語ごとの上界のうち最も小さいものでも409603バイトで、上限409600バイトを超える。どの言語の上界でも上限を超えるので、送信前に契約違反として拒む。",
+      "backends": [
+        "dynamodb"
+      ],
+      "store": {
+        "retention_count": null,
+        "retention_mode": "delete"
+      },
+      "fixtures": {
+        "events": {
+          "e1": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1,
+            "occurred_at": "2026-10-05T00:00:00.123456789Z",
+            "payload": {
+              "number": 1
+            },
+            "manifest": ""
+          }
+        },
+        "snapshots": {
+          "s1": {
+            "aggregate": "",
+            "seq_nr": 1,
+            "manifest": ""
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "persistEventAndSnapshot",
+          "arguments": {
+            "event": "e1",
+            "snapshot": "s1"
+          },
+          "expect": {
+            "error": {
+              "category": "contract-violation"
+            }
+          },
+          "observe": {
+            "no_requests_in_phases": [
+              "commit",
+              "retention-query",
+              "retention-delete",
+              "retention-mark"
+            ]
+          }
+        },
+        {
+          "op": "getLatestSnapshotById",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            }
+          },
+          "expect": {
+            "result": "none"
+          }
+        },
+        {
+          "op": "getEventsByIdSinceSeqNr",
+          "arguments": {
+            "aggregate_id": {
+              "type_name": "Order",
+              "value": "9"
+            },
+            "seq_nr": 1
+          },
+          "expect": {
+            "result": "events",
+            "events": []
+          }
+        }
+      ],
+      "generators": [
+        {
+          "target": "/fixtures/snapshots/s1/aggregate",
+          "character": "x",
+          "byte_length": 409524
         }
       ]
     },

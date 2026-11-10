@@ -59,11 +59,11 @@ describe("verifyConformanceManifest", () => {
       file,
       fs
         .readFileSync(file, "utf8")
-        .replace('"version": "1.3.0"', '"version": "9.9.9"'),
+        .replace('"version": "1.4.0"', '"version": "9.9.9"'),
     );
     const result = verifyConformanceManifest(dir);
     expect(result.version).toBe("9.9.9");
-    expect(result.expectedVersion).toBe("1.3.0");
+    expect(result.expectedVersion).toBe("1.4.0");
     expect(result.versionMatches).toBe(false);
     expect(result.ok).toBe(false);
     expect(result.mismatches.join("\n")).not.toContain("version");
