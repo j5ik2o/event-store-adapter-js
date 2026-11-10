@@ -1,10 +1,10 @@
 import { type Database, protos, type Transaction } from "@google-cloud/spanner";
 import { EventStoreError } from "../event-store-error";
 import { Result } from "../result";
+import type { RetryClock } from "./retry-clock";
 import type { SpannerEventStoreHooks } from "./spanner-event-store-hooks";
 import {
   decideRetryWait,
-  type RetryClock,
   retryClock,
   waitForRetry,
 } from "./spanner-retry-wait";

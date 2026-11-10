@@ -1,16 +1,8 @@
 import { performance } from "node:perf_hooks";
 import { Root } from "protobufjs/light";
+import type { RetryClock } from "./retry-clock";
+import type { RetryWait } from "./retry-wait";
 import { retryInfoSchema } from "./spanner-retry-info-schema";
-
-export type RetryWait =
-  | { kind: "server" | "fallback"; milliseconds: number }
-  | { kind: "stop" };
-
-export type RetryClock = {
-  random: () => number;
-  now: () => number;
-  sleep: (milliseconds: number) => Promise<void>;
-};
 
 export const retryClock: RetryClock = {
   random: () => Math.random(),
