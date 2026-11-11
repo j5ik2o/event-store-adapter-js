@@ -1,5 +1,5 @@
 import { AggregateId, EventEnvelope, EventStore, type EventStoreError, MemoryStorage, type PayloadSerializer, type Result, SnapshotEnvelope } from "event-store-adapter-js";
-import { SqliteEventStore, type SqliteEventStoreInput } from "event-store-adapter-js/sqlite";
+import { SqliteBlockingExecution, SqliteEventStore, type SqliteEventStoreInput } from "event-store-adapter-js/sqlite";
 import type { Bigtable } from "@google-cloud/bigtable";
 import { BigtableEventStore, type BigtableEventStoreInput } from "event-store-adapter-js/bigtable";
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
@@ -41,6 +41,11 @@ export async function consume(client: DynamoDBClient): Promise<number> {
 export async function consumeSqlite(file: string): Promise<number> {
   const input: SqliteEventStoreInput<Amount, Amount> = { path: file, eventSerializer: serializer, snapshotSerializer: serializer, retention: { count: 2 }, lockWaitMilliseconds: 1000 };
   unwrap(await SqliteEventStore.initialize(input));
+  const execution: SqliteBlockingExecution = unwrap(SqliteBlockingExecution.singleWorker(4));
+  const offloaded: SqliteEventStore<Amount, Amount> = unwrap(await SqliteEventStore.createOffloaded(input, execution));
+  unwrap(offloaded.close());
+  execution.close();
+  await execution.drained();
   const store = unwrap(await SqliteEventStore.create(input));
   try {
     const id = unwrap(AggregateId.of("Amount", "1"));

@@ -120,7 +120,33 @@ const store = unwrap(await SqliteEventStore.create(input));
 unwrap(store.close());
 ```
 
-The store owns one connection to the file. `close()` can be called repeatedly, and every operation after it is a `storage-error`. `lockWaitMilliseconds` is how long an append waits for another connection's write lock (0 to 2147483647, default 5000); exceeding it is a `storage-error`, never an `optimistic-lock-conflict`. `node:sqlite` is a synchronous API, so while an append waits for the lock it occupies the thread and stops the Node.js event loop; use a short value in servers. `retention` is `{ count }` with a positive integer `count`; TTL (`mode: { type: "ttl", ... }`) is a `configuration-error`. This version provides no change feed: passing `changeFeed` is a `configuration-error`. The file layout is the same as the Rust version's, so a file written by either implementation can be read and written by the other.
+The store owns one connection to the file. `close()` can be called repeatedly, and every operation after it is a `storage-error`. `lockWaitMilliseconds` is how long an append waits for another connection's write lock (0 to 2147483647, default 5000); exceeding it is a `storage-error`, never an `optimistic-lock-conflict`. `node:sqlite` is a synchronous API, so every operation of a store opened with `create`, including the wait for the lock, runs on the calling thread and stops the Node.js event loop. Use `createOffloaded` (below) to keep the event loop running. `retention` is `{ count }` with a positive integer `count`; TTL (`mode: { type: "ttl", ... }`) is a `configuration-error`. This version provides no change feed: passing `changeFeed` is a `configuration-error`. The file layout is the same as the Rust version's, so a file written by either implementation can be read and written by the other.
+
+To keep the event loop running, create a `SqliteBlockingExecution` and open the store with `SqliteEventStore.createOffloaded`. The execution owns one `worker_threads` worker. The store opens its connection in the worker, and the worker runs the SQL of the four operations and of retention, including the wait for the write lock, in the order the operations were accepted. The results, the error types and the commit point are the same as with `create`.
+
+```typescript
+import {
+  SqliteBlockingExecution,
+  SqliteEventStore,
+} from "event-store-adapter-js/sqlite";
+
+const execution = unwrap(SqliteBlockingExecution.singleWorker(64));
+const store = unwrap(await SqliteEventStore.createOffloaded(input, execution));
+// ... use the four operations ...
+unwrap(store.close());
+execution.close();
+await execution.drained();
+```
+
+- `singleWorker(queueCapacity)` accepts one running operation and up to `queueCapacity` waiting operations. A request from `store.close()` to close a connection is always accepted and takes no room. `queueCapacity` must be a positive integer; otherwise the result is a `configuration-error`. An operation submitted when the queue is full or after `execution.close()` does not run and returns a `storage-error`.
+- One execution can serve more than one store. Each store keeps its own connection in the worker.
+- Functions cannot be passed to a worker, so the serializers, the logger and `onRetentionFailure` are called on the calling thread. Only rows and errors cross between the threads. This is different from the Java version, which also runs the serializers on the worker.
+- A promise cannot be cancelled. If you stop waiting for an operation, the accepted operation still runs and can commit.
+- `store.close()` makes later operations of that store a `storage-error`, and closes its connection after the operations that were already accepted. `execution.close()` stops accepting operations and does not stop the accepted ones. `drained()` settles after `close()`, when every accepted operation has finished and the worker has closed its connections and exited.
+- The worker keeps the process alive only while it has accepted operations, and after `close()` until it exits.
+- If the worker stops unexpectedly, the accepted operations fail with a `storage-error`. The operation that was running may have committed. Later operations are rejected as after `close()`, and `drained()` settles.
+- `initialize` runs on the calling thread with either entry point.
+- If the worker cannot be started (for example, the Node.js permission model does not allow worker threads), `singleWorker` returns a `storage-error`.
 
 ### Spanner
 

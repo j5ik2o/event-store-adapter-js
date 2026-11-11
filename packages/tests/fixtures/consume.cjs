@@ -170,8 +170,8 @@ async function consumeSqlite() {
   const fs = require("node:fs");
   const os = require("node:os");
   const path = require("node:path");
-  const { SqliteEventStore } = require("event-store-adapter-js/sqlite");
-  assert.deepEqual(Object.keys(require("event-store-adapter-js/sqlite")), ["SqliteEventStore"]);
+  const { SqliteBlockingExecution, SqliteEventStore } = require("event-store-adapter-js/sqlite");
+  assert.deepEqual(Object.keys(require("event-store-adapter-js/sqlite")), ["SqliteBlockingExecution", "SqliteEventStore"]);
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "eswa-sqlite-"));
   const file = path.join(directory, "store.sqlite3");
   try {
@@ -196,6 +196,15 @@ async function consumeSqlite() {
       assert.equal(read.headSeqNr, 2);
       assert.equal(read.snapshot.aggregate.plus(1).value, 6);
     } finally { reopened.close(); }
+    // 同じ 4 操作を、ワーカーで SQL を実行する入口でも確かめる。
+    const offloadedFile = path.join(directory, "offloaded.sqlite3");
+    unwrap(await SqliteEventStore.initialize({ path: offloadedFile, ...serializers() }));
+    const execution = unwrap(SqliteBlockingExecution.singleWorker(4));
+    const offloaded = unwrap(await SqliteEventStore.createOffloaded({ path: offloadedFile, ...serializers() }, execution));
+    await consumeFourOperations(offloaded);
+    assert.equal(offloaded.close().type, "ok");
+    execution.close();
+    await execution.drained();
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 }
 
