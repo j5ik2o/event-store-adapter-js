@@ -29,7 +29,7 @@ describe("loadConformanceData", () => {
 
   test("loads 173 cases from the real data (40 values, 132 scenarios, 1 layout)", () => {
     const data = loadConformanceData(root);
-    expect(data.version).toBe("1.4.0");
+    expect(data.version).toBe("1.5.0");
     expect(data.cases).toHaveLength(173);
     const count = (f: string) =>
       data.cases.filter((c) => c.format === f).length;
@@ -51,7 +51,7 @@ describe("loadConformanceData", () => {
 
   test("fails when a file version is rewritten", () => {
     rewrite("values/aid.json", (t) =>
-      t.replace('"version": "1.4.0"', '"version": "2.0.0"'),
+      t.replace('"version": "1.5.0"', '"version": "2.0.0"'),
     );
     expect(() => loadConformanceData(copy as string)).toThrow();
   });
@@ -59,8 +59,8 @@ describe("loadConformanceData", () => {
   test("fails when a duplicate key is inserted", () => {
     rewrite("values/aid.json", (t) =>
       t.replace(
-        '"version": "1.4.0",',
-        '"version": "1.4.0", "version": "1.4.0",',
+        '"version": "1.5.0",',
+        '"version": "1.5.0", "version": "1.5.0",',
       ),
     );
     expect(() => loadConformanceData(copy as string)).toThrow();
@@ -70,7 +70,7 @@ describe("loadConformanceData", () => {
     const dir = makeCopy();
     const extra = {
       format: "scenarios",
-      version: "1.4.0",
+      version: "1.5.0",
       cases: [
         {
           id: "extra-time-case",
@@ -134,7 +134,7 @@ describe("loadConformanceData", () => {
       path.join(dir, "scenarios", "extra.json"),
       JSON.stringify({
         format: "scenarios",
-        version: "1.4.0",
+        version: "1.5.0",
         cases: [
           {
             id: "bad",
@@ -176,6 +176,8 @@ describe("loadConformanceData", () => {
       ["F-3", "not-provided"],
       ["F-4", "not-provided"],
       ["F-5", "not-provided"],
+      ["L-1", "out-of-scope"],
+      ["L-2", "out-of-scope"],
       ["DY-13", "not-provided"],
       ["DY-15", "not-provided"],
       ["SP-1", "profile-documentation"],

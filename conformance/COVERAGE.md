@@ -57,6 +57,8 @@
 | H-4 | [dynamodb-layout-v1](dynamodb/layout.json)、[dynamodb-written-item-shapes](dynamodb/item-shapes.json) | — |
 | K-1 | [hash-fnv1a64-1](values/hash.json)、[hash-fnv1a64-2](values/hash.json)、[hash-fnv1a64-3](values/hash.json)、[hash-fnv1a64-4](values/hash.json) | — |
 | K-2 | — | SpannerとBigtableはハッシュを保存キーに使うが、キーへの埋め込み（主キーの列・行キーのバイト列）は生の行の形に寄るので、操作の場面で表せない。各言語の試験に任せる。DynamoDBはこのハッシュを保存キーに使わない。 |
+| L-1 | — | 保存先のI/Oを呼び出し元の実行文脈（スレッド、イベントループ、ランタイムのワーカー）で待つかどうかと、上限付きの実行資源で操作を実行する入口があるかどうかは、操作の結果に現れないので、操作の場面で表せない。場面は操作を呼ぶ入口も指定しない。各言語の試験に任せる。 |
+| L-2 | — | 場面は操作を呼ぶ入口を指定しないので、別の実行資源で実行する入口で結果・エラーの分類・確定点が変わらないことを、入口を区別して表せない。結果の待ちの取り消しは、取り消しの手段と意味の細部を言語に任せている（共通契約8.1）ので、操作の場面で表せない。各言語の試験に任せる。 |
 | MEM-1 | — | 前提を文書に書くという義務で、操作の場面では表せない。 |
 | MEM-2 | [memory-store-new-independent](memory/stores.json)、[memory-store-shared-configuration](memory/stores.json)、[memory-store-shared](memory/stores.json) | — |
 | MEM-3 | [memory-change-feed-unsupported](memory/configuration.json)、[memory-ttl-unsupported](memory/configuration.json) | — |
