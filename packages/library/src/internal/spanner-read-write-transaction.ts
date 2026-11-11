@@ -1,7 +1,14 @@
 import { type Database, protos, type Transaction } from "@google-cloud/spanner";
 import { EventStoreError } from "../event-store-error";
 import { Result } from "../result";
+import type { RetryClock } from "./retry-clock";
 import type { SpannerEventStoreHooks } from "./spanner-event-store-hooks";
+import {
+  decideRetryWait,
+  MAX_SERVER_RETRY_WAIT_MS,
+  retryClock,
+  waitForRetry,
+} from "./spanner-retry-wait";
 import { SpannerTransactionRejection } from "./spanner-transaction-rejection";
 
 // gRPC の ABORTED
@@ -10,7 +17,8 @@ const ABORTED = 10;
 const isAborted = (cause: unknown): boolean =>
   typeof cause === "object" &&
   cause !== null &&
-  (cause as { code?: unknown }).code === ABORTED;
+  "code" in cause &&
+  cause.code === ABORTED;
 
 /**
  * SERIALIZABLE の読み書きトランザクションを試行ごとに取り直して実行する（SPN-1・SPN-7）。
@@ -22,6 +30,7 @@ export async function runSpannerReadWriteTransaction<T>(
   retryLimit: number,
   attempt: (transaction: Transaction) => Promise<T>,
   hooks?: Pick<SpannerEventStoreHooks, "beforeCommit" | "afterCommit">,
+  clock: RetryClock = retryClock,
 ): Promise<Result<T, EventStoreError>> {
   for (let retries = 0; ; retries += 1) {
     let transaction: Transaction;
@@ -38,6 +47,7 @@ export async function runSpannerReadWriteTransaction<T>(
       );
     }
     let committed = false;
+    let abortedCause: unknown;
     try {
       const value = await attempt(transaction);
       await hooks?.beforeCommit?.();
@@ -59,20 +69,37 @@ export async function runSpannerReadWriteTransaction<T>(
       if (isAborted(cause)) {
         // 中断されたトランザクションを解放してから、次の試行を取り直す。
         await rollback(transaction);
-        if (retries >= retryLimit) {
-          return Result.err(
-            EventStoreError.storage(
-              "transaction aborted; retry limit exceeded",
-              cause,
-            ),
-          );
-        }
-        continue;
+        abortedCause = cause;
+      } else {
+        await rollback(transaction);
+        return Result.err(EventStoreError.storage("transaction failed", cause));
       }
-      await rollback(transaction);
-      return Result.err(EventStoreError.storage("transaction failed", cause));
     } finally {
       transaction.end();
+    }
+    if (retries >= retryLimit) {
+      return Result.err(
+        EventStoreError.storage(
+          "transaction aborted; retry limit exceeded",
+          abortedCause,
+        ),
+      );
+    }
+    const wait = decideRetryWait(abortedCause, retries + 1, clock.random);
+    if (wait.kind === "stop") {
+      return Result.err(
+        EventStoreError.storage(
+          `server retry delay exceeds supported wait of ${MAX_SERVER_RETRY_WAIT_MS}ms`,
+          abortedCause,
+        ),
+      );
+    }
+    try {
+      await waitForRetry(wait.milliseconds, clock);
+    } catch (cause) {
+      return Result.err(
+        EventStoreError.storage("transaction retry wait failed", cause),
+      );
     }
   }
 }

@@ -196,6 +196,9 @@ importers:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.413.0
         version: 3.1163.0
+      protobufjs:
+        specifier: 7.6.6
+        version: 7.6.6
     devDependencies:
       '@biomejs/biome':
         specifier: 2.6.5
