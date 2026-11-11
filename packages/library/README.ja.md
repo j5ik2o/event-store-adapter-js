@@ -122,7 +122,33 @@ const store = unwrap(await SqliteEventStore.create(input));
 unwrap(store.close());
 ```
 
-ストアはファイルへの接続を1本所有します。`close()` は何度呼んでも構いません。閉じた後の操作は `storage-error` になります。`lockWaitMilliseconds` は、追記が別の接続の書き込みロックを待つ時間です（0から2147483647、既定は5000）。超過は `storage-error` で、`optimistic-lock-conflict` にはなりません。`node:sqlite` は同期 API なので、追記がロックを待つあいだはスレッドを占有し、Node.js のイベントループが止まります。サーバーでは短い値にしてください。`retention` は `{ count }` で、`count` は正の整数です。TTL（`mode: { type: "ttl", ... }`）は `configuration-error` になります。この版は変更フィードを提供しません。`changeFeed` を指定すると `configuration-error` になります。ファイルの配置はRust版と同じなので、どちらの実装が書いたファイルも、もう一方で読み書きできます。
+ストアはファイルへの接続を1本所有します。`close()` は何度呼んでも構いません。閉じた後の操作は `storage-error` になります。`lockWaitMilliseconds` は、追記が別の接続の書き込みロックを待つ時間です（0から2147483647、既定は5000）。超過は `storage-error` で、`optimistic-lock-conflict` にはなりません。`node:sqlite` は同期 API なので、`create` で開いたストアの操作は、ロックの待ちも含めて呼び出し元のスレッドで動き、Node.js のイベントループを止めます。イベントループを止めないには、下の `createOffloaded` を使ってください。`retention` は `{ count }` で、`count` は正の整数です。TTL（`mode: { type: "ttl", ... }`）は `configuration-error` になります。この版は変更フィードを提供しません。`changeFeed` を指定すると `configuration-error` になります。ファイルの配置はRust版と同じなので、どちらの実装が書いたファイルも、もう一方で読み書きできます。
+
+イベントループを止めないには、`SqliteBlockingExecution` を作り、`SqliteEventStore.createOffloaded` でストアを開きます。この実行資源は `worker_threads` のワーカーを1つ持ちます。ストアはワーカーの中で接続を開き、ワーカーは4つの操作と保持の SQL を、書き込みロックの待ちも含めて、受け付けた順に実行します。結果、エラーの種類、確定点は `create` と同じです。
+
+```typescript
+import {
+  SqliteBlockingExecution,
+  SqliteEventStore,
+} from "event-store-adapter-js/sqlite";
+
+const execution = unwrap(SqliteBlockingExecution.singleWorker(64));
+const store = unwrap(await SqliteEventStore.createOffloaded(input, execution));
+// ... 4つの操作を使う ...
+unwrap(store.close());
+execution.close();
+await execution.drained();
+```
+
+- `singleWorker(queueCapacity)` は、実行中の1件と、待っている最大 `queueCapacity` 件を受け付けます。`store.close()` が出す、接続を閉じる要求は、いつも受け付け、この件数に数えません。`queueCapacity` は正の整数です。そうでなければ `configuration-error` になります。待ち行列が満杯のときと `execution.close()` のあとに出した操作は、実行されずに `storage-error` になります。
+- 1つの実行資源を複数のストアで使えます。各ストアは、ワーカーの中に自分の接続を持ちます。
+- 関数はワーカーへ渡せないので、直列化、ロガー、`onRetentionFailure` は呼び出し元のスレッドで呼びます。スレッドのあいだを行き来するのは、行とエラーだけです。直列化もワーカーで行うJava版とは、ここが違います。
+- Promise は取り消せません。操作を待つのをやめても、受け付けた操作は実行され、確定することがあります。
+- `store.close()` は、そのストアの以後の操作を `storage-error` にし、受け付け済みの操作のあとで接続を閉じます。`execution.close()` は操作の受け付けを止めますが、受け付け済みの操作は止めません。`drained()` は `close()` のあと、受け付け済みの操作がすべて終わり、ワーカーが接続を閉じて終了したときに解決します。
+- ワーカーがプロセスを生かすのは、受け付けた操作があるあいだと、`close()` のあと終了するまでだけです。
+- ワーカーが予期せず終わったときは、受け付け済みの操作が `storage-error` になります。実行中だった操作は確定していることがあります。以後の操作は `close()` のあとと同じく拒否され、`drained()` は解決します。
+- `initialize` は、どちらの入口でも呼び出し元のスレッドで動きます。
+- ワーカーを起動できないとき（たとえば Node.js の権限モデルでワーカーのスレッドが許されていないとき）、`singleWorker` は `storage-error` を返します。
 
 ### Spanner
 

@@ -13,7 +13,8 @@ export type SqliteEventStoreInput<PE, PS> = Readonly<{
   /** 最初の版は変更フィードを提供しない。値を指定すると設定エラーになる。 */
   changeFeed?: unknown;
   /** 別の接続の書き込みロックを待つ時間（ミリ秒）。0 から 2147483647 の整数で、既定は 5000。
-   * node:sqlite は同期 API なので、待つあいだはスレッドを占有しイベントループが止まる。サーバーでは短い値にする。 */
+   * node:sqlite は同期 API なので、`create` で開いたストアでは、待つあいだイベントループが止まる。
+   * `createOffloaded` で開いたストアでは、ワーカーが待つ。 */
   lockWaitMilliseconds?: number;
   onRetentionFailure?: (failure: RetentionFailure) => void;
   logger?: Logger;
