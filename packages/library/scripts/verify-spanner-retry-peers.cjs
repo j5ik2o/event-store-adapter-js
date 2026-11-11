@@ -6,22 +6,91 @@ const { createRequire } = require("node:module");
 const { execFileSync } = require("node:child_process");
 const { createHash } = require("node:crypto");
 
+const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../package.json")));
+const peerRange = manifest.peerDependencies["@google-cloud/spanner"];
+const protobufjsVersion = manifest.dependencies.protobufjs;
+const matrix = [
+  { version: "8.7.1", role: "minimum" },
+  { version: "9.0.0", role: "minimum" },
+  { version: "9.1.0", role: "representative" },
+];
+
+const parseVersion = (version) => {
+  assert.match(version, /^\d+\.\d+\.\d+$/, `unsupported version ${version}`);
+  return version.split(".").map(Number);
+};
+const compareVersions = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+const caretBranches = (range) =>
+  range.split("||").map((branch) => {
+    const match = /^\^([1-9]\d*\.\d+\.\d+)$/.exec(branch.trim());
+    if (!match) throw new Error(`unsupported peer range branch "${branch.trim()}" in "${range}"`);
+    return parseVersion(match[1]);
+  });
+const checkMatrix = (range, entries) => {
+  const branches = caretBranches(range);
+  const minima = branches.map((branch) => branch.join(".")).sort();
+  const listed = entries.filter((entry) => entry.role === "minimum").map((entry) => entry.version).sort();
+  assert.deepEqual(listed, minima, `minimum cases must be exactly ${minima.join(", ")} for "${range}"`);
+  for (const { version, role } of entries) {
+    assert.ok(role === "minimum" || role === "representative", `unlabelled matrix entry ${version}`);
+    const parsed = parseVersion(version);
+    assert.ok(branches.some((branch) => parsed[0] === branch[0] && compareVersions(parsed, branch) >= 0), `${version} is outside "${range}"`);
+  }
+};
+
+const assertWithin = (root, file) => {
+  const relative = path.relative(root, file);
+  assert.ok(relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative), `${file} is outside ${root}`);
+};
+const loadWithin = (root, file) => {
+  assertWithin(root, file);
+  return require(file);
+};
+const packageOf = (file, name) => {
+  for (let dir = path.dirname(file); dir !== path.dirname(dir); dir = path.dirname(dir)) {
+    const manifestPath = path.join(dir, "package.json");
+    const found = fs.existsSync(manifestPath) && JSON.parse(fs.readFileSync(manifestPath));
+    if (found && found.name === name) return { path: file, version: found.version };
+  }
+  throw new Error(`no ${name} package above ${file}`);
+};
+const loadedModules = (transactionPath, retryWaitPath) => {
+  const sdk = createRequire(transactionPath).resolve("@google-cloud/spanner");
+  return {
+    adapter: [transactionPath, retryWaitPath],
+    sdk: packageOf(sdk, "@google-cloud/spanner"),
+    grpc: packageOf(createRequire(sdk).resolve("@grpc/grpc-js"), "@grpc/grpc-js"),
+    protobufjs: packageOf(createRequire(retryWaitPath).resolve("protobufjs/light"), "protobufjs"),
+  };
+};
+const modulePaths = (modules) => [...modules.adapter, modules.sdk.path, modules.grpc.path, modules.protobufjs.path];
+
 (async () => {
-  for (const version of ["8.7.1", "9.0.0", "9.1.0"]) {
+  checkMatrix(peerRange, matrix);
+  for (const omitted of matrix.filter((entry) => entry.role === "minimum")) {
+    assert.throws(() => checkMatrix(peerRange, matrix.filter((entry) => entry !== omitted)), /minimum cases must be exactly/);
+  }
+  assert.throws(() => checkMatrix(">=8.7.1", matrix), /unsupported peer range/);
+  const workspace = loadedModules(require.resolve("../dist/internal/spanner-read-write-transaction"), require.resolve("../dist/internal/spanner-retry-wait"));
+  for (const { version, role } of matrix) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), `esa-retry-${version}-`));
     try {
-      execFileSync("npm", ["install", "--prefix", root, "--ignore-scripts", "--no-audit", "--no-fund", `@google-cloud/spanner@${version}`, "protobufjs@7.6.6"], { stdio: "pipe" });
+      execFileSync("npm", ["install", "--prefix", root, "--ignore-scripts", "--no-audit", "--no-fund", `@google-cloud/spanner@${version}`, `protobufjs@${protobufjsVersion}`], { stdio: "pipe" });
       fs.cpSync(path.join(__dirname, "../dist"), path.join(root, "dist"), { recursive: true });
-      const local = createRequire(path.join(root, "package.json"));
-      const sdk = local.resolve("@google-cloud/spanner");
-      const sdkRequire = createRequire(sdk);
-      const { Metadata } = sdkRequire("@grpc/grpc-js");
-      const { Root } = local("protobufjs/light");
-      const descriptorPath = path.join(path.dirname(sdk), version === "8.7.1" ? "../protos/protos.json" : "../protos/status.json");
+      const isolated = fs.realpathSync(root);
+      for (const file of modulePaths(workspace)) assert.throws(() => assertWithin(isolated, file), /is outside/);
+      const local = createRequire(path.join(isolated, "package.json"));
+      const transactionPath = local.resolve("./dist/internal/spanner-read-write-transaction");
+      const retryWaitPath = local.resolve("./dist/internal/spanner-retry-wait");
+      const modules = loadedModules(transactionPath, retryWaitPath);
+      const { Metadata } = loadWithin(isolated, modules.grpc.path);
+      const { Root } = loadWithin(isolated, modules.protobufjs.path);
+      const descriptorPath = path.join(path.dirname(modules.sdk.path), version === "8.7.1" ? "../protos/protos.json" : "../protos/status.json");
+      assertWithin(isolated, descriptorPath);
       const descriptor = JSON.parse(fs.readFileSync(descriptorPath));
       const info = Root.fromJSON(descriptor).lookupType("google.rpc.RetryInfo");
-      const { runSpannerReadWriteTransaction: run } = local("./dist/internal/spanner-read-write-transaction");
-      const { decideRetryWait } = local("./dist/internal/spanner-retry-wait");
+      const { runSpannerReadWriteTransaction: run } = loadWithin(isolated, transactionPath);
+      const { decideRetryWait } = loadWithin(isolated, retryWaitPath);
       const encode = (duration) => Buffer.from(info.encode(info.fromObject({ retryDelay: duration })).finish());
       const makeCause = (values) => {
         const metadata = new Metadata();
@@ -87,7 +156,13 @@ const { createHash } = require("node:crypto");
       }
       const longFirst = makeCause([encode({ seconds: 61 }), encode({ nanos: 1 })]);
       assert.equal(decideRetryWait(longFirst, 1, () => { throw Error("random"); }).kind, "stop");
-      console.log(JSON.stringify({ version, resolved: sdk, lockfileSha256: createHash("sha256").update(fs.readFileSync(path.join(root, "package-lock.json"))).digest("hex"), descriptorSha256: createHash("sha256").update(fs.readFileSync(descriptorPath)).digest("hex"), cases, firstValid: "PASS", entry: "PASS" }));
+      for (const file of modulePaths(modules)) {
+        assertWithin(isolated, file);
+        assert.ok(require.cache[file], `${file} was not loaded`);
+      }
+      assert.equal(modules.sdk.version, version);
+      assert.equal(modules.protobufjs.version, protobufjsVersion);
+      console.log(JSON.stringify({ version, role, peerRange, node: process.version, modules, lockfileSha256: createHash("sha256").update(fs.readFileSync(path.join(root, "package-lock.json"))).digest("hex"), descriptorSha256: createHash("sha256").update(fs.readFileSync(descriptorPath)).digest("hex"), cases, firstValid: "PASS", entry: "PASS" }));
     } finally {
       fs.rmSync(root, { recursive: true });
     }
