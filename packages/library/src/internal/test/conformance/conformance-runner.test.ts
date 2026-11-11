@@ -175,6 +175,8 @@ describe("runConformance", () => {
       "F-3",
       "F-4",
       "F-5",
+      "L-1",
+      "L-2",
       "DY-13",
       "DY-15",
       "SP-1",
@@ -231,7 +233,7 @@ describe("runConformance", () => {
     expect(summary).toContain("abc123");
     expect(summary).toContain("W-5");
     expect(summary).toContain("R-7");
-    expect(summary).toContain("expected 1.4.0");
+    expect(summary).toContain("expected 1.5.0");
   });
 
   test("keeps per-backend status for the same case id", async () => {
