@@ -1,3 +1,4 @@
+import type { DatabaseSync } from "node:sqlite";
 import type { EventEnvelope } from "../event-envelope";
 import type { EventStore } from "../event-store";
 import { EventStoreError } from "../event-store-error";
@@ -39,60 +40,83 @@ export function createSqliteGetEvents<PE, PS>(
     const aid = `${validatedId.value.typeName}-${validatedId.value.value}`;
     const usable = usableSqliteConnection(connection);
     if (usable.type === "err") return usable;
-    const db = usable.value;
-
-    let head: bigint;
-    let from: bigint;
-    let rows: readonly JournalRow[];
-    try {
-      // SQ-9: ヘッドと journal を、1 つの明示的な読み取りトランザクションで読む。
-      db.exec("BEGIN");
-      try {
-        const heads = db.prepare("SELECT seq_nr FROM head WHERE aid = ?");
-        heads.setReadBigInts(true);
-        const headRow = heads.get(aid);
-        hooks?.afterReadHead?.("events");
-        if (headRow === undefined) return Result.ok([]);
-        const stored = sqliteStoredInteger(
-          headRow.seq_nr,
-          "head seq_nr",
-          BigInt(1),
-          MAX_SEQ_NR,
-        );
-        if (stored.type === "err") return stored;
-        head = stored.value;
-        from = BigInt(Math.max(1, start.value));
-        if (from > head) return Result.ok([]);
-        const journal = db.prepare(
-          "SELECT seq_nr, occurred_at_ns, manifest, payload FROM journal WHERE aid = ? AND seq_nr >= ? AND seq_nr <= ? ORDER BY seq_nr",
-        );
-        journal.setReadBigInts(true);
-        rows = journal.all(aid, from, head);
-      } finally {
-        endSqliteTransaction(db);
-      }
-    } catch (cause) {
-      return Result.err(
-        EventStoreError.storage("event journal query failed", cause),
-      );
-    }
-    if (BigInt(rows.length) !== head - from + BigInt(1))
-      return Result.err(
-        EventStoreError.storage("event journal range has a gap"),
-      );
-    const events: EventEnvelope<PE>[] = [];
-    for (const [index, row] of rows.entries()) {
-      const restored = restoreEvent(
-        row,
-        from + BigInt(index),
-        validatedId.value,
-        settings.eventSerializer,
-      );
-      if (restored.type === "err") return restored;
-      events.push(restored.value);
-    }
-    return Result.ok(events);
+    const read = readSqliteEventRows(usable.value, aid, start.value, hooks);
+    if (read.type === "err") return read;
+    return restoreSqliteEvents(
+      read.value,
+      validatedId.value,
+      settings.eventSerializer,
+    );
   };
+}
+
+/** 読み取りトランザクションで読んだ journal の行。ヘッドが無いか、範囲が空なら undefined にする。 */
+export type SqliteEventRows =
+  | Readonly<{ from: bigint; head: bigint; rows: readonly JournalRow[] }>
+  | undefined;
+
+/** SQ-9: ヘッドと journal を、1 つの明示的な読み取りトランザクションで読む。行は値に戻さない。 */
+export function readSqliteEventRows(
+  db: DatabaseSync,
+  aid: string,
+  start: number,
+  hooks?: Pick<SqliteEventStoreHooks, "afterReadHead">,
+): Result<SqliteEventRows, EventStoreError> {
+  try {
+    db.exec("BEGIN");
+    try {
+      const heads = db.prepare("SELECT seq_nr FROM head WHERE aid = ?");
+      heads.setReadBigInts(true);
+      const headRow = heads.get(aid);
+      hooks?.afterReadHead?.("events");
+      if (headRow === undefined) return Result.ok(undefined);
+      const stored = sqliteStoredInteger(
+        headRow.seq_nr,
+        "head seq_nr",
+        BigInt(1),
+        MAX_SEQ_NR,
+      );
+      if (stored.type === "err") return stored;
+      const head = stored.value;
+      const from = BigInt(Math.max(1, start));
+      if (from > head) return Result.ok(undefined);
+      const journal = db.prepare(
+        "SELECT seq_nr, occurred_at_ns, manifest, payload FROM journal WHERE aid = ? AND seq_nr >= ? AND seq_nr <= ? ORDER BY seq_nr",
+      );
+      journal.setReadBigInts(true);
+      return Result.ok({ from, head, rows: journal.all(aid, from, head) });
+    } finally {
+      endSqliteTransaction(db);
+    }
+  } catch (cause) {
+    return Result.err(
+      EventStoreError.storage("event journal query failed", cause),
+    );
+  }
+}
+
+/** 読んだ行の連続を確かめ、利用者の直列化で値に戻す。 */
+export function restoreSqliteEvents<PE>(
+  read: SqliteEventRows,
+  aggregateId: EventEnvelope<PE>["aggregateId"],
+  serializer: Settings<PE, unknown>["eventSerializer"],
+): Result<EventEnvelope<PE>[], EventStoreError> {
+  if (read === undefined) return Result.ok([]);
+  const { from, head, rows } = read;
+  if (BigInt(rows.length) !== head - from + BigInt(1))
+    return Result.err(EventStoreError.storage("event journal range has a gap"));
+  const events: EventEnvelope<PE>[] = [];
+  for (const [index, row] of rows.entries()) {
+    const restored = restoreEvent(
+      row,
+      from + BigInt(index),
+      aggregateId,
+      serializer,
+    );
+    if (restored.type === "err") return restored;
+    events.push(restored.value);
+  }
+  return Result.ok(events);
 }
 
 function restoreEvent<P>(

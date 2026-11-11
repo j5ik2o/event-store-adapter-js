@@ -87,15 +87,16 @@ function serialize<P>(
   }
 }
 
-type Rows = Readonly<{
+/** 1 回の追記で書く値。直列化は済んでいる。 */
+export type SqliteAppendRows = Readonly<{
   aid: string;
   typeName: string;
   seqNr: number;
   nanos: bigint;
   manifest: string;
-  payload: Buffer;
+  payload: Uint8Array;
   snapshot:
-    | Readonly<{ seqNr: number; manifest: string; payload: Buffer }>
+    | Readonly<{ seqNr: number; manifest: string; payload: Uint8Array }>
     | undefined;
   keepHistory: boolean;
 }>;
@@ -106,7 +107,7 @@ type Rows = Readonly<{
  */
 function appendInTransaction(
   db: DatabaseSync,
-  rows: Rows,
+  rows: SqliteAppendRows,
   hooks: SqliteEventStoreHooks | undefined,
 ): Result<void, EventStoreError> {
   try {
@@ -228,6 +229,35 @@ async function persistSqliteEvent<PE, PS>(
   snapshot: SnapshotEnvelope<PS> | undefined,
   hooks?: SqliteEventStoreHooks,
 ): Promise<Result<void, EventStoreError>> {
+  const append = prepareSqliteAppend(settings, event, snapshot);
+  if (append.type === "err") return append;
+  const db = usableSqliteConnection(connection);
+  if (db.type === "err") return db;
+  return reportSqliteAppend(
+    writeSqliteAppend(db.value, append.value, hooks),
+    append.value.rows.aid,
+    settings,
+  );
+}
+
+/** 追記と、その直後に行う履歴の整理。整理するのは、スナップショットを書き、保持の件数があるときだけ。 */
+export type SqliteAppend = Readonly<{
+  rows: SqliteAppendRows;
+  retention: Readonly<{ seqNr: number; count: number }> | undefined;
+}>;
+
+/** 追記の結果と、追記が確定したあとの整理の結果。整理しなかったときは undefined。 */
+export type SqliteAppendOutcome = Readonly<{
+  appended: Result<void, EventStoreError>;
+  retained: Result<void, EventStoreError> | undefined;
+}>;
+
+/** 利用者の直列化で、書く値を作る。保存先には触れない。 */
+export function prepareSqliteAppend<PE, PS>(
+  settings: Settings<PE, PS>,
+  event: EventEnvelope<PE>,
+  snapshot: SnapshotEnvelope<PS> | undefined,
+): Result<SqliteAppend, EventStoreError> {
   // 検証済みの ID なので、文字列の組み立てで失敗しない。
   const aid = `${event.aggregateId.typeName}-${event.aggregateId.value}`;
   const eventBytes = serialize(
@@ -241,12 +271,8 @@ async function persistSqliteEvent<PE, PS>(
       ? undefined
       : serialize(settings.snapshotSerializer, snapshot.aggregate, "snapshot");
   if (snapshotBytes?.type === "err") return snapshotBytes;
-  const db = usableSqliteConnection(connection);
-  if (db.type === "err") return db;
-
-  const result = appendInTransaction(
-    db.value,
-    {
+  return Result.ok({
+    rows: {
       aid,
       typeName: event.aggregateId.typeName,
       seqNr: event.seqNr,
@@ -263,26 +289,48 @@ async function persistSqliteEvent<PE, PS>(
             },
       keepHistory: settings.retentionCount !== undefined,
     },
-    hooks,
-  );
-  if (result.type === "err") return result;
+    retention:
+      snapshot === undefined || settings.retentionCount === undefined
+        ? undefined
+        : { seqNr: snapshot.seqNr, count: settings.retentionCount },
+  });
+}
 
-  if (snapshot !== undefined && settings.retentionCount !== undefined) {
-    // SQ-11: 整理の失敗は、確定済みの追記の成功を変えず、別の経路で通知する。
-    const retained = retainSqliteSnapshots(
-      db.value,
+/** 追記を確定し、確定したら履歴を整理する。どちらも await を挟まずに同期で行う。 */
+export function writeSqliteAppend(
+  db: DatabaseSync,
+  append: SqliteAppend,
+  hooks?: SqliteEventStoreHooks,
+): SqliteAppendOutcome {
+  const appended = appendInTransaction(db, append.rows, hooks);
+  return {
+    appended,
+    retained:
+      appended.type === "err" || append.retention === undefined
+        ? undefined
+        : retainSqliteSnapshots(
+            db,
+            append.rows.aid,
+            append.retention.seqNr,
+            append.retention.count,
+            hooks,
+          ),
+  };
+}
+
+/** 追記の結果を返す。SQ-11: 整理の失敗は、確定済みの追記の成功を変えず、別の経路で通知する。 */
+export async function reportSqliteAppend<PE, PS>(
+  outcome: SqliteAppendOutcome,
+  aid: string,
+  settings: Settings<PE, PS>,
+): Promise<Result<void, EventStoreError>> {
+  if (outcome.appended.type === "err") return outcome.appended;
+  if (outcome.retained?.type === "err")
+    await notifyRetentionFailure(
       aid,
-      snapshot.seqNr,
-      settings.retentionCount,
-      hooks,
+      outcome.retained.error,
+      settings.logger,
+      settings.onRetentionFailure,
     );
-    if (retained.type === "err")
-      await notifyRetentionFailure(
-        aid,
-        retained.error,
-        settings.logger,
-        settings.onRetentionFailure,
-      );
-  }
   return Result.ok(undefined);
 }

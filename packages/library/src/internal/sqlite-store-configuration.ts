@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { EventStoreError } from "../event-store-error";
 import { Result } from "../result";
+import { openSqliteConnection } from "./sqlite-connection";
 import { verifySqliteLayout } from "./sqlite-layout";
 import { endSqliteTransaction } from "./sqlite-transaction";
 
@@ -59,4 +60,22 @@ export function verifySqliteStore(
       EventStoreError.storage("SQLite store could not be verified", cause),
     );
   }
+}
+
+/** 既存のファイルへの接続を開き、照合する。照合に失敗したら接続を閉じる。 */
+export function openVerifiedSqliteConnection(
+  path: string,
+  lockWaitMilliseconds: number,
+  retentionCount: number | undefined,
+): Result<DatabaseSync, EventStoreError> {
+  const opened = openSqliteConnection(path, lockWaitMilliseconds, "existing");
+  if (opened.type === "err") return opened;
+  const verified = verifySqliteStore(opened.value, retentionCount);
+  if (verified.type === "ok") return opened;
+  try {
+    opened.value.close();
+  } catch {
+    // 照合の失敗を報告する。閉鎖の失敗では、その原因を隠さない。
+  }
+  return verified;
 }

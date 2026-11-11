@@ -17,7 +17,7 @@ import {
   createSqlitePersistEvent,
   createSqlitePersistEventAndSnapshot,
 } from "./sqlite-persist-event";
-import { verifySqliteStore } from "./sqlite-store-configuration";
+import { openVerifiedSqliteConnection } from "./sqlite-store-configuration";
 import { endSqliteTransaction } from "./sqlite-transaction";
 
 /**
@@ -82,24 +82,12 @@ export async function openSqliteEventStoreInternal<PE = unknown, PS = unknown>(
 ): Promise<Result<SqliteEventStore<PE, PS>, EventStoreError>> {
   const settings = validateSqliteEventStoreInput(input);
   if (settings.type === "err") return settings;
-  const opened = openSqliteConnection(
+  const opened = openVerifiedSqliteConnection(
     settings.value.path,
     settings.value.lockWaitMilliseconds,
-    "existing",
-  );
-  if (opened.type === "err") return opened;
-  const verified = verifySqliteStore(
-    opened.value,
     settings.value.retentionCount,
   );
-  if (verified.type === "err") {
-    try {
-      opened.value.close();
-    } catch {
-      // 照合の失敗を報告する。閉鎖の失敗では、その原因を隠さない。
-    }
-    return verified;
-  }
+  if (opened.type === "err") return opened;
   const connection: SqliteConnectionState = {
     db: opened.value,
     closed: false,
