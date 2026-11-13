@@ -34,8 +34,8 @@
 - **ボーイスカウトルール**: 適用するが、優先順位・依存関係を考慮した上で
 - **TOCTOU 回避**: read-then-act を `with_write` クロージャ等で原子化し、ガードを外部に返さない設計を優先
 - **CHANGELOG.md**: GitHub Actions が自動生成する。AI エージェントは編集しない
-- **lint への `#[allow]`**: 安易に付けない。付ける場合は人間から許可を取る
-- **設計・命名・構造ルール変更**: `.agents/rules/` 配下の rule 変更は人間許可が必要
+- **lint への `#[allow]`**: 安易に付けない。付ける場合は加藤から許可を取る
+- **設計・命名・構造ルール変更**: `.agents/rules/` 配下の rule 変更は加藤の許可が必要
 
 ## Intermediate Artifacts
 
