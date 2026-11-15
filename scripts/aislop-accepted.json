@@ -1,0 +1,206 @@
+{
+  "engines": [
+    "format",
+    "lint",
+    "code-quality",
+    "ai-slop",
+    "security"
+  ],
+  "missingToolsAllowed": {
+    "ruff": "ルートに Python プロジェクト/設定がなく ruff を導入していないため、format と lint が ruff を欠いて報告します。"
+  },
+  "accepted": [
+    {
+      "reason": "ツール向けスクリプト（リリース補助・版番号計算など、リポジトリの実行物ではない補助コード）に残る console 出力と装飾的なコメント。既存の補助スクリプトの書き方をそのまま受け入れます。",
+      "findings": [
+        {
+          "engine": "ai-slop",
+          "rule": "ai-slop/console-leftover",
+          "file": ".github/bump-snapshot-version.js",
+          "message": "console.log/debug/info statement left in production code"
+        },
+        {
+          "engine": "ai-slop",
+          "rule": "ai-slop/console-leftover",
+          "file": ".github/set-package-version.js",
+          "message": "console.log/debug/info statement left in production code"
+        },
+        {
+          "engine": "ai-slop",
+          "rule": "ai-slop/narrative-comment",
+          "file": ".github/create-release-note-body.py",
+          "message": "Narrative comment block (decorative separator)"
+        },
+        {
+          "engine": "ai-slop",
+          "rule": "ai-slop/narrative-comment",
+          "file": ".github/create-release-note-header.py",
+          "message": "Narrative comment block (decorative separator)"
+        },
+        {
+          "engine": "ai-slop",
+          "rule": "ai-slop/narrative-comment",
+          "file": ".github/next-semver.py",
+          "message": "Narrative comment block (decorative separator)"
+        },
+        {
+          "engine": "ai-slop",
+          "rule": "ai-slop/narrative-comment",
+          "file": ".github/semver-level.py",
+          "message": "Narrative comment block (decorative separator)"
+        }
+      ]
+    },
+    {
+      "reason": "既存ファイル・関数の規模超過。今回の aislop 組み込みでは既存コードを修正しないため、現状の規模を受け入れます（既存の課題）。",
+      "findings": [
+        {
+          "engine": "code-quality",
+          "rule": "complexity/file-too-large",
+          "file": "packages/library/src/internal/spanner-migration-plan.ts",
+          "message": "File too large (limit: 400, flagged above 441 lines)"
+        },
+        {
+          "engine": "code-quality",
+          "rule": "complexity/file-too-large",
+          "file": "tools/user-docs/check.py",
+          "message": "File too large (limit: 400, flagged above 441 lines)"
+        },
+        {
+          "engine": "code-quality",
+          "rule": "complexity/function-too-long",
+          "file": "tools/user-docs/check.py",
+          "message": "Function too long (limit: 80, flagged above 88 lines)"
+        }
+      ]
+    },
+    {
+      "reason": "既存コードの重複ブロック。今回の aislop 組み込みでは既存コードを修正しないため、現状を受け入れます（既存の課題）。",
+      "findings": [
+        {
+          "engine": "code-quality",
+          "rule": "code-quality/duplicate-block",
+          "file": "packages/library/src/internal/memory-event-store.ts",
+          "message": "Duplicate code block — extract a shared helper"
+        }
+      ]
+    },
+    {
+      "reason": "既存コードに対する lint 指摘（不要なスプレッド）。今回の aislop 組み込みでは既存コードを修正しないため、現状を受け入れます（既存の課題）。",
+      "findings": [
+        {
+          "engine": "lint",
+          "rule": "unicorn/no-useless-spread",
+          "file": "packages/library/src/internal/sqlite-blocking-execution.ts",
+          "message": "Using a spread operator here creates a new array unnecessarily."
+        }
+      ]
+    },
+    {
+      "reason": "既存コードの静的セキュリティ指摘（シェル/SQL インジェクション疑い）は regex による誤検出です。sqlite-layout.ts の db.exec は静的な DDL 文字列で、埋め込む ${SEQ_NR} はモジュール定数であり、child_process の利用もユーザー入力の混入もありません。",
+      "findings": [
+        {
+          "engine": "security",
+          "rule": "security/shell-injection",
+          "file": "packages/library/src/internal/sqlite-layout.ts",
+          "message": "Possible shell injection — user input in command execution"
+        },
+        {
+          "engine": "security",
+          "rule": "security/sql-injection",
+          "file": "packages/library/src/internal/sqlite-layout.ts",
+          "message": "Possible SQL injection — template literal in query"
+        }
+      ]
+    },
+    {
+      "reason": "依存パッケージの既知脆弱性（pnpm audit 由来）。今回の aislop 組み込みでは依存を見直さないため、現状を受け入れます（既存の課題）。実スキャンの severity が error/warning のものだけを受け入れ、実行時依存に届かないと判定されて dev-only となり severity が info に降格された項目は一覧に含めません（その場合は check:aislop の一覧突き合わせから外れるため）。",
+      "findings": [
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "uuid (moderate) — uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided"
+        },
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "js-yaml (high) — JS-YAML: Quadratic-complexity DoS in merge key handling via repeated aliases (4 advisories)"
+        },
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "protobufjs (moderate) — protobufjs : Schema-derived names can shadow runtime-significant properties (2 advisories)"
+        },
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "@babel/core (low) — @babel/core: Arbitrary File Read via sourceMappingURL Comment"
+        },
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "brace-expansion (high) — brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups (12 advisories)"
+        },
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "browserslist (high) — Browserslist: Unbounded memory growth (no cache eviction) via distinct query results, leading to eventual OOM (2 advisories)"
+        },
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "@opentelemetry/core (moderate) — OpenTelemetry Core: Unbounded memory allocation in W3C Baggage propagation"
+        },
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "baseline-browser-mapping (moderate) — baseline-browser-mapping process termination on invalid input causes denial of service"
+        },
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "@grpc/grpc-js (high) — @grpc/grpc-js: In certain configurations, getAuthContext can return unauthorized certificates as though they were authorized (2 advisories)"
+        },
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "undici (high) — undici vulnerable to Denial of Service via unbounded memory in the EventSource parser (8 advisories)"
+        },
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "fast-uri (moderate) — fast-uri vulnerable to URI scheme spoofing via percent-encoded scheme decoding (4 advisories)"
+        },
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "deepmerge (low) — deepmerge mergeObject() allows prototype poisoning of returned objects"
+        },
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "glob (moderate) — Glob: AbortSignal cancellation bypass allows post-timeout filesystem traversal"
+        },
+        {
+          "engine": "security",
+          "rule": "security/vulnerable-dependency",
+          "file": "package.json",
+          "message": "minimatch (moderate) — minimatch has potential denial of service via globparts amplification"
+        }
+      ]
+    }
+  ]
+}
