@@ -16,6 +16,11 @@
     "fix": "pnpm --filter event-store-adapter-js run fix",
     "example:memory": "pnpm --filter @event-store-adapter-js/examples run memory",
     "example:dynamodb": "pnpm --filter @event-store-adapter-js/examples run dynamodb",
-    "clean": "pnpm --filter event-store-adapter-js run clean"
+    "clean": "pnpm --filter event-store-adapter-js run clean",
+    "check:aislop": "node scripts/aislop-check-bootstrap.mjs check",
+    "test:aislop": "node scripts/aislop-check-bootstrap.mjs test"
+  },
+  "devDependencies": {
+    "aislop": "0.20.1"
   }
 }
