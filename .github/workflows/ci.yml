@@ -135,7 +135,8 @@ jobs:
   aislop:
     name: Run aislop check
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 起動役 2 回 × (660 秒 + 10 秒猶予) = 1340 秒（22.3 分）にセットアップ/install の余裕を足し、内側の期限を先に発火させる。
+    timeout-minutes: 30
     permissions:
       contents: read
     needs:

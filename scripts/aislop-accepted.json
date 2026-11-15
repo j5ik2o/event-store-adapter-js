@@ -97,7 +97,7 @@
       ]
     },
     {
-      "reason": "既存コードの静的セキュリティ指摘（シェル/SQL インジェクション疑い）と、依存パッケージの既知脆弱性（pnpm audit 由来）。今回の aislop 組み込みでは既存コードと依存を見直さないため、現状を受け入れます（既存の課題）。依存脆弱性は実スキャンの severity が error/warning のものだけを受け入れ、実行時依存に届かないと判定されて dev-only となり severity が info に降格された項目は一覧に含めません（その場合は check:aislop の一覧突き合わせから外れるため）。",
+      "reason": "既存コードの静的セキュリティ指摘（シェル/SQL インジェクション疑い）は regex による誤検出です。sqlite-layout.ts の db.exec は静的な DDL 文字列で、埋め込む ${SEQ_NR} はモジュール定数であり、child_process の利用もユーザー入力の混入もありません。",
       "findings": [
         {
           "engine": "security",
@@ -110,7 +110,12 @@
           "rule": "security/sql-injection",
           "file": "packages/library/src/internal/sqlite-layout.ts",
           "message": "Possible SQL injection — template literal in query"
-        },
+        }
+      ]
+    },
+    {
+      "reason": "依存パッケージの既知脆弱性（pnpm audit 由来）。今回の aislop 組み込みでは依存を見直さないため、現状を受け入れます（既存の課題）。実スキャンの severity が error/warning のものだけを受け入れ、実行時依存に届かないと判定されて dev-only となり severity が info に降格された項目は一覧に含めません（その場合は check:aislop の一覧突き合わせから外れるため）。",
+      "findings": [
         {
           "engine": "security",
           "rule": "security/vulnerable-dependency",
