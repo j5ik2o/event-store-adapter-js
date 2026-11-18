@@ -8,8 +8,7 @@ import {
   type SqliteWorkerRequest,
   type SqliteWorkerResponse,
 } from "./sqlite-worker-requests";
-
-declare const __ESM_SQLITE_WORKER_SOURCE__: string;
+import { embeddedSqliteWorkerSource } from "./sqlite-worker-source";
 
 /** ストアが要求をワーカーへ送る口。利用者には見せない。 */
 export type SqliteWorkerLane = Readonly<{
@@ -170,9 +169,11 @@ if (workerData.endsWith(".ts"))
 require(workerData).serveSqliteWorkerRequests(parentPort);
 `;
 
-export function startSqliteWorker(): Worker {
-  if (typeof __ESM_SQLITE_WORKER_SOURCE__ === "string")
-    return new Worker(__ESM_SQLITE_WORKER_SOURCE__, { eval: true });
+export function startSqliteWorker(
+  workerSource: string | undefined = embeddedSqliteWorkerSource,
+): Worker {
+  if (workerSource !== undefined)
+    return new Worker(workerSource, { eval: true });
   return new Worker(WORKER_SOURCE, {
     eval: true,
     workerData: require.resolve("./sqlite-worker-requests"),

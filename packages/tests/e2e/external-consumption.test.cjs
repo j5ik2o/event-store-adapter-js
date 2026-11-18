@@ -99,9 +99,12 @@ test("packed package type-checks and executes from an independent external proje
     run(process.execPath, [path.join(directory, "consume.mjs")], directory);
     const bundleEntry = path.join(directory, "bundle-entry.mjs");
     const bundleOutput = path.join(directory, "bundle-output.mjs");
+    const commonJsBundleOutput = path.join(directory, "bundle-output.cjs");
     fs.writeFileSync(bundleEntry, 'import { EventStore } from "event-store-adapter-js"; if (EventStore.createMemory().type !== "ok") process.exit(1);');
     run("pnpm", ["exec", "esbuild", bundleEntry, "--bundle", "--platform=node", "--format=esm", "--main-fields=module,main", `--outfile=${bundleOutput}`], libraryDirectory);
     run(process.execPath, [bundleOutput], directory);
+    run("pnpm", ["exec", "esbuild", bundleEntry, "--bundle", "--platform=node", "--format=cjs", "--main-fields=module,main", `--outfile=${commonJsBundleOutput}`], libraryDirectory);
+    run(process.execPath, [commonJsBundleOutput], directory);
     await withDynamoDB(async (layout) => {
       await withBigtable(async (bigtableLayout) => {
         run(process.execPath, [path.join(directory, "consume.cjs")], directory, { ...process.env, ESWA_DYNAMODB_LAYOUT: JSON.stringify(layout), ESWA_BIGTABLE_LAYOUT: JSON.stringify(bigtableLayout) });

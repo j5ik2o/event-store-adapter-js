@@ -16,6 +16,22 @@ const workerBuild = await build({
   write: false,
 });
 const workerSource = workerBuild.outputFiles[0].text;
+const workerSourcePlugin = {
+  name: "sqlite-worker-source",
+  setup(build) {
+    build.onResolve({ filter: /sqlite-worker-source$/ }, () => ({
+      path: "sqlite-worker-source",
+      namespace: "embedded-worker",
+    }));
+    build.onLoad(
+      { filter: /.*/, namespace: "embedded-worker" },
+      () => ({
+        contents: `export const embeddedSqliteWorkerSource = ${JSON.stringify(workerSource)};`,
+        loader: "js",
+      }),
+    );
+  },
+};
 
 await build({
   entryPoints: ["src/index.ts", "src/spanner.ts", "src/sqlite.ts", "src/bigtable.ts"],
@@ -26,10 +42,5 @@ await build({
   platform: "node",
   format: "esm",
   target: "node24",
-  define: {
-    __ESM_SQLITE_WORKER_SOURCE__: JSON.stringify(workerSource),
-  },
-  banner: {
-    js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);',
-  },
+  plugins: [workerSourcePlugin],
 });
