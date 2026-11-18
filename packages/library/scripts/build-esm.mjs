@@ -1,4 +1,5 @@
 import { build } from "esbuild";
+import { writeFile } from "node:fs/promises";
 
 const workerBuild = await build({
   stdin: {
@@ -44,3 +45,9 @@ await build({
   target: "node24",
   plugins: [workerSourcePlugin],
 });
+
+await Promise.all(
+  ["index", "spanner", "sqlite", "bigtable"].map((entry) =>
+    writeFile(`dist/esm/${entry}.d.mts`, `export * from "../${entry}.js";\n`),
+  ),
+);
