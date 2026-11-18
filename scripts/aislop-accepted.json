@@ -186,7 +186,7 @@
           "engine": "security",
           "rule": "security/vulnerable-dependency",
           "file": "package.json",
-          "message": "deepmerge (low) — deepmerge mergeObject() allows prototype poisoning of returned objects"
+          "message": "picomatch (high) — picomatch vulnerable to ReDoS through single-branch repeated extglobs"
         },
         {
           "engine": "security",
