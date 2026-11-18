@@ -25,15 +25,19 @@ test("packed package type-checks and executes from an independent external proje
     const files = run("tar", ["-tzf", archive], directory).trim().split("\n");
     assert.ok(files.includes("package/dist/index.js"));
     assert.ok(files.includes("package/dist/esm/index.mjs"));
+    assert.ok(files.includes("package/dist/esm/index.d.mts"));
     assert.ok(!files.some((file) => /\/internal\/test\/|\.test\.(js|d\.ts)$/.test(file)));
     assert.ok(files.includes("package/dist/spanner.js"));
     assert.ok(files.includes("package/dist/esm/spanner.mjs"));
+    assert.ok(files.includes("package/dist/esm/spanner.d.mts"));
     assert.ok(files.includes("package/dist/spanner.d.ts"));
     assert.ok(files.includes("package/dist/sqlite.js"));
     assert.ok(files.includes("package/dist/esm/sqlite.mjs"));
+    assert.ok(files.includes("package/dist/esm/sqlite.d.mts"));
     assert.ok(files.includes("package/dist/sqlite.d.ts"));
     assert.ok(files.includes("package/dist/bigtable.js"));
     assert.ok(files.includes("package/dist/esm/bigtable.mjs"));
+    assert.ok(files.includes("package/dist/esm/bigtable.d.mts"));
     assert.ok(files.includes("package/dist/bigtable.d.ts"));
     assert.ok(files.includes("package/docs/BIGTABLE_DATABASE_SCHEMA.md"));
     assert.ok(files.includes("package/docs/BIGTABLE_DATABASE_SCHEMA.ja.md"));
@@ -89,9 +93,10 @@ test("packed package type-checks and executes from an independent external proje
     fs.copyFileSync(path.resolve(__dirname, "../fixtures/consume.cjs"), path.join(directory, "consume.cjs"));
     fs.copyFileSync(path.resolve(__dirname, "../fixtures/consume.mjs"), path.join(directory, "consume.mjs"));
     fs.copyFileSync(path.resolve(__dirname, "../fixtures/consume.ts"), path.join(directory, "consume.ts"));
+    fs.copyFileSync(path.resolve(__dirname, "../fixtures/consume-types.mts"), path.join(directory, "consume-types.mts"));
     fs.writeFileSync(path.join(directory, "tsconfig.json"), JSON.stringify({
       compilerOptions: { strict: true, noEmit: true, module: "Node16", moduleResolution: "Node16", target: "es2022", skipLibCheck: false, types: ["node"] },
-      include: ["consume.ts"],
+      include: ["consume.ts", "consume-types.mts"],
     }));
     const store = run("pnpm", ["store", "path"], libraryDirectory).trim();
     run("pnpm", ["install", "--ignore-scripts", "--store-dir", store, "--state-dir", path.join(directory, "state")], directory);
