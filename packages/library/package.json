@@ -10,23 +10,47 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "require": "./dist/index.js",
+      "import": {
+        "types": "./dist/esm/index.d.mts",
+        "default": "./dist/esm/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
       "default": "./dist/index.js"
     },
     "./spanner": {
-      "types": "./dist/spanner.d.ts",
-      "require": "./dist/spanner.js",
+      "import": {
+        "types": "./dist/esm/spanner.d.mts",
+        "default": "./dist/esm/spanner.mjs"
+      },
+      "require": {
+        "types": "./dist/spanner.d.ts",
+        "default": "./dist/spanner.js"
+      },
       "default": "./dist/spanner.js"
     },
     "./sqlite": {
-      "types": "./dist/sqlite.d.ts",
-      "require": "./dist/sqlite.js",
+      "import": {
+        "types": "./dist/esm/sqlite.d.mts",
+        "default": "./dist/esm/sqlite.mjs"
+      },
+      "require": {
+        "types": "./dist/sqlite.d.ts",
+        "default": "./dist/sqlite.js"
+      },
       "default": "./dist/sqlite.js"
     },
     "./bigtable": {
-      "types": "./dist/bigtable.d.ts",
-      "require": "./dist/bigtable.js",
+      "import": {
+        "types": "./dist/esm/bigtable.d.mts",
+        "default": "./dist/esm/bigtable.mjs"
+      },
+      "require": {
+        "types": "./dist/bigtable.d.ts",
+        "default": "./dist/bigtable.js"
+      },
       "default": "./dist/bigtable.js"
     }
   },
@@ -39,7 +63,7 @@
     "README.ja.md"
   ],
   "scripts": {
-    "build": "rimraf ./dist && tsc && node ./scripts/remove-test-artifacts.mjs",
+    "build": "rimraf ./dist && tsc && node ./scripts/remove-test-artifacts.mjs && node ./scripts/build-esm.mjs",
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --no-cache",
     "coverage": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --no-cache --coverage",
     "lint": "biome check src/",
@@ -72,6 +96,7 @@
     "@typescript-eslint/parser": "^8.0.0",
     "ajv": "8.20.0",
     "cross-env": "^10.1.0",
+    "esbuild": "0.28.2",
     "jest": "^30.0.0",
     "rimraf": "6.1.4",
     "testcontainers": "^12.0.0",

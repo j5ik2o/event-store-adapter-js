@@ -17,8 +17,14 @@ test("exposes the ./bigtable entry next to the other entries", () => {
   expect(pkg.exports["./spanner"]).toBeDefined();
   expect(pkg.exports["./sqlite"]).toBeDefined();
   expect(pkg.exports["./bigtable"]).toEqual({
-    types: "./dist/bigtable.d.ts",
-    require: "./dist/bigtable.js",
+    import: {
+      types: "./dist/esm/bigtable.d.mts",
+      default: "./dist/esm/bigtable.mjs",
+    },
+    require: {
+      types: "./dist/bigtable.d.ts",
+      default: "./dist/bigtable.js",
+    },
     default: "./dist/bigtable.js",
   });
 });

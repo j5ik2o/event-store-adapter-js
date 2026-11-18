@@ -13,10 +13,26 @@ const pkg = JSON.parse(
 const SDK = "@google-cloud/spanner";
 
 test("exposes the ./spanner entry next to the original entry", () => {
-  expect(pkg.exports["."]).toBeDefined();
+  expect(pkg.exports["."]).toEqual({
+    import: {
+      types: "./dist/esm/index.d.mts",
+      default: "./dist/esm/index.mjs",
+    },
+    require: {
+      types: "./dist/index.d.ts",
+      default: "./dist/index.js",
+    },
+    default: "./dist/index.js",
+  });
   expect(pkg.exports["./spanner"]).toEqual({
-    types: "./dist/spanner.d.ts",
-    require: "./dist/spanner.js",
+    import: {
+      types: "./dist/esm/spanner.d.mts",
+      default: "./dist/esm/spanner.mjs",
+    },
+    require: {
+      types: "./dist/spanner.d.ts",
+      default: "./dist/spanner.js",
+    },
     default: "./dist/spanner.js",
   });
 });
