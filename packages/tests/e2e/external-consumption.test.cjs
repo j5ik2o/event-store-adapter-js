@@ -82,7 +82,7 @@ test("packed package type-checks and executes from an independent external proje
     const nodeVersion = require("@types/node/package.json").version;
     const sdkVersion = require("@aws-sdk/client-dynamodb/package.json").version;
     const bigtableVersion = require("@google-cloud/bigtable/package.json").version;
-    const spannerVersion = require("@google-cloud/spanner/package.json").version;
+    const spannerVersion = require(require.resolve("@google-cloud/spanner/package.json", { paths: [libraryDirectory] })).version;
     fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({
       private: true, dependencies: { "event-store-adapter-js": `file:${archive}`, "@types/node": nodeVersion, "@aws-sdk/client-dynamodb": sdkVersion, "@google-cloud/bigtable": bigtableVersion, "@google-cloud/spanner": spannerVersion },
     }));
@@ -100,7 +100,7 @@ test("packed package type-checks and executes from an independent external proje
     const bundleEntry = path.join(directory, "bundle-entry.mjs");
     const bundleOutput = path.join(directory, "bundle-output.mjs");
     fs.writeFileSync(bundleEntry, 'import { EventStore } from "event-store-adapter-js"; if (EventStore.createMemory().type !== "ok") process.exit(1);');
-    run(process.execPath, [require.resolve("esbuild/bin/esbuild", { paths: [libraryDirectory] }), bundleEntry, "--bundle", "--platform=node", "--format=esm", "--main-fields=module,main", `--outfile=${bundleOutput}`], directory);
+    run("pnpm", ["exec", "esbuild", bundleEntry, "--bundle", "--platform=node", "--format=esm", "--main-fields=module,main", `--outfile=${bundleOutput}`], libraryDirectory);
     run(process.execPath, [bundleOutput], directory);
     await withDynamoDB(async (layout) => {
       await withBigtable(async (bigtableLayout) => {
