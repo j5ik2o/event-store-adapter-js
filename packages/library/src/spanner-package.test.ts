@@ -16,6 +16,7 @@ test("exposes the ./spanner entry next to the original entry", () => {
   expect(pkg.exports["."]).toBeDefined();
   expect(pkg.exports["./spanner"]).toEqual({
     types: "./dist/spanner.d.ts",
+    import: "./dist/esm/spanner.mjs",
     require: "./dist/spanner.js",
     default: "./dist/spanner.js",
   });

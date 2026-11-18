@@ -11,21 +11,25 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "import": "./dist/esm/index.mjs",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./spanner": {
       "types": "./dist/spanner.d.ts",
+      "import": "./dist/esm/spanner.mjs",
       "require": "./dist/spanner.js",
       "default": "./dist/spanner.js"
     },
     "./sqlite": {
       "types": "./dist/sqlite.d.ts",
+      "import": "./dist/esm/sqlite.mjs",
       "require": "./dist/sqlite.js",
       "default": "./dist/sqlite.js"
     },
     "./bigtable": {
       "types": "./dist/bigtable.d.ts",
+      "import": "./dist/esm/bigtable.mjs",
       "require": "./dist/bigtable.js",
       "default": "./dist/bigtable.js"
     }
@@ -39,7 +43,7 @@
     "README.ja.md"
   ],
   "scripts": {
-    "build": "rimraf ./dist && tsc && node ./scripts/remove-test-artifacts.mjs",
+    "build": "rimraf ./dist && tsc && node ./scripts/remove-test-artifacts.mjs && node ./scripts/build-esm.mjs",
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --no-cache",
     "coverage": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --no-cache --coverage",
     "lint": "biome check src/",
@@ -72,6 +76,7 @@
     "@typescript-eslint/parser": "^8.0.0",
     "ajv": "8.20.0",
     "cross-env": "^10.1.0",
+    "esbuild": "0.28.2",
     "jest": "^30.0.0",
     "rimraf": "6.1.4",
     "testcontainers": "^12.0.0",

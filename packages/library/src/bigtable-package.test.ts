@@ -18,6 +18,7 @@ test("exposes the ./bigtable entry next to the other entries", () => {
   expect(pkg.exports["./sqlite"]).toBeDefined();
   expect(pkg.exports["./bigtable"]).toEqual({
     types: "./dist/bigtable.d.ts",
+    import: "./dist/esm/bigtable.mjs",
     require: "./dist/bigtable.js",
     default: "./dist/bigtable.js",
   });

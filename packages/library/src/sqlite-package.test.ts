@@ -16,6 +16,7 @@ test("exposes the ./sqlite entry next to the original and Spanner entries", () =
   expect(pkg.exports["./spanner"]).toBeDefined();
   expect(pkg.exports["./sqlite"]).toEqual({
     types: "./dist/sqlite.d.ts",
+    import: "./dist/esm/sqlite.mjs",
     require: "./dist/sqlite.js",
     default: "./dist/sqlite.js",
   });
