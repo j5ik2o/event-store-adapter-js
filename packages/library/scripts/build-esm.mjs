@@ -1,5 +1,22 @@
 import { build } from "esbuild";
 
+const workerBuild = await build({
+  stdin: {
+    contents:
+      'import { parentPort } from "node:worker_threads"; import { serveSqliteWorkerRequests } from "./src/internal/sqlite-worker-requests"; if (parentPort === null) throw new Error("missing parent port"); serveSqliteWorkerRequests(parentPort);',
+    resolveDir: process.cwd(),
+    sourcefile: "sqlite-worker-entry.ts",
+    loader: "ts",
+  },
+  bundle: true,
+  external: ["node:*"],
+  platform: "node",
+  format: "cjs",
+  target: "node24",
+  write: false,
+});
+const workerSource = workerBuild.outputFiles[0].text;
+
 await build({
   entryPoints: ["src/index.ts", "src/spanner.ts", "src/sqlite.ts", "src/bigtable.ts"],
   outdir: "dist/esm",
@@ -9,6 +26,9 @@ await build({
   platform: "node",
   format: "esm",
   target: "node24",
+  define: {
+    __ESM_SQLITE_WORKER_SOURCE__: JSON.stringify(workerSource),
+  },
   banner: {
     js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);',
   },

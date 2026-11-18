@@ -2,11 +2,14 @@ import { Worker } from "node:worker_threads";
 import { EventStoreError } from "../event-store-error";
 import { Result } from "../result";
 import type { SqliteBlockingExecution } from "../sqlite-blocking-execution";
+import { sharedWeakMap } from "./shared-weak-map";
 import {
   SQLITE_WORKER_SHUTDOWN,
   type SqliteWorkerRequest,
   type SqliteWorkerResponse,
 } from "./sqlite-worker-requests";
+
+declare const __ESM_SQLITE_WORKER_SOURCE__: string;
 
 /** ストアが要求をワーカーへ送る口。利用者には見せない。 */
 export type SqliteWorkerLane = Readonly<{
@@ -20,7 +23,9 @@ export type SqliteWorkerLane = Readonly<{
   ): Promise<Result<SqliteWorkerResponse<K>, EventStoreError>>;
 }>;
 
-const lanes = new WeakMap<SqliteBlockingExecution, SqliteWorkerLane>();
+const lanes = sharedWeakMap<SqliteBlockingExecution, SqliteWorkerLane>(
+  "event-store-adapter-js.v5.sqlite-worker-lanes",
+);
 
 export function sqliteWorkerLaneOf(
   execution: SqliteBlockingExecution,
@@ -166,6 +171,8 @@ require(workerData).serveSqliteWorkerRequests(parentPort);
 `;
 
 export function startSqliteWorker(): Worker {
+  if (typeof __ESM_SQLITE_WORKER_SOURCE__ === "string")
+    return new Worker(__ESM_SQLITE_WORKER_SOURCE__, { eval: true });
   return new Worker(WORKER_SOURCE, {
     eval: true,
     workerData: require.resolve("./sqlite-worker-requests"),

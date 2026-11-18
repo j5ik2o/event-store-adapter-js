@@ -9,6 +9,7 @@ import type { RetentionFailure } from "../retention-failure";
 import { SnapshotEnvelope } from "../snapshot-envelope";
 import type { MemoryRetentionHooks } from "./memory-retention-hooks";
 import type { validateMemoryStorageInput } from "./memory-storage-input-validation";
+import { sharedWeakMap } from "./shared-weak-map";
 
 type Configuration = Extract<
   ReturnType<typeof validateMemoryStorageInput>,
@@ -37,7 +38,9 @@ type StorageState = {
 };
 
 // ハンドルの寿命に合わせて、保存先ごとの状態だけを非公開で関連付ける。
-const states = new WeakMap<MemoryStorage, StorageState>();
+const states = sharedWeakMap<MemoryStorage, StorageState>(
+  "event-store-adapter-js.v5.memory-storage-states",
+);
 
 export function createMemoryStorageRecords(
   configuration: Configuration,
