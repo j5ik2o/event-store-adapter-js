@@ -24,12 +24,20 @@ test("packed package type-checks and executes from an independent external proje
     const archive = path.join(directory, fs.readdirSync(directory).find((file) => file.endsWith(".tgz")));
     const files = run("tar", ["-tzf", archive], directory).trim().split("\n");
     assert.ok(files.includes("package/dist/index.js"));
+    assert.ok(files.includes("package/dist/esm/index.mjs"));
+    assert.ok(files.includes("package/dist/esm/index.d.mts"));
     assert.ok(!files.some((file) => /\/internal\/test\/|\.test\.(js|d\.ts)$/.test(file)));
     assert.ok(files.includes("package/dist/spanner.js"));
+    assert.ok(files.includes("package/dist/esm/spanner.mjs"));
+    assert.ok(files.includes("package/dist/esm/spanner.d.mts"));
     assert.ok(files.includes("package/dist/spanner.d.ts"));
     assert.ok(files.includes("package/dist/sqlite.js"));
+    assert.ok(files.includes("package/dist/esm/sqlite.mjs"));
+    assert.ok(files.includes("package/dist/esm/sqlite.d.mts"));
     assert.ok(files.includes("package/dist/sqlite.d.ts"));
     assert.ok(files.includes("package/dist/bigtable.js"));
+    assert.ok(files.includes("package/dist/esm/bigtable.mjs"));
+    assert.ok(files.includes("package/dist/esm/bigtable.d.mts"));
     assert.ok(files.includes("package/dist/bigtable.d.ts"));
     assert.ok(files.includes("package/docs/BIGTABLE_DATABASE_SCHEMA.md"));
     assert.ok(files.includes("package/docs/BIGTABLE_DATABASE_SCHEMA.ja.md"));
@@ -78,18 +86,37 @@ test("packed package type-checks and executes from an independent external proje
     const nodeVersion = require("@types/node/package.json").version;
     const sdkVersion = require("@aws-sdk/client-dynamodb/package.json").version;
     const bigtableVersion = require("@google-cloud/bigtable/package.json").version;
+    const spannerVersion = require(require.resolve("@google-cloud/spanner/package.json", { paths: [libraryDirectory] })).version;
     fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({
-      private: true, dependencies: { "event-store-adapter-js": `file:${archive}`, "@types/node": nodeVersion, "@aws-sdk/client-dynamodb": sdkVersion, "@google-cloud/bigtable": bigtableVersion },
+      private: true, dependencies: { "event-store-adapter-js": `file:${archive}`, "@types/node": nodeVersion, "@aws-sdk/client-dynamodb": sdkVersion, "@google-cloud/bigtable": bigtableVersion, "@google-cloud/spanner": spannerVersion },
     }));
     fs.copyFileSync(path.resolve(__dirname, "../fixtures/consume.cjs"), path.join(directory, "consume.cjs"));
+    fs.copyFileSync(path.resolve(__dirname, "../fixtures/consume.mjs"), path.join(directory, "consume.mjs"));
     fs.copyFileSync(path.resolve(__dirname, "../fixtures/consume.ts"), path.join(directory, "consume.ts"));
+    fs.copyFileSync(path.resolve(__dirname, "../fixtures/consume-types.mts"), path.join(directory, "consume-types.mts"));
     fs.writeFileSync(path.join(directory, "tsconfig.json"), JSON.stringify({
       compilerOptions: { strict: true, noEmit: true, module: "Node16", moduleResolution: "Node16", target: "es2022", skipLibCheck: false, types: ["node"] },
-      include: ["consume.ts"],
+      include: ["consume.ts", "consume-types.mts"],
     }));
     const store = run("pnpm", ["store", "path"], libraryDirectory).trim();
     run("pnpm", ["install", "--ignore-scripts", "--store-dir", store, "--state-dir", path.join(directory, "state")], directory);
     run(process.execPath, [require.resolve("typescript/bin/tsc"), "--project", path.join(directory, "tsconfig.json")], directory);
+    run(process.execPath, [path.join(directory, "consume.mjs")], directory);
+    // The AWS SDK initializes its own globals; pre-load it, not this library.
+    // Both native entry formats must share handles without adding host globals.
+    run(process.execPath, [
+      "--require", "@aws-sdk/client-dynamodb",
+      "--import", "data:text/javascript,Object.preventExtensions(globalThis)",
+      path.join(directory, "consume.mjs"),
+    ], directory);
+    const bundleEntry = path.join(directory, "bundle-entry.mjs");
+    const bundleOutput = path.join(directory, "bundle-output.mjs");
+    const commonJsBundleOutput = path.join(directory, "bundle-output.cjs");
+    fs.writeFileSync(bundleEntry, 'import { EventStore } from "event-store-adapter-js"; if (EventStore.createMemory().type !== "ok") process.exit(1);');
+    run("pnpm", ["exec", "esbuild", bundleEntry, "--bundle", "--platform=node", "--format=esm", "--main-fields=module,main", `--outfile=${bundleOutput}`], libraryDirectory);
+    run(process.execPath, [bundleOutput], directory);
+    run("pnpm", ["exec", "esbuild", bundleEntry, "--bundle", "--platform=node", "--format=cjs", "--main-fields=module,main", `--outfile=${commonJsBundleOutput}`], libraryDirectory);
+    run(process.execPath, [commonJsBundleOutput], directory);
     await withDynamoDB(async (layout) => {
       await withBigtable(async (bigtableLayout) => {
         run(process.execPath, [path.join(directory, "consume.cjs")], directory, { ...process.env, ESWA_DYNAMODB_LAYOUT: JSON.stringify(layout), ESWA_BIGTABLE_LAYOUT: JSON.stringify(bigtableLayout) });

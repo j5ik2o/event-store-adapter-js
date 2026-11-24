@@ -4,6 +4,7 @@ allowBuilds:
   "@parcel/watcher": true
   aws-sdk: false
   cpu-features: false
+  esbuild: true
   protobufjs: false
   ssh2: false
   sse4_crc32: false

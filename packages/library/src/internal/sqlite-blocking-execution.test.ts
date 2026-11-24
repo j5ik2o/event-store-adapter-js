@@ -2,6 +2,7 @@ import { Worker } from "node:worker_threads";
 import {
   createSqliteBlockingExecution,
   sqliteWorkerLaneOf,
+  startSqliteWorker,
 } from "./sqlite-blocking-execution";
 
 // 要求を受けると投げて終わるワーカー。実ワーカーが予期せず終わったときの扱いを確かめる。
@@ -54,5 +55,15 @@ test("a worker that cannot be started is a storage error, not an exception", () 
       message: "SQLite worker could not be started",
       cause: denied,
     },
+  });
+});
+
+test("starts an embedded worker source", async () => {
+  const worker = startSqliteWorker(
+    'require("node:worker_threads").parentPort.close();',
+  );
+  await new Promise<void>((resolve, reject) => {
+    worker.on("exit", resolve);
+    worker.on("error", reject);
   });
 });
