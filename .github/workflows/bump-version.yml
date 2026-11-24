@@ -156,8 +156,9 @@ jobs:
             echo "Merge it only when the release should go out. To cancel, close this pull request and delete the branch."
             echo
             echo "## Release notes preview"
-            python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-header.py \
-              "$SERVER_URL" "$GITHUB_REPOSITORY" "$PREV_TAG" "$NEXT_TAG"
+            echo
+            echo "Changes since [\`${PREV_TAG}\`](${SERVER_URL}/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...release/${NEXT_TAG}). The GitHub release compares \`${PREV_TAG}...${NEXT_TAG}\` after the tag exists."
+            echo
             git log "${PREV_TAG}..HEAD" --no-merges --format='%H%x1f%s%x1f%b%x1e' \
               | python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-body.py "$SERVER_URL" "$GITHUB_REPOSITORY"
           } > "$BODY"
