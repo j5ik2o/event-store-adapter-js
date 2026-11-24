@@ -186,12 +186,6 @@
           "engine": "security",
           "rule": "security/vulnerable-dependency",
           "file": "package.json",
-          "message": "deepmerge (low) — deepmerge mergeObject() allows prototype poisoning of returned objects"
-        },
-        {
-          "engine": "security",
-          "rule": "security/vulnerable-dependency",
-          "file": "package.json",
           "message": "glob (moderate) — Glob: AbortSignal cancellation bypass allows post-timeout filesystem traversal"
         },
         {
