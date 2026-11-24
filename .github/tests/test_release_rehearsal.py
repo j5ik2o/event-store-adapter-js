@@ -6,6 +6,27 @@ import tempfile
 import unittest
 from pathlib import Path
 
+FAKE_GH = '''#!/bin/sh
+# 偽の gh。api は FAKE_GH_FAIL 回だけ失敗し、続く FAKE_GH_EMPTY 回は [] を返し、その後に $FAKE_PULLS を返す。
+if [ "$1" = release ]; then
+  [ "$2" = view ] && exit 1
+  printf '%s\\n' "$@" > "$FAKE_RELEASE_ARGS"
+  exit 0
+fi
+calls=$(cat "$FAKE_GH_CALLS" 2>/dev/null || echo 0)
+calls=$((calls + 1))
+echo "$calls" > "$FAKE_GH_CALLS"
+if [ "$calls" -le "${FAKE_GH_FAIL:-0}" ]; then
+  echo "HTTP 502" >&2
+  exit 1
+fi
+if [ "$calls" -le $(( ${FAKE_GH_FAIL:-0} + ${FAKE_GH_EMPTY:-0} )) ]; then
+  echo '[]'
+  exit 0
+fi
+cat "$FAKE_PULLS"
+'''
+
 from release_test_support import BUMP, GITHUB, PACKAGE, RELEASE, REPOSITORY, outputs, pull, run_body
 
 
@@ -19,7 +40,7 @@ class ReleaseRehearsalTest(unittest.TestCase):
         self.work = self.directory / 'work'
         fake_bin = self.directory / 'bin'
         fake_bin.mkdir()
-        (fake_bin / 'gh').write_text('#!/bin/sh\ncat "$FAKE_PULLS"\n')
+        (fake_bin / 'gh').write_text(FAKE_GH)
         (fake_bin / 'gh').chmod(0o755)
         self.pulls = self.directory / 'pulls.json'
         self.pulls.write_text('[]')
@@ -27,6 +48,9 @@ class ReleaseRehearsalTest(unittest.TestCase):
             **os.environ,
             'PATH': f'{fake_bin}{os.pathsep}{os.environ["PATH"]}',
             'FAKE_PULLS': str(self.pulls),
+            'FAKE_GH_CALLS': str(self.directory / 'gh-calls'),
+            'FAKE_RELEASE_ARGS': str(self.directory / 'release-args'),
+            'PULLS_RETRY_SECONDS': '0',
             'GIT_CONFIG_GLOBAL': str(self.directory / 'gitconfig'),
             'GIT_CONFIG_NOSYSTEM': '1',
             'RUNNER_TEMP': str(self.directory),
@@ -97,8 +121,13 @@ class ReleaseRehearsalTest(unittest.TestCase):
         self.pulls.write_text(json.dumps([pull(sha, ref=ref)]))
         return sha
 
-    def trigger(self, sha):
-        return self.step(BUMP, 'trigger', self.clone(sha), RELEASE_SHA=sha)
+    def trigger(self, sha, **env):
+        (self.directory / 'gh-calls').unlink(missing_ok=True)
+        return self.step(BUMP, 'trigger', self.clone(sha), RELEASE_SHA=sha, **env)
+
+    def merged_release(self):
+        self.open_version_branch()
+        return self.squash_merge()
 
     def push_tag(self, tag, sha, cwd=None):
         return self.step(BUMP, 'release_tag', cwd or self.clone(sha), RELEASE_TAG=tag, RELEASE_SHA=sha)
@@ -196,6 +225,62 @@ class ReleaseRehearsalTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('is not the squash merge', result.stderr)
         self.assertEqual(out, {})
+
+    def test_pull_request_lookup_is_retried_while_github_links_it(self):
+        after = self.merged_release()
+        result, out = self.trigger(after, FAKE_GH_FAIL='1', FAKE_GH_EMPTY='2')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(out['tag'], 'v5.3.0')
+        self.assertEqual((self.directory / 'gh-calls').read_text().strip(), '4')
+
+    def test_pull_request_that_never_appears_stops_without_a_tag(self):
+        after = self.merged_release()
+        result, out = self.trigger(after, FAKE_GH_EMPTY='9')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('no pull request is associated', result.stderr)
+        self.assertEqual(out, {})
+        self.assertEqual((self.directory / 'gh-calls').read_text().strip(), '5')
+
+    def test_pull_request_lookup_that_keeps_failing_stops_without_a_tag(self):
+        after = self.merged_release()
+        result, out = self.trigger(after, FAKE_GH_FAIL='9')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('could not read the pull requests', result.stdout)
+        self.assertEqual(out, {})
+
+    def test_final_tag_check_refuses_to_overtake_a_newer_tag(self):
+        after = self.merged_release()
+        self.push_tag('v5.3.0', after)
+        runner = self.clone('v5.3.0')
+        result, _ = self.step(RELEASE, 'final_tag_check', runner, RELEASE_TAG='v5.3.0')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        work = self.clone()
+        self.git(work, 'tag', '-a', 'v5.4.0', '-m', 'v5.4.0')
+        self.git(work, 'push', 'origin', 'v5.4.0')
+        result, _ = self.step(RELEASE, 'final_tag_check', runner, RELEASE_TAG='v5.3.0')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('the latest release tag is v5.4.0', result.stdout)
+
+    def github_release_notes(self, tag):
+        result, _ = self.step(RELEASE, 'github_release', self.clone(tag), RELEASE_TAG=tag)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('--verify-tag', (self.directory / 'release-args').read_text())
+        return (self.directory / 'changelog.txt').read_text()
+
+    def test_github_release_notes_start_at_the_previous_release_tag(self):
+        after = self.merged_release()
+        self.push_tag('v5.3.0', after)
+        notes = self.github_release_notes('v5.3.0')
+        self.assertIn('compare/v5.2.0...v5.3.0', notes)
+        self.assertIn('add a feature', notes)
+
+    def test_github_release_notes_without_a_previous_tag_start_at_the_first_commit(self):
+        self.git(self.remote, 'tag', '-d', 'v5.2.0')
+        after = self.merged_release()
+        self.push_tag('v5.3.0', after)
+        root = self.git(self.remote, 'rev-list', '--max-parents=0', 'main')
+        notes = self.github_release_notes('v5.3.0')
+        self.assertIn(f'compare/{root}...v5.3.0', notes)
 
     def test_push_without_a_version_change_is_not_tagged(self):
         self.write_version(self.work, '5.2.1-snapshot.0', dependencies={'x': '1.0.0'})

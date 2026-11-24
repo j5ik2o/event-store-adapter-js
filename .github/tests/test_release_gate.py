@@ -34,7 +34,10 @@ class ReleaseGateTest(unittest.TestCase):
 
     def test_version_changed_by_another_pull_request_fails(self):
         self.assert_rejected('is not the squash merge', pulls=[pull(self.SHA, ref='feature/x')])
-        self.assert_rejected('is not the squash merge', pulls=[])
+
+    def test_commit_without_an_associated_pull_request_asks_for_a_re_run(self):
+        self.assert_rejected('no pull request is associated', pulls=[])
+        self.assert_rejected('re-run the job', pulls=[])
 
     def test_fork_pull_request_fails(self):
         self.assert_rejected('is not the squash merge', pulls=[pull(self.SHA, repo='someone/r')])

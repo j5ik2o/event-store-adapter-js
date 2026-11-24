@@ -227,19 +227,9 @@ jobs:
           RELEASE_SHA: ${{ github.sha }}
         run: |
           GATE="${RUNNER_TEMP}/release-gate"
-          mkdir -p "$GATE"
-          git fetch --no-tags origin main
-          ON_MAIN=false
-          if git merge-base --is-ancestor "$RELEASE_SHA" FETCH_HEAD; then
-            ON_MAIN=true
-          fi
-          git show "${RELEASE_SHA}^:packages/library/package.json" > "${GATE}/parent.json"
-          git show "${RELEASE_SHA}:packages/library/package.json" > "${GATE}/package.json"
-          git diff --name-only "${RELEASE_SHA}^" "$RELEASE_SHA" > "${GATE}/changed-files"
-          gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_SHA}/pulls" > "${GATE}/pulls.json"
-          git ls-remote --tags origin > "${GATE}/remote-tags"
+          bash "${GITHUB_WORKSPACE}"/.github/release-gate-inputs.sh "$RELEASE_SHA" "$GATE"
           TAG=$(python3 "${GITHUB_WORKSPACE}"/.github/release-gate.py check --mode tag \
-            --repository "$GITHUB_REPOSITORY" --sha "$RELEASE_SHA" --on-main "$ON_MAIN" \
+            --repository "$GITHUB_REPOSITORY" --sha "$RELEASE_SHA" --on-main "$(cat "${GATE}/on-main")" \
             --parent-package "${GATE}/parent.json" --package "${GATE}/package.json" \
             --changed-files "${GATE}/changed-files" --pulls "${GATE}/pulls.json" \
             --remote-tags "${GATE}/remote-tags")

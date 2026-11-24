@@ -51,10 +51,15 @@ class ReleaseWorkflowShapeTest(unittest.TestCase):
         self.assertIn("if: steps.trigger.outputs.tag != ''", step(BUMP, 'release_tag'))
         self.assertIn('--mode tag', run_body(BUMP, 'trigger'))
 
+    def test_both_gates_collect_the_same_inputs(self):
+        for workflow, step_id in ((BUMP, 'trigger'), (RELEASE, 'release_gate')):
+            with self.subTest(step=step_id):
+                self.assertIn('.github/release-gate-inputs.sh "$RELEASE_SHA" "$GATE"', run_body(workflow, step_id))
+
     def test_publish_is_guarded_on_both_sides(self):
         release = job(RELEASE, 'release')
         publish = release.index('publish --access public')
-        for step_id in ('package_version', 'release_gate', 'npm_before'):
+        for step_id in ('package_version', 'release_gate', 'npm_before', 'final_tag_check'):
             with self.subTest(step=step_id):
                 self.assertLess(release.index('id: ' + step_id), publish)
                 self.assertNotIn('        if:', step(RELEASE, step_id))

@@ -95,9 +95,14 @@ def approved_release(candidate):
     if previous is None or version <= previous:
         raise GateError(f'{after} must be greater than the previous version {before}')
     branch = f'release/v{after}'
+    if not candidate.pulls:
+        raise GateError(
+            f'no pull request is associated with {candidate.sha} yet; '
+            'if it is the merge of a version pull request, re-run the job')
     if len([pull for pull in candidate.pulls if merged_from(pull, candidate, branch)]) != 1:
         raise GateError(
-            f'{candidate.sha} is not the squash merge of a pull request from {candidate.repository}:{branch} into main')
+            f'{candidate.sha} is not the squash merge of a pull request from {candidate.repository}:{branch} into main; '
+            'restore the version with a pull request')
     tag = f'v{after}'
     newest = latest_tag([name for name in candidate.tags if name != tag])
     if newest and version <= parse(newest[1:]):
