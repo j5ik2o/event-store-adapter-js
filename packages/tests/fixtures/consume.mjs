@@ -10,12 +10,20 @@ import {
   MemoryStorage,
   SnapshotEnvelope,
 } from "event-store-adapter-js";
+import rootDefault, * as root from "event-store-adapter-js";
+import bigtableDefault, * as bigtable from "event-store-adapter-js/bigtable";
 import { BigtableEventStore } from "event-store-adapter-js/bigtable";
+import spannerDefault, * as spanner from "event-store-adapter-js/spanner";
 import { SpannerEventStore } from "event-store-adapter-js/spanner";
+import sqliteDefault, * as sqlite from "event-store-adapter-js/sqlite";
 import {
   SqliteBlockingExecution,
   SqliteEventStore,
 } from "event-store-adapter-js/sqlite";
+import * as released from "released-event-store-adapter-js";
+import * as releasedBigtable from "released-event-store-adapter-js/bigtable";
+import * as releasedSpanner from "released-event-store-adapter-js/spanner";
+import * as releasedSqlite from "released-event-store-adapter-js/sqlite";
 
 const unwrap = (result) => {
   if (result.type === "err") throw result.error;
@@ -25,6 +33,36 @@ const unwrap = (result) => {
 const require = createRequire(import.meta.url);
 const commonJs = require("event-store-adapter-js");
 const commonJsSqlite = require("event-store-adapter-js/sqlite");
+
+// 5.2.0 resolved `import` to CommonJS. Its default and names must still import.
+for (const [entry, namespace, defaultExport, releasedNamespace] of [
+  ["", root, rootDefault, released],
+  ["/bigtable", bigtable, bigtableDefault, releasedBigtable],
+  ["/spanner", spanner, spannerDefault, releasedSpanner],
+  ["/sqlite", sqlite, sqliteDefault, releasedSqlite],
+]) {
+  const names = Object.keys(namespace);
+  for (const name of Object.keys(releasedNamespace))
+    assert.ok(names.includes(name), `event-store-adapter-js${entry} lost ${name}`);
+  const commonJsExports = require(`event-store-adapter-js${entry}`);
+  assert.deepEqual(Object.keys(defaultExport), Object.keys(commonJsExports));
+  const shape = (object, name) => {
+    const { value, get, set, ...flags } = Object.getOwnPropertyDescriptor(object, name);
+    return { ...flags, value: typeof value, get: typeof get, set: typeof set };
+  };
+  for (const name of [...Object.keys(releasedNamespace.default), "__esModule"]) {
+    assert.ok(Object.hasOwn(defaultExport, name), `default lost ${name}`);
+    assert.deepEqual(shape(defaultExport, name), shape(releasedNamespace.default, name), name);
+    if (name !== "__esModule") assert.equal(defaultExport[name], namespace[name], name);
+  }
+  assert.equal(namespace["module.exports"], defaultExport);
+  assert.equal(namespace.__esModule, true);
+  assert.equal(defaultExport.__esModule, true);
+  assert.equal(
+    (await import(`event-store-adapter-js${entry}`)).default,
+    defaultExport,
+  );
+}
 
 const id = unwrap(AggregateId.of("Amount", "1"));
 const event = unwrap(
