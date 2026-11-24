@@ -9,11 +9,15 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+concurrency:
+  group: release-publish
+  cancel-in-progress: false
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
       id-token: write
     steps:
       - name: Validate release tag
@@ -33,7 +37,6 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
           fetch-depth: 0
           persist-credentials: false
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
       - name: Disable automatic provenance for manual releases
         if: github.event_name == 'workflow_dispatch'
         run: echo 'PNPM_CONFIG_PROVENANCE=false' >> "$GITHUB_ENV"
@@ -56,10 +59,80 @@ jobs:
             echo "::error::tag version ${expected} does not match packages/library/package.json version ${actual}"
             exit 1
           fi
+          echo "version=${actual}" >> "$GITHUB_OUTPUT"
+      - name: Check the tagged commit against the release gate
+        id: release_gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          GATE="${RUNNER_TEMP}/release-gate"
+          mkdir -p "$GATE"
+          RELEASE_SHA=$(git rev-parse "${RELEASE_TAG}^{commit}")
+          git fetch --no-tags origin main
+          ON_MAIN=false
+          if git merge-base --is-ancestor "$RELEASE_SHA" FETCH_HEAD; then
+            ON_MAIN=true
+          fi
+          git show "${RELEASE_SHA}^:packages/library/package.json" > "${GATE}/parent.json"
+          git show "${RELEASE_SHA}:packages/library/package.json" > "${GATE}/package.json"
+          git diff --name-only "${RELEASE_SHA}^" "$RELEASE_SHA" > "${GATE}/changed-files"
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_SHA}/pulls" > "${GATE}/pulls.json"
+          git ls-remote --tags origin > "${GATE}/remote-tags"
+          python3 "${GITHUB_WORKSPACE}"/.github/release-gate.py check --mode publish --tag "$RELEASE_TAG" \
+            --repository "$GITHUB_REPOSITORY" --sha "$RELEASE_SHA" --on-main "$ON_MAIN" \
+            --parent-package "${GATE}/parent.json" --package "${GATE}/package.json" \
+            --changed-files "${GATE}/changed-files" --pulls "${GATE}/pulls.json" \
+            --remote-tags "${GATE}/remote-tags"
+      - name: Check that the version is not on npm yet
+        id: npm_before
+        env:
+          RELEASE_VERSION: ${{ steps.package_version.outputs.version }}
+        run: |
+          if PUBLISHED=$(npm view "event-store-adapter-js@${RELEASE_VERSION}" version 2> "${RUNNER_TEMP}/npm-view.err"); then
+            if [[ -n "$PUBLISHED" ]]; then
+              echo "::error::event-store-adapter-js@${RELEASE_VERSION} is already on npm; see CONTRIBUTING (When a release stops halfway)"
+              exit 1
+            fi
+          elif ! grep -q E404 "${RUNNER_TEMP}/npm-view.err"; then
+            cat "${RUNNER_TEMP}/npm-view.err"
+            exit 1
+          fi
+          LATEST=$(npm view event-store-adapter-js dist-tags.latest)
+          if [[ -n "$LATEST" ]] && ! python3 "${GITHUB_WORKSPACE}"/.github/release-gate.py greater "$RELEASE_VERSION" "$LATEST"; then
+            echo "::error::${RELEASE_VERSION} must be greater than the npm latest ${LATEST}"
+            exit 1
+          fi
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - run: pnpm --filter event-store-adapter-js publish --access public --no-git-checks
+      - name: Check that npm serves the published version
+        id: npm_after
+        env:
+          RELEASE_VERSION: ${{ steps.package_version.outputs.version }}
+          EXPECT_PROVENANCE: ${{ github.event_name == 'push' }}
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            PUBLISHED=$(npm view "event-store-adapter-js@${RELEASE_VERSION}" version 2> /dev/null || true)
+            LATEST=$(npm view event-store-adapter-js dist-tags.latest 2> /dev/null || true)
+            if [[ "$PUBLISHED" == "$RELEASE_VERSION" && "$LATEST" == "$RELEASE_VERSION" ]]; then
+              break
+            fi
+            echo "npm does not serve ${RELEASE_VERSION} as latest yet (${attempt}/6)"
+            sleep 10
+          done
+          if [[ "$PUBLISHED" != "$RELEASE_VERSION" || "$LATEST" != "$RELEASE_VERSION" ]]; then
+            echo "::error::npm serves version '${PUBLISHED}' and latest '${LATEST}', expected ${RELEASE_VERSION}"
+            exit 1
+          fi
+          if [[ "$EXPECT_PROVENANCE" == "true" ]]; then
+            PROVENANCE=$(npm view "event-store-adapter-js@${RELEASE_VERSION}" dist.attestations.provenance.predicateType)
+            if [[ -z "$PROVENANCE" ]]; then
+              echo "::error::event-store-adapter-js@${RELEASE_VERSION} has no provenance attestation"
+              exit 1
+            fi
+          fi
   github-release:
     name: Create the GitHub release
     needs: release
@@ -86,7 +159,11 @@ jobs:
             echo "GitHub release ${RELEASE_TAG} already exists"
             exit 0
           fi
-          PREV_TAG=$(git describe --abbrev=0 --tags "${RELEASE_TAG}^")
+          PREV_TAG=$(git tag -l 'v*' | python3 "${GITHUB_WORKSPACE}"/.github/release-gate.py latest-tag --below "${RELEASE_TAG#v}")
+          if [[ -z "$PREV_TAG" ]]; then
+            echo "::error::no release tag below ${RELEASE_TAG}"
+            exit 1
+          fi
           python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-header.py \
             "$SERVER_URL" "$GITHUB_REPOSITORY" "$PREV_TAG" "$RELEASE_TAG" > "${RUNNER_TEMP}/changelog.txt"
           git log "${PREV_TAG}..${RELEASE_TAG}" --no-merges --format='%H%x1f%s%x1f%b%x1e' \

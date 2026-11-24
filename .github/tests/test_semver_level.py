@@ -87,11 +87,12 @@ class SemverLevelTest(unittest.TestCase):
 
             def run_step(step, level='auto'):
                 output.write_text('')
-                script = steps[step].replace('${{ steps.defines.outputs.prev_tag }}', base)
+                script = steps[step]
                 result = subprocess.run(
                     ['bash', '-e', '-o', 'pipefail', '-c', script], cwd=directory,
                     env={**os.environ, 'GITHUB_OUTPUT': str(output),
-                         'GITHUB_WORKSPACE': str(SCRIPT.parent.parent), 'REQUESTED_LEVEL': level},
+                         'GITHUB_WORKSPACE': str(SCRIPT.parent.parent), 'REQUESTED_LEVEL': level,
+                         'PREV_TAG': base},
                     capture_output=True, text=True,
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)

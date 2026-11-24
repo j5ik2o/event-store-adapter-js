@@ -109,9 +109,9 @@ class ReleaseVersionsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / 'outputs'
             output.write_text('')
-            script = run_body(BUMP, 'versions').replace('${{ steps.defines.outputs.prev_tag }}', 'v4.0.1') \
-                .replace('${{ steps.semver_level.outputs.semver_level }}', 'minor')
-            result = self.run_script(script, directory, {'GITHUB_OUTPUT': str(output), 'REQUESTED_VERSION': ''})
+            result = self.run_script(run_body(BUMP, 'versions'), directory, {
+                'GITHUB_OUTPUT': str(output), 'REQUESTED_VERSION': '', 'PREV_TAG': 'v4.0.1', 'SEMVER_LEVEL': 'minor',
+            })
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(output.read_text().splitlines(), ['next_version=4.1.0', 'next_tag=v4.1.0'])
 
@@ -135,8 +135,11 @@ class ReleaseVersionsTest(unittest.TestCase):
             package = Path(directory) / 'packages/library'
             package.mkdir(parents=True)
             (package / 'package.json').write_text('{"version": "%s"}' % package_version)
+            output = Path(directory) / 'outputs'
+            output.write_text('')
             return self.run_script(
-                run_body(RELEASE, 'package_version'), directory, {'RELEASE_TAG': tag},
+                run_body(RELEASE, 'package_version'), directory,
+                {'RELEASE_TAG': tag, 'GITHUB_OUTPUT': str(output)},
             )
 
     def test_release_accepts_matching_tag(self):
