@@ -1,5 +1,10 @@
 name: Bump-Version
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - packages/library/package.json
   workflow_dispatch:
     inputs:
       level:
@@ -19,7 +24,12 @@ on:
         default: ''
 jobs:
   bump-version:
+    name: Open the version pull request
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -110,48 +120,112 @@ jobs:
           echo "next_version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
           echo "next_tag=v$NEXT_VERSION" >> "$GITHUB_OUTPUT"
         if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
-      - name: git commit & push
-        id: git_commit_push
+      - name: Check that the version branch is free
+        id: version_branch
+        env:
+          NEXT_TAG: ${{ steps.versions.outputs.next_tag }}
+        run: |
+          BRANCH="release/${NEXT_TAG}"
+          if git ls-remote --exit-code --heads origin "refs/heads/${BRANCH}" > /dev/null; then
+            echo "::error::branch ${BRANCH} already exists; merge or close its pull request and delete the branch first"
+            exit 1
+          fi
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
+      - name: Write the pull request body
+        id: pr_body
+        env:
+          PREV_TAG: ${{ steps.defines.outputs.prev_tag }}
+          NEXT_VERSION: ${{ steps.versions.outputs.next_version }}
+          NEXT_TAG: ${{ steps.versions.outputs.next_tag }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          BODY="${RUNNER_TEMP}/version-pr-body.md"
+          {
+            echo "Bump \`packages/library/package.json\` to \`${NEXT_VERSION}\`. This pull request changes nothing else."
+            echo
+            echo "Merging it into \`main\` starts the release: the Bump-Version workflow tags the merged commit \`${NEXT_TAG}\`, the tag starts the Release workflow, which publishes \`${NEXT_VERSION}\` to npm (\`latest\`) and then creates the GitHub release."
+            echo "Merge it only when the release should go out. To cancel, close this pull request and delete the branch."
+            echo
+            echo "## Release notes preview"
+            python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-header.py \
+              "$SERVER_URL" "$GITHUB_REPOSITORY" "$PREV_TAG" "$NEXT_TAG"
+            git log "${PREV_TAG}..HEAD" --no-merges --format='%H%x1f%s%x1f%b%x1e' \
+              | python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-body.py "$SERVER_URL" "$GITHUB_REPOSITORY"
+          } > "$BODY"
+          echo "path=${BODY}" >> "$GITHUB_OUTPUT"
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
+      - name: Push the version branch
+        id: version_commit
+        env:
+          NEXT_VERSION: ${{ steps.versions.outputs.next_version }}
+          NEXT_TAG: ${{ steps.versions.outputs.next_tag }}
+          BRANCH: ${{ steps.version_branch.outputs.branch }}
         run: |
           git config --global user.email "j5ik2o@gmail.com"
           git config --global user.name "Junichi Kato"
-          node "${GITHUB_WORKSPACE}"/.github/set-package-version.js "${{ steps.versions.outputs.next_version }}"
+          git switch -c "$BRANCH"
+          node "${GITHUB_WORKSPACE}"/.github/set-package-version.js "$NEXT_VERSION"
           git add packages/library/package.json pnpm-lock.yaml
-          git commit -m "version up to ${{ steps.versions.outputs.next_tag }}"
-          git push origin main
-          COMMIT_SHA=$(git rev-parse HEAD)
-          echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+          git commit -m "version up to ${NEXT_TAG}"
+          git push origin "HEAD:refs/heads/${BRANCH}"
         if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
-      - name: tagging and push tag
-        id: tag_version
-        run: |
-          git tag -a "${{ steps.versions.outputs.next_tag }}" ${{ steps.git_commit_push.outputs.commit_sha }} -m "${{ steps.versions.outputs.next_tag }}"
-          git push origin ${{ steps.versions.outputs.next_tag }}
-          python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-header.py \
-            ${{ github.server_url }} \
-            ${{ github.repository }} \
-            ${{ steps.defines.outputs.prev_tag }} \
-            ${{ steps.versions.outputs.next_tag }} \
-            > changelog.txt
-          git log ${{ steps.defines.outputs.prev_tag }}..${{ steps.versions.outputs.next_tag }} --no-merges --format='%H%x1f%s%x1f%b%x1e' \
-            | python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-body.py "${{ github.server_url }}" "${{ github.repository }}" >> changelog.txt
-        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
-      - name: Create a GitHub release
-        uses: actions/create-release@v1
+      - name: Open the version pull request
+        id: version_pr
         env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-        with:
-          tag_name: ${{ steps.versions.outputs.next_tag }}
-          release_name: Release ${{ steps.versions.outputs.next_tag }}
-          body_path: changelog.txt
-        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
-      - name: Switch to Snapshot version
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          NEXT_TAG: ${{ steps.versions.outputs.next_tag }}
+          BRANCH: ${{ steps.version_branch.outputs.branch }}
+          BODY: ${{ steps.pr_body.outputs.path }}
         run: |
-          rm changelog.txt
-          SNAPSHOT_VERSION=$(node "${GITHUB_WORKSPACE}"/.github/bump-snapshot-version.js | tr -d '\r\n')
-          test -n "$SNAPSHOT_VERSION"
-          printf '%s\n' "SNAPSHOT_VERSION=${SNAPSHOT_VERSION}" >> "$GITHUB_ENV"
-          git add packages/library/package.json pnpm-lock.yaml
-          git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
-          git push origin main
+          PR_URL=$(gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" \
+            --title "version up to ${NEXT_TAG}" --body-file "$BODY")
+          echo "$PR_URL"
+          echo "number=${PR_URL##*/}" >> "$GITHUB_OUTPUT"
         if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
+      - name: Publish the review-thread status of the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.version_pr.outputs.number }}
+        run: |
+          gh workflow run review-thread-resolution.yml --repo "$GITHUB_REPOSITORY" --ref main -f pr_number="$PR_NUMBER"
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
+  tag-release:
+    name: Tag the merged version
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'j5ik2o/event-store-adapter-js'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      - name: Detect a release version
+        id: trigger
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          package_version() {
+            git show "$1:packages/library/package.json" | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])'
+          }
+          BEFORE=""
+          if git cat-file -e "${BEFORE_SHA}^{commit}" 2> /dev/null; then
+            BEFORE=$(package_version "$BEFORE_SHA")
+          fi
+          AFTER=$(package_version "$AFTER_SHA")
+          TAG=$(git tag -l 'v*' | python3 "${GITHUB_WORKSPACE}"/.github/release-trigger.py "$BEFORE" "$AFTER")
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+      - name: Push the release tag
+        id: release_tag
+        env:
+          RELEASE_TAG: ${{ steps.trigger.outputs.tag }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          git config --global user.email "j5ik2o@gmail.com"
+          git config --global user.name "Junichi Kato"
+          git tag -a "$RELEASE_TAG" "$AFTER_SHA" -m "$RELEASE_TAG"
+          git push origin "refs/tags/${RELEASE_TAG}"
+        if: steps.trigger.outputs.tag != ''

@@ -57,8 +57,34 @@ When a change touches only documentation files (`*.md`, `docs/*`, `README*` and 
 
 - Open pull requests against `main`.
 - Write commit subjects in the Conventional Commits form (`type(scope): description`). The next version level and the release notes are derived from them.
-- Versions are bumped by the manually started Bump-Version workflow. Do not change the version in `packages/library/package.json` in a pull request.
+- Versions are bumped by the manually started Bump-Version workflow, which opens a version pull request. Do not change the version in `packages/library/package.json` in any other pull request: merging a version change into `main` starts a release.
 - Pushing a tag `vX.Y.Z` starts the Release workflow, which publishes the library to npm.
-- Snapshot builds are not published. Install a released version from npm. The `-snapshot.N` suffix in the version on `main` marks a development version that is not published.
+- Builds from `main` are not published. Install a released version from npm. Between releases, the version on `main` is the last released version (older `main` commits carry a `-snapshot.N` suffix).
+
+### Release flow
+
+`main` is protected (required checks `CI Success` and `Check unresolved comments`, also for administrators), so no workflow pushes to `main`.
+
+1. A maintainer starts **Bump-Version** (`workflow_dispatch`, inputs `level` and `version`). The job computes the next version, pushes the branch `release/vX.Y.Z` with one commit `version up to vX.Y.Z` that changes only `packages/library/package.json`, and opens a pull request with the same title. The pull request body has a preview of the release notes. The job then starts **Review Thread Resolution** for the pull request, so that `Check unresolved comments` is published.
+2. CI runs on the pull request, because it is opened with `PERSONAL_ACCESS_TOKEN` (a pull request opened with `GITHUB_TOKEN` starts no `pull_request` workflow). A maintainer squash-merges it after the required checks pass. Merging is the release decision.
+3. The push to `main` starts the `Tag the merged version` job of Bump-Version. `.github/release-trigger.py` compares the version before and after the push. It tags the merged `main` commit only when the version changed, is a release version `X.Y.Z`, has no tag yet, and is greater than the latest tag. It pushes the tag with `PERSONAL_ACCESS_TOKEN` (a tag pushed with `GITHUB_TOKEN` starts no workflow).
+4. The tag push starts **Release**: it checks that the tag matches the package version, builds, and publishes to npm with provenance (trusted publishing). After the publish succeeds, the `github-release` job creates the GitHub release `Release vX.Y.Z` with the release notes.
+
+Prerequisites: `PERSONAL_ACCESS_TOKEN` must be able to push branches and tags and to open pull requests in this repository.
+
+### When a release stops halfway
+
+Every step either finishes or leaves one of the states below. The order is: version pull request, merge, tag, npm, GitHub release. npm is published only from a tag, so a published version without a tag cannot happen.
+
+| State | How to fix | Safe to re-run? |
+|---|---|---|
+| Bump-Version failed before the branch was pushed (invalid version, existing tag, existing branch) | Fix the cause and start Bump-Version again. | Yes. Nothing was changed. |
+| The branch `release/vX.Y.Z` exists but no pull request was opened | Open the pull request from the branch by hand (title `version up to vX.Y.Z`), or delete the branch and start Bump-Version again. | A second run stops at `Check that the version branch is free` until the branch is deleted. |
+| The pull request has no `Check unresolved comments` | Start Review Thread Resolution by hand with `pr_number` set to the pull request. | Yes. |
+| The pull request should not be released, or its checks fail | Close the pull request and delete the branch. If `main` moved, update the branch from the pull request page. | Yes. `main` is not changed until the merge. |
+| The version is on `main` but there is no tag (`Tag the merged version` failed) | Re-run the failed job of that Bump-Version run. If there is no run, push the tag by hand: `git tag -a vX.Y.Z <merged commit> -m vX.Y.Z` and `git push origin vX.Y.Z`. Do not open the next version pull request before this is fixed. | Yes. The job does nothing when the tag exists. |
+| The tag exists but the version is not on npm (Release failed before or during `publish`) | Re-run the failed jobs of that Release run. This keeps the tag-push event, so the package keeps its provenance. Starting Release by hand with `tag: vX.Y.Z` also works, but publishes without provenance. | Yes. npm refuses to publish the same version twice. |
+| The version is on npm but there is no GitHub release (`github-release` failed) | Re-run the failed jobs of that Release run (only `github-release` runs again). | Yes. The job does nothing when the release exists. |
+| `Tag the merged version` failed with `must be greater than the latest tag` | The merged version is not newer than the latest tag. Revert the merge with a pull request; nothing was tagged or published. | Not applicable. |
 
 Japanese version: [CONTRIBUTING.ja.md](CONTRIBUTING.ja.md)

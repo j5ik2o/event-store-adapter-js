@@ -16,12 +16,6 @@
         {
           "engine": "ai-slop",
           "rule": "ai-slop/console-leftover",
-          "file": ".github/bump-snapshot-version.js",
-          "message": "console.log/debug/info statement left in production code"
-        },
-        {
-          "engine": "ai-slop",
-          "rule": "ai-slop/console-leftover",
           "file": ".github/set-package-version.js",
           "message": "console.log/debug/info statement left in production code"
         },

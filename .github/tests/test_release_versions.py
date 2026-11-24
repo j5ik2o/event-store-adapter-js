@@ -116,17 +116,17 @@ class ReleaseVersionsTest(unittest.TestCase):
             self.assertEqual(output.read_text().splitlines(), ['next_version=4.1.0', 'next_tag=v4.1.0'])
 
     def test_workflow_conditions(self):
-        for step in ('versions', 'git_commit_push', 'tag_version'):
+        for step in ('versions', 'version_branch', 'pr_body', 'version_commit', 'version_pr'):
             with self.subTest(step=step):
                 self.assertEqual(step_if(BUMP, step), GUARDED)
-        self.assertEqual(BUMP.count('if: ' + GUARDED), 5)
+        self.assertEqual(BUMP.count('if: ' + GUARDED), 6)
         self.assertEqual(
             step_if(BUMP, 'semver_level'),
             "inputs.version == '' && (steps.changes.outputs.count > 0 || inputs.level != 'auto')",
         )
 
     def test_validation_runs_before_any_rewrite(self):
-        self.assertLess(step_index(BUMP, 'requested_version'), step_index(BUMP, 'git_commit_push'))
+        self.assertLess(step_index(BUMP, 'requested_version'), step_index(BUMP, 'version_commit'))
         self.assertLess(step_index(BUMP, 'requested_version'), step_index(BUMP, 'versions'))
         self.assertIn('version:\n        description:', BUMP)
 

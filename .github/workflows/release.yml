@@ -60,3 +60,37 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - run: pnpm --filter event-store-adapter-js publish --access public --no-git-checks
+  github-release:
+    name: Create the GitHub release
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15"
+      - name: Create the release from the tag
+        id: github_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "GitHub release ${RELEASE_TAG} already exists"
+            exit 0
+          fi
+          PREV_TAG=$(git describe --abbrev=0 --tags "${RELEASE_TAG}^")
+          python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-header.py \
+            "$SERVER_URL" "$GITHUB_REPOSITORY" "$PREV_TAG" "$RELEASE_TAG" > "${RUNNER_TEMP}/changelog.txt"
+          git log "${PREV_TAG}..${RELEASE_TAG}" --no-merges --format='%H%x1f%s%x1f%b%x1e' \
+            | python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-body.py "$SERVER_URL" "$GITHUB_REPOSITORY" \
+            >> "${RUNNER_TEMP}/changelog.txt"
+          gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Release ${RELEASE_TAG}" --notes-file "${RUNNER_TEMP}/changelog.txt"
