@@ -21,6 +21,18 @@ const sameStores: [
   sqliteDefault.SqliteEventStore,
 ];
 
+// 5.2.0 also resolved types, including type-only exports, through the default.
+type DefaultTypes = [
+  rootDefault.AggregateId,
+  rootDefault.Result<number, rootDefault.EventStoreError>,
+  rootDefault.EventStore<unknown, unknown>,
+  rootDefault.Logger,
+  spannerDefault.SpannerEventStoreInput<unknown, unknown>,
+  sqliteDefault.SqliteEventStoreInput<unknown, unknown>,
+  bigtableDefault.BigtableEventStoreInput<unknown, unknown>,
+];
+export type { DefaultTypes };
+
 void [
   EventStore,
   BigtableEventStore,

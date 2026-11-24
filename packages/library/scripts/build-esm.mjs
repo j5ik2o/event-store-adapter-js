@@ -106,8 +106,8 @@ await Promise.all(
       [
         `import * as entry from "../${entry}.js";`,
         `export * from "../${entry}.js";`,
-        "declare const moduleExports: typeof entry;",
-        "export default moduleExports;",
+        // The namespace keeps type-only exports reachable as `adapter.Type`.
+        "export default entry;",
         "",
       ].join("\n"),
     ),

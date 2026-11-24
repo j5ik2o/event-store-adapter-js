@@ -95,18 +95,28 @@ const persistOnce = async ([, root, spanner], cause) => {
   assert.equal(created.type, "ok", JSON.stringify(created.error));
   const id = root.AggregateId.of("Amount", "1").value;
   const event = root.EventEnvelope.create({ aggregateId: id, seqNr: 1, occurredAt: new Date(123), payload: { amount: 5 } }).value;
-  const started = performance.now();
-  const result = await created.value.persistEvent(event);
-  return { result, attempts, elapsed: performance.now() - started };
+  // The retry wait asks the global timer for each sleep; record what it asks for.
+  const requested = [];
+  const timer = globalThis.setTimeout;
+  globalThis.setTimeout = (callback, milliseconds, ...rest) => {
+    requested.push(milliseconds);
+    return timer(callback, milliseconds, ...rest);
+  };
+  try {
+    const result = await created.value.persistEvent(event);
+    return { result, attempts, requested };
+  } finally {
+    globalThis.setTimeout = timer;
+  }
 };
 
-// The fallback wait for the first retry is 25 to 50 ms; the server hint is 1 s.
+// The fallback wait for the first retry is 25 to 50 ms; this server hint is 2 ms.
 const malformed = Uint8Array.from([10, 255]);
 for (const entry of entries) {
-  const waited = await persistOnce(entry, aborted([malformed, retryInfo({ seconds: 1 })]));
+  const waited = await persistOnce(entry, aborted([malformed, retryInfo({ nanos: 1000001 })]));
   assert.equal(waited.attempts, 2, entry[0]);
   assert.match(waited.result.error.message, /transaction failed/, entry[0]);
-  assert.ok(waited.elapsed >= 1000, `${entry[0]} waited ${waited.elapsed} ms`);
+  assert.equal(waited.requested[0], 2, entry[0]);
 
   for (const delay of [{ seconds: 60, nanos: 1 }, { seconds: "315576000000", nanos: 999999999 }]) {
     const cause = aborted([retryInfo(delay)]);
@@ -114,9 +124,10 @@ for (const entry of entries) {
     assert.equal(stopped.attempts, 1, entry[0]);
     assert.match(stopped.result.error.message, /server retry delay exceeds supported wait of 60000ms/, entry[0]);
     assert.equal(stopped.result.error.cause, cause, entry[0]);
+    assert.deepEqual(stopped.requested, [], entry[0]);
   }
 
   const fallback = await persistOnce(entry, aborted([malformed]));
   assert.equal(fallback.attempts, 2, entry[0]);
-  assert.ok(fallback.elapsed < 1000, `${entry[0]} fallback waited ${fallback.elapsed} ms`);
+  assert.ok(fallback.requested[0] >= 25 && fallback.requested[0] <= 50, `${entry[0]} fallback asked for ${fallback.requested[0]} ms`);
 }
