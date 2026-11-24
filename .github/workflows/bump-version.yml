@@ -1,5 +1,10 @@
 name: Bump-Version
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - packages/library/package.json
   workflow_dispatch:
     inputs:
       level:
@@ -19,13 +24,17 @@ on:
         default: ''
 jobs:
   bump-version:
+    name: Open the version pull request
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          persist-credentials: true
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          persist-credentials: false
       - name: Validate requested version
         id: requested_version
         env:
@@ -71,13 +80,19 @@ jobs:
       - run: pip install semver
       - id: defines
         run: |
-          LATEST_TAG=$(git describe --abbrev=0 --tags)
+          LATEST_TAG=$(git tag -l 'v*' | python3 "${GITHUB_WORKSPACE}"/.github/release-gate.py latest-tag)
+          if [[ -z "$LATEST_TAG" ]]; then
+            echo "::error::no release tag vX.Y.Z exists"
+            exit 1
+          fi
           echo "LATEST_TAG=$LATEST_TAG"
           echo "prev_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
       - name: Calculate changes from the latest tag to HEAD
         id: changes
+        env:
+          PREV_TAG: ${{ steps.defines.outputs.prev_tag }}
         run: |
-          COUNT=$(git rev-list --count ${{ steps.defines.outputs.prev_tag }}..HEAD \
+          COUNT=$(git rev-list --count "${PREV_TAG}..HEAD" \
             --no-merges -P --grep='^(BREAKING CHANGE|build|ci|feat|fix|docs|style|refactor|perf|test|revert|chore)(\(.*\))?!?:|^BREAKING[ -]CHANGE:')
           echo "COUNT=$COUNT"
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
@@ -85,12 +100,13 @@ jobs:
         id: semver_level
         env:
           REQUESTED_LEVEL: ${{ inputs.level }}
+          PREV_TAG: ${{ steps.defines.outputs.prev_tag }}
         run: |
           if [[ "$REQUESTED_LEVEL" != "auto" ]]; then
             echo "semver_level=$REQUESTED_LEVEL" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          SEMVER_LEVEL=$(git log ${{ steps.defines.outputs.prev_tag }}..HEAD --pretty=format:"%s%x1f%b%x1e" \
+          SEMVER_LEVEL=$(git log "${PREV_TAG}..HEAD" --pretty=format:"%s%x1f%b%x1e" \
             --no-merges -P --grep='^(BREAKING CHANGE|build|ci|feat|fix|docs|style|refactor|perf|test|revert|chore)(\(.*\))?!?:|^BREAKING[ -]CHANGE:' \
             | python3 "${GITHUB_WORKSPACE}"/.github/semver-level.py)
           echo "SEMVER_LEVEL=$SEMVER_LEVEL"
@@ -100,58 +116,145 @@ jobs:
         id: versions
         env:
           REQUESTED_VERSION: ${{ steps.requested_version.outputs.version }}
+          PREV_TAG: ${{ steps.defines.outputs.prev_tag }}
+          SEMVER_LEVEL: ${{ steps.semver_level.outputs.semver_level }}
         run: |
           if [[ -n "$REQUESTED_VERSION" ]]; then
             NEXT_VERSION="$REQUESTED_VERSION"
           else
-            NEXT_VERSION=$(echo ${{ steps.defines.outputs.prev_tag }} | python3 "${GITHUB_WORKSPACE}"/.github/next-semver.py ${{ steps.semver_level.outputs.semver_level }})
+            NEXT_VERSION=$(echo "$PREV_TAG" | python3 "${GITHUB_WORKSPACE}"/.github/next-semver.py "$SEMVER_LEVEL")
           fi
           echo "NEXT_VERSION=$NEXT_VERSION"
           echo "next_version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
           echo "next_tag=v$NEXT_VERSION" >> "$GITHUB_OUTPUT"
         if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
-      - name: git commit & push
-        id: git_commit_push
+      - name: Check that the version branch is free
+        id: version_branch
+        env:
+          NEXT_TAG: ${{ steps.versions.outputs.next_tag }}
         run: |
+          BRANCH="release/${NEXT_TAG}"
+          if git ls-remote --exit-code --heads origin "refs/heads/${BRANCH}" > /dev/null; then
+            echo "::error::branch ${BRANCH} already exists; merge or close its pull request and delete the branch first"
+            exit 1
+          fi
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
+      - name: Write the pull request body
+        id: pr_body
+        env:
+          PREV_TAG: ${{ steps.defines.outputs.prev_tag }}
+          NEXT_VERSION: ${{ steps.versions.outputs.next_version }}
+          NEXT_TAG: ${{ steps.versions.outputs.next_tag }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          BODY="${RUNNER_TEMP}/version-pr-body.md"
+          {
+            echo "Bump \`packages/library/package.json\` to \`${NEXT_VERSION}\`. This pull request changes nothing else."
+            echo
+            echo "Merging it into \`main\` starts the release: the Bump-Version workflow tags the merged commit \`${NEXT_TAG}\`, the tag starts the Release workflow, which publishes \`${NEXT_VERSION}\` to npm (\`latest\`) and then creates the GitHub release."
+            echo "Merge it only when the release should go out. To cancel, close this pull request and delete the branch."
+            echo
+            echo "## Release notes preview"
+            echo
+            echo "Changes since [\`${PREV_TAG}\`](${SERVER_URL}/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...release/${NEXT_TAG}). The GitHub release compares \`${PREV_TAG}...${NEXT_TAG}\` after the tag exists."
+            echo
+            git log "${PREV_TAG}..HEAD" --no-merges --format='%H%x1f%s%x1f%b%x1e' \
+              | python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-body.py "$SERVER_URL" "$GITHUB_REPOSITORY"
+          } > "$BODY"
+          echo "path=${BODY}" >> "$GITHUB_OUTPUT"
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
+      - name: Push the version branch
+        id: version_commit
+        env:
+          NEXT_VERSION: ${{ steps.versions.outputs.next_version }}
+          NEXT_TAG: ${{ steps.versions.outputs.next_tag }}
+          BRANCH: ${{ steps.version_branch.outputs.branch }}
+          PUSH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          AUTH=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 | tr -d '\n')
+          echo "::add-mask::${AUTH}"
           git config --global user.email "j5ik2o@gmail.com"
           git config --global user.name "Junichi Kato"
-          node "${GITHUB_WORKSPACE}"/.github/set-package-version.js "${{ steps.versions.outputs.next_version }}"
+          git switch -c "$BRANCH"
+          node "${GITHUB_WORKSPACE}"/.github/set-package-version.js "$NEXT_VERSION"
           git add packages/library/package.json pnpm-lock.yaml
-          git commit -m "version up to ${{ steps.versions.outputs.next_tag }}"
-          git push origin main
-          COMMIT_SHA=$(git rev-parse HEAD)
-          echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+          git commit -m "version up to ${NEXT_TAG}"
+          GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.${SERVER_URL}/.extraheader" \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${AUTH}" \
+            git push origin "HEAD:refs/heads/${BRANCH}"
         if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
-      - name: tagging and push tag
-        id: tag_version
-        run: |
-          git tag -a "${{ steps.versions.outputs.next_tag }}" ${{ steps.git_commit_push.outputs.commit_sha }} -m "${{ steps.versions.outputs.next_tag }}"
-          git push origin ${{ steps.versions.outputs.next_tag }}
-          python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-header.py \
-            ${{ github.server_url }} \
-            ${{ github.repository }} \
-            ${{ steps.defines.outputs.prev_tag }} \
-            ${{ steps.versions.outputs.next_tag }} \
-            > changelog.txt
-          git log ${{ steps.defines.outputs.prev_tag }}..${{ steps.versions.outputs.next_tag }} --no-merges --format='%H%x1f%s%x1f%b%x1e' \
-            | python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-body.py "${{ github.server_url }}" "${{ github.repository }}" >> changelog.txt
-        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
-      - name: Create a GitHub release
-        uses: actions/create-release@v1
+      - name: Open the version pull request
+        id: version_pr
         env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-        with:
-          tag_name: ${{ steps.versions.outputs.next_tag }}
-          release_name: Release ${{ steps.versions.outputs.next_tag }}
-          body_path: changelog.txt
-        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
-      - name: Switch to Snapshot version
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          NEXT_TAG: ${{ steps.versions.outputs.next_tag }}
+          BRANCH: ${{ steps.version_branch.outputs.branch }}
+          BODY: ${{ steps.pr_body.outputs.path }}
         run: |
-          rm changelog.txt
-          SNAPSHOT_VERSION=$(node "${GITHUB_WORKSPACE}"/.github/bump-snapshot-version.js | tr -d '\r\n')
-          test -n "$SNAPSHOT_VERSION"
-          printf '%s\n' "SNAPSHOT_VERSION=${SNAPSHOT_VERSION}" >> "$GITHUB_ENV"
-          git add packages/library/package.json pnpm-lock.yaml
-          git commit -m "[skip ci] version up to ${SNAPSHOT_VERSION}"
-          git push origin main
+          PR_URL=$(gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" \
+            --title "version up to ${NEXT_TAG}" --body-file "$BODY")
+          echo "$PR_URL"
+          echo "number=${PR_URL##*/}" >> "$GITHUB_OUTPUT"
         if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
+      - name: Publish the review-thread status of the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.version_pr.outputs.number }}
+        run: |
+          gh workflow run review-thread-resolution.yml --repo "$GITHUB_REPOSITORY" --ref main -f pr_number="$PR_NUMBER"
+        if: steps.changes.outputs.count > 0 || inputs.level != 'auto' || inputs.version != ''
+  tag-release:
+    name: Tag the merged version
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'j5ik2o/event-store-adapter-js'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-tag
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check the merged commit against the release gate
+        id: trigger
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          GATE="${RUNNER_TEMP}/release-gate"
+          bash "${GITHUB_WORKSPACE}"/.github/release-gate-inputs.sh "$RELEASE_SHA" "$GATE"
+          TAG=$(python3 "${GITHUB_WORKSPACE}"/.github/release-gate.py check --mode tag \
+            --repository "$GITHUB_REPOSITORY" --sha "$RELEASE_SHA" --on-main "$(cat "${GATE}/on-main")" \
+            --parent-package "${GATE}/parent.json" --package "${GATE}/package.json" \
+            --changed-files "${GATE}/changed-files" --pulls "${GATE}/pulls.json" \
+            --remote-tags "${GATE}/remote-tags")
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+      - name: Push the release tag
+        id: release_tag
+        env:
+          RELEASE_TAG: ${{ steps.trigger.outputs.tag }}
+          RELEASE_SHA: ${{ github.sha }}
+          PUSH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          AUTH=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 | tr -d '\n')
+          echo "::add-mask::${AUTH}"
+          git config --global user.email "j5ik2o@gmail.com"
+          git config --global user.name "Junichi Kato"
+          git tag -f -a "$RELEASE_TAG" "$RELEASE_SHA" -m "$RELEASE_TAG"
+          if ! GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.${SERVER_URL}/.extraheader" \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${AUTH}" \
+            git push origin "refs/tags/${RELEASE_TAG}"; then
+            REMOTE_SHA=$(git ls-remote origin "refs/tags/${RELEASE_TAG}^{}" | cut -f1)
+            if [[ "$REMOTE_SHA" != "$RELEASE_SHA" ]]; then
+              echo "::error::tag ${RELEASE_TAG} could not be pushed (remote: ${REMOTE_SHA:-none})"
+              exit 1
+            fi
+            echo "tag ${RELEASE_TAG} was pushed by another run on the same commit"
+          fi
+        if: steps.trigger.outputs.tag != ''

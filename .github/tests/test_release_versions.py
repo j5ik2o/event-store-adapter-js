@@ -109,24 +109,24 @@ class ReleaseVersionsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / 'outputs'
             output.write_text('')
-            script = run_body(BUMP, 'versions').replace('${{ steps.defines.outputs.prev_tag }}', 'v4.0.1') \
-                .replace('${{ steps.semver_level.outputs.semver_level }}', 'minor')
-            result = self.run_script(script, directory, {'GITHUB_OUTPUT': str(output), 'REQUESTED_VERSION': ''})
+            result = self.run_script(run_body(BUMP, 'versions'), directory, {
+                'GITHUB_OUTPUT': str(output), 'REQUESTED_VERSION': '', 'PREV_TAG': 'v4.0.1', 'SEMVER_LEVEL': 'minor',
+            })
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(output.read_text().splitlines(), ['next_version=4.1.0', 'next_tag=v4.1.0'])
 
     def test_workflow_conditions(self):
-        for step in ('versions', 'git_commit_push', 'tag_version'):
+        for step in ('versions', 'version_branch', 'pr_body', 'version_commit', 'version_pr'):
             with self.subTest(step=step):
                 self.assertEqual(step_if(BUMP, step), GUARDED)
-        self.assertEqual(BUMP.count('if: ' + GUARDED), 5)
+        self.assertEqual(BUMP.count('if: ' + GUARDED), 6)
         self.assertEqual(
             step_if(BUMP, 'semver_level'),
             "inputs.version == '' && (steps.changes.outputs.count > 0 || inputs.level != 'auto')",
         )
 
     def test_validation_runs_before_any_rewrite(self):
-        self.assertLess(step_index(BUMP, 'requested_version'), step_index(BUMP, 'git_commit_push'))
+        self.assertLess(step_index(BUMP, 'requested_version'), step_index(BUMP, 'version_commit'))
         self.assertLess(step_index(BUMP, 'requested_version'), step_index(BUMP, 'versions'))
         self.assertIn('version:\n        description:', BUMP)
 
@@ -135,8 +135,11 @@ class ReleaseVersionsTest(unittest.TestCase):
             package = Path(directory) / 'packages/library'
             package.mkdir(parents=True)
             (package / 'package.json').write_text('{"version": "%s"}' % package_version)
+            output = Path(directory) / 'outputs'
+            output.write_text('')
             return self.run_script(
-                run_body(RELEASE, 'package_version'), directory, {'RELEASE_TAG': tag},
+                run_body(RELEASE, 'package_version'), directory,
+                {'RELEASE_TAG': tag, 'GITHUB_OUTPUT': str(output)},
             )
 
     def test_release_accepts_matching_tag(self):
