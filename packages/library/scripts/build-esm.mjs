@@ -34,6 +34,18 @@ const workerSourcePlugin = {
   },
 };
 
+const sharedRegistryPlugin = {
+  name: "shared-cjs-registry",
+  setup(build) {
+    build.onResolve({ filter: /^\.\/shared-weak-map$/ }, () => ({
+      // Native ESM must use the same registry as the tsc CommonJS entry.
+      // Downstream bundlers can follow this statically without createRequire.
+      path: "../internal/shared-weak-map.js",
+      external: true,
+    }));
+  },
+};
+
 await build({
   entryPoints: ["src/index.ts", "src/spanner.ts", "src/sqlite.ts", "src/bigtable.ts"],
   outdir: "dist/esm",
@@ -43,7 +55,7 @@ await build({
   platform: "node",
   format: "esm",
   target: "node24",
-  plugins: [workerSourcePlugin],
+  plugins: [workerSourcePlugin, sharedRegistryPlugin],
 });
 
 await Promise.all(

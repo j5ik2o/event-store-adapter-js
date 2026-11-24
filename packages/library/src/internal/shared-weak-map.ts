@@ -1,10 +1,12 @@
+// Both entry formats resolve this same internal CommonJS module in Node.
+const registries = new Map<string, WeakMap<object, unknown>>();
+
 export function sharedWeakMap<K extends object, V>(
   name: string,
 ): WeakMap<K, V> {
-  const key = Symbol.for(name);
-  const existing: unknown = Reflect.get(globalThis, key);
-  if (existing instanceof WeakMap) return existing as WeakMap<K, V>;
+  const existing = registries.get(name);
+  if (existing !== undefined) return existing as WeakMap<K, V>;
   const created = new WeakMap<K, V>();
-  Reflect.set(globalThis, key, created);
+  registries.set(name, created);
   return created;
 }

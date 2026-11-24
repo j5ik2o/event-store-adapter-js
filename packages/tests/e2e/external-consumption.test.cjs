@@ -102,6 +102,13 @@ test("packed package type-checks and executes from an independent external proje
     run("pnpm", ["install", "--ignore-scripts", "--store-dir", store, "--state-dir", path.join(directory, "state")], directory);
     run(process.execPath, [require.resolve("typescript/bin/tsc"), "--project", path.join(directory, "tsconfig.json")], directory);
     run(process.execPath, [path.join(directory, "consume.mjs")], directory);
+    // The AWS SDK initializes its own globals; pre-load it, not this library.
+    // Both native entry formats must share handles without adding host globals.
+    run(process.execPath, [
+      "--require", "@aws-sdk/client-dynamodb",
+      "--import", "data:text/javascript,Object.preventExtensions(globalThis)",
+      path.join(directory, "consume.mjs"),
+    ], directory);
     const bundleEntry = path.join(directory, "bundle-entry.mjs");
     const bundleOutput = path.join(directory, "bundle-output.mjs");
     const commonJsBundleOutput = path.join(directory, "bundle-output.cjs");
