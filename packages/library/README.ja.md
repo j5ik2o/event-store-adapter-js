@@ -313,3 +313,4 @@ DynamoDB試験と実例はTestcontainersからDynamoDB Local 3.3.1を起動す�
 ## ライセンス
 
 MIT と Apache-2.0 のどちらかを選べる二重ライセンス（`MIT OR Apache-2.0`）です。[LICENSE-MIT](LICENSE-MIT) と [LICENSE-APACHE](LICENSE-APACHE) を参照してください。
+ESM のファイルは第三者のパッケージを同梱しています。それらのライセンスは `dist/esm/THIRD_PARTY_LICENSES` にあります。

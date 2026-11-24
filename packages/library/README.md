@@ -311,3 +311,4 @@ DynamoDB tests and examples use DynamoDB Local 3.3.1 through Testcontainers and 
 ## License
 
 Dual-licensed under MIT or Apache-2.0 (`MIT OR Apache-2.0`), at your option. See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).
+The ESM files bundle some third-party packages; their licenses are in `dist/esm/THIRD_PARTY_LICENSES`.
