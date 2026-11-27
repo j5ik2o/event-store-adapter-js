@@ -119,9 +119,10 @@ jobs:
     permissions:
       contents: read
     steps:
+      # npm-registry.py はワークフローの版から読む（タグの版から読まない）。手で古いタグを公開するとき、タグの版には
+      # このスクリプトが無い（#1163 の Cursor Bugbot と CodeRabbit の指摘）。確かめる版は RELEASE_TAG から渡す
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
           persist-credentials: false
       - uses: actions/setup-python@v7
         with:

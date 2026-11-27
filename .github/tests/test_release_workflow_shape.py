@@ -90,6 +90,14 @@ class ReleaseWorkflowShapeTest(unittest.TestCase):
         self.assertIn('--interval "$CONFIRM_INTERVAL_SECONDS" --deadline "$CONFIRM_DEADLINE_SECONDS"', body)
         self.assertIn("EXPECT_PROVENANCE: ${{ github.event_name == 'push' }}", step(RELEASE, 'confirm'))
 
+    def test_confirm_runs_the_script_of_the_workflow_revision(self):
+        """confirm は npm-registry.py をワークフローの版から読む。手で古いタグを公開すると、タグの版にはこのスクリプトが無い
+        （#1163 の Cursor Bugbot と CodeRabbit の指摘）。確かめる版は RELEASE_TAG から渡す。"""
+        checkout = job(RELEASE, 'confirm').split('      - uses: actions/checkout@v7\n', 1)[1].split('\n      - ', 1)[0]
+        self.assertEqual(checkout, '        with:\n          persist-credentials: false')
+        self.assertIn("RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}",
+                      step(RELEASE, 'confirm'))
+
     def test_the_wait_is_set_in_one_place(self):
         for name, value in (('CONFIRM_DEADLINE_SECONDS', '900'), ('CONFIRM_INTERVAL_SECONDS', '20')):
             with self.subTest(name=name):
