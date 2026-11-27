@@ -1,7 +1,8 @@
 import re
+import sys
 import unittest
 
-from release_test_support import BUMP, RELEASE, job, run_blocks, run_body, step
+from release_test_support import BUMP, GITHUB, RELEASE, job, run_blocks, run_body, step
 
 
 class ReleaseWorkflowShapeTest(unittest.TestCase):
@@ -63,12 +64,60 @@ class ReleaseWorkflowShapeTest(unittest.TestCase):
             with self.subTest(step=step_id):
                 self.assertLess(release.index('id: ' + step_id), publish)
                 self.assertNotIn('        if:', step(RELEASE, step_id))
-        self.assertLess(publish, release.index('id: npm_after'))
         self.assertIn('--mode publish', run_body(RELEASE, 'release_gate'))
-        self.assertIn('    needs: release\n', job(RELEASE, 'github-release'))
         self.assertIn(
             "if: github.event_name == 'workflow_dispatch'\n        run: echo 'PNPM_CONFIG_PROVENANCE=false'",
             RELEASE)
+
+    def test_confirm_is_a_job_of_its_own_after_the_publish(self):
+        """確認を公開と別のジョブにし、「失敗したジョブを再実行」で公開をやり直さない（#1161）。"""
+        release, confirm = job(RELEASE, 'release'), job(RELEASE, 'confirm')
+        self.assertNotIn('npm view', release[release.index('publish --access public'):])
+        self.assertNotIn('sleep', release)
+        self.assertIn('    needs: release\n', confirm)
+        self.assertNotIn('    if:', confirm)
+        self.assertIn('    timeout-minutes: 20\n', confirm)
+        self.assertIn('    permissions:\n      contents: read\n    steps:\n', confirm)
+        for word in ('secrets.', 'NODE_AUTH_TOKEN', 'id-token', 'setup-node', 'pnpm'):
+            with self.subTest(word=word):
+                self.assertNotIn(word, confirm)
+        scripts = ''.join(run_blocks(confirm))
+        for word in ('npm ', 'pip ', 'publish', 'dist-tag', 'curl'):
+            with self.subTest(word=word):
+                self.assertNotIn(word, scripts)
+        body = run_body(RELEASE, 'confirm')
+        self.assertIn('npm-registry.py confirm --version "${RELEASE_TAG#v}"', body)
+        self.assertIn('--interval "$CONFIRM_INTERVAL_SECONDS" --deadline "$CONFIRM_DEADLINE_SECONDS"', body)
+        self.assertIn("EXPECT_PROVENANCE: ${{ github.event_name == 'push' }}", step(RELEASE, 'confirm'))
+
+    def test_the_wait_is_set_in_one_place(self):
+        for name, value in (('CONFIRM_DEADLINE_SECONDS', '900'), ('CONFIRM_INTERVAL_SECONDS', '20')):
+            with self.subTest(name=name):
+                self.assertEqual(RELEASE.count(name + ':'), 1)
+                self.assertIn(f'          {name}: {value}\n', step(RELEASE, 'confirm'))
+
+    def test_only_the_release_job_can_publish(self):
+        """npm の trusted publishing はワークフローのファイル単位で信じるので、id-token は公開のジョブだけに渡す。"""
+        self.assertEqual(RELEASE.count('id-token: write'), 1)
+        self.assertIn('id-token: write', job(RELEASE, 'release'))
+        self.assertEqual(RELEASE.count(' publish --access public'), 1)
+
+    def test_the_npm_registry_script_uses_only_the_standard_library(self):
+        script = (GITHUB / 'npm-registry.py').read_text()
+        imported = set(re.findall(r'^(?:import|from) ([a-z_.]+)', script, re.MULTILINE))
+        self.assertLessEqual({name.split('.')[0] for name in imported}, set(sys.stdlib_module_names))
+        self.assertNotIn('method=', script)
+        self.assertNotIn('data=', script)
+
+    def test_github_release_follows_a_successful_confirm_and_marks_the_greatest_release_latest(self):
+        github_release = job(RELEASE, 'github-release')
+        self.assertIn("    needs: confirm\n    if: always() && needs.confirm.result == 'success'\n", github_release)
+        self.assertIn('--notes-file "${RUNNER_TEMP}/changelog.txt" --latest=false', run_body(RELEASE, 'github_release'))
+        self.assertLess(github_release.index('id: github_release'), github_release.index('id: latest_release'))
+        latest = run_body(RELEASE, 'latest_release')
+        self.assertIn('release-gate.py latest-tag', latest)
+        self.assertIn('gh release edit "$LATEST_TAG" --repo "$GITHUB_REPOSITORY" --latest', latest)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -443,7 +443,7 @@ jobs:
           python3 tools/user-docs/check.py
       - name: Test semver detection
         run: |
-          pip install semver
+          pip install -r .github/tests/requirements.txt
           python3 -m unittest discover -s .github/tests -v
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -454,6 +454,34 @@ jobs:
         run: |
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           actionlint
+
+  # rs の release-model と同じ形。quint の検査は約4分かかるので、release-checks（上限5分）と分ける
+  release-model:
+    name: Check the release path model
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 24.x
+      # quint は評価器を認証なしの GitHub の API で取り寄せ、ランナーの共有の上限で落ちうる。認証つきで先に置く
+      - name: Fetch the Quint evaluator
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/quint/fetch-evaluator.sh "${RUNNER_TEMP}/quint-home"
+      - name: Check the Quint model of the release path
+        timeout-minutes: 8
+        env:
+          QUINT: npx --yes @informalsystems/quint@0.32.0
+          QUINT_HOME: ${{ runner.temp }}/quint-home
+        run: bash .github/quint/run-quint.sh ci
 
   ci-success:
     name: CI Success
@@ -468,6 +496,7 @@ jobs:
       - package-tests
       - codecov-status
       - release-checks
+      - release-model
     if: always()
     steps:
       - name: All checks passed
@@ -512,4 +541,5 @@ jobs:
           require_result "package-tests" "${{ needs['package-tests'].result }}" "${expected_code_job_result}"
           require_result "codecov-status" "${{ needs['codecov-status'].result }}" "${expected_code_job_result}"
           require_result "release-checks" "${{ needs['release-checks'].result }}" "success"
+          require_result "release-model" "${{ needs['release-model'].result }}" "success"
           echo "All CI checks passed successfully"

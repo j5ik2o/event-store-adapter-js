@@ -45,11 +45,12 @@ pnpm install --frozen-lockfile
 | `test` | `pnpm run build`、続いて `pnpm --filter event-store-adapter-js run coverage --runInBand` |
 | `examples` | `pnpm run test:examples` |
 | `package-tests` | `pnpm run test:packages` |
-| `release-checks` | `python3 tools/conformance/manifest.py verify`、`.github/workflows/ci.yml` に記載された固定の SHA-256 値との `sha256sum -c`、`python3 tools/user-docs/check.py`、`python3 -m unittest discover -s .github/tests -v` (`pip install semver` が必要)、`actionlint` (`go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12` で導入) |
+| `release-checks` | `python3 tools/conformance/manifest.py verify`、`.github/workflows/ci.yml` に記載された固定の SHA-256 値との `sha256sum -c`、`python3 tools/user-docs/check.py`、`python3 -m unittest discover -s .github/tests -v` (`pip install -r .github/tests/requirements.txt` が必要)、`actionlint` (`go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12` で導入) |
+| `release-model` | `bash .github/quint/run-quint.sh ci` (Quint 0.32.0 が必要。`.github/quint/README.md` を参照) |
 
 ルートのその他のスクリプト: `pnpm run test` はライブラリの試験を実行し、`pnpm run fmt` と `pnpm run fix` は Biome でライブラリのソースを整形・修正します。
 
-変更が文書のファイル (`*.md`、`docs/*`、`README*` など) だけの場合、コードの検査ジョブは skip され、`release-checks` は常に実行されます。
+変更が文書のファイル (`*.md`、`docs/*`、`README*` など) だけの場合、コードの検査ジョブは skip され、`release-checks` と `release-model` は常に実行されます。
 
 ## 設計の記録
 
@@ -76,7 +77,7 @@ pnpm install --frozen-lockfile
    - `main` から到達できること
 
    マージの直後は、コミットと PR の関連付けが GitHub からすぐに返らないことがあるので、PR の照会は約10秒おきに5回まで行います。どれかが通らなければ、ジョブは失敗し、タグは打ちません。すべて通れば、マージのコミットにタグを打ち、`PERSONAL_ACCESS_TOKEN` で push します（`GITHUB_TOKEN` で push したタグでは、ワークフローが起動しません）。タグのジョブは1つずつ動きます。
-4. タグの push で **Release** が起動します。Release は1つずつ動きます。Release は、タグと package.json の版の一致を確かめ、タグのコミットに同じ関門をかけ、npm にその版がまだないこと、版が npm の `latest` より大きいことを確かめます。そのあとビルドし、より新しい正式版のタグが現れていないことをもう一度確かめてから、provenance つきで npm に公開し（trusted publishing）、npm がその版を `latest` として、provenance つきで返すことを確かめます。最後に、`github-release` のジョブが、リリースノートつきの GitHub のリリース `Release vX.Y.Z` を作ります。
+4. タグの push で **Release** が起動します。Release は1つずつ動きます。Release は、タグと package.json の版の一致を確かめ、タグのコミットに同じ関門をかけ、npm にその版がまだないこと、版が npm の `latest` より大きいことを確かめます。そのあとビルドし、より新しい正式版のタグが現れていないことをもう一度確かめてから、provenance つきで npm に公開します（trusted publishing）。続いて `confirm` のジョブが、npm がその版を返し、`dist-tags.latest` がこの版かより新しい版になり、（タグの push なら）その版に provenance が付くまで、最長15分待ちます。このジョブは npm を読むだけです。最後に、`github-release` のジョブが、リリースノートつきの GitHub のリリース `Release vX.Y.Z` を作り、最大の正式版 `vX.Y.Z` のリリースを Latest にします。
 
 Release を `tag: vX.Y.Z` で手で起動しても、同じ確認が走ります。ただし provenance は付きません。
 
@@ -100,7 +101,8 @@ Release を `tag: vX.Y.Z` で手で起動しても、同じ確認が走ります
 | 版は `main` に入ったが、タグがない（`Tag the merged version` が関門の後で失敗した、または起動しなかった） | その Bump-Version の実行の、失敗したジョブを再実行します。実行がなければ、マージのコミットに手でタグを push します：`git tag -a vX.Y.Z <マージのコミット> -m vX.Y.Z` と `git push origin vX.Y.Z`。Release がそのタグに関門をかけるので、ほかのコミットに打ったタグは公開されません。直すまで、次の版上げのプルリクエストを作らないでください。 | 安全です。タグが同じコミットにあれば、ジョブは何もしません。 |
 | タグはあるが、Release の実行が始まらなかった | npm にその版がなければ、リモートのタグを消して（`git push origin :refs/tags/vX.Y.Z`）、`Tag the merged version` を再実行します。新しいタグの push で、provenance つきで公開されます。Release を `tag: vX.Y.Z` で手で起動しても直せますが、provenance は付きません。 | npm にその版がない間は安全です。 |
 | タグはあるが、npm に版がない（Release が `publish` の前に失敗した） | その Release の実行の、失敗したジョブを再実行します。タグの push の実行のままなので、provenance が付きます。 | 安全です。 |
-| Release が `publish` の途中か後で失敗した | npm を確かめます。npm に版がなければ、失敗したジョブを再実行します。npm に版があれば、再実行は意図して `Check that the version is not on npm yet` で止まります。provenance があることを確かめ、`dist-tags.latest` を見ます。`latest` がこの版より古いときだけ、`npm dist-tag add event-store-adapter-js@X.Y.Z latest` で直します。より新しい版が既に `latest` なら、触りません。そのうえで、GitHub のリリースを手で作ります：`gh release create vX.Y.Z --verify-tag --title "Release vX.Y.Z"`。ノートは `.github/create-release-note-header.py` と `.github/create-release-note-body.py` で作ります。 | 再実行で2回公開されることはありません。 |
-| npm には出たが、GitHub のリリースがない（`github-release` が失敗した） | その Release の実行の、失敗したジョブを再実行します（`github-release` だけが再び走ります）。前のタグは、その版より小さい最大の正式版のタグなので、祖先である必要はありません。前のタグがなければ、ノートは最初のコミットから数えます。 | 安全です。リリースがあれば、ジョブは何もしません。 |
+| `release` のジョブが `publish` の途中か後で失敗した | npm を確かめます。npm に版がなければ、失敗したジョブを再実行します。npm に版があれば、再実行は意図して `Check that the version is not on npm yet` で止まります。provenance があることを確かめ、`dist-tags.latest` を見ます。`latest` がこの版より古いときだけ、`npm dist-tag add event-store-adapter-js@X.Y.Z latest` で直します。より新しい版が既に `latest` なら、触りません。そのうえで、GitHub のリリースを手で作ります：`gh release create vX.Y.Z --verify-tag --title "Release vX.Y.Z"`（より新しい版のリリースがあれば `--latest=false` を付けます）。ノートは `.github/create-release-note-header.py` と `.github/create-release-note-body.py` で作ります。 | 再実行で2回公開されることはありません。 |
+| `confirm` のジョブが失敗した（`npm did not serve`、`dist-tags.latest is still`、`no provenance attestation`） | `release` のジョブは成功しているので、npm に版が出ているかもしれません。npm を確かめます。その Release の実行の、失敗したジョブだけを再実行します。`confirm` がやり直され、続いて `github-release` が走ります。全部のジョブの再実行はしません（`Check that the version is not on npm yet` で止まるか、npm が同じ版の再公開を断ります）。`latest` がこの版より古いままなら、`npm dist-tag add event-store-adapter-js@X.Y.Z latest` で直します。provenance が付かないままなら、GitHub のリリースは作りません。npm は同じ版を受け付けないので、どうするかはメンテナが決めます。再実行が concurrency のグループで待つ間に取り消されたら、もう一度再実行します。 | 安全です。`confirm` は npm を読むだけで、`github-release` はリリースがあれば何もしません。 |
+| npm には出たが、GitHub のリリースがない（`github-release` が失敗した） | その Release の実行の、失敗したジョブを再実行します（`github-release` だけが再び走ります）。前のタグは、その版より小さい最大の正式版のタグなので、祖先である必要はありません。前のタグがなければ、ノートは最初のコミットから数えます。古い版を新しい版のあとにリリースしたときも、ジョブは最大の版のリリースを Latest にします。Latest が古いリリースを指していたら、`github-release` を再実行するか、最大の版で `gh release edit vX.Y.Z --latest` を流します。 | 安全です。リリースがあれば、ジョブは何もしません。 |
 
 English version: [CONTRIBUTING.md](CONTRIBUTING.md)
