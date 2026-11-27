@@ -155,6 +155,10 @@ def read_body(response, deadline, timeout):
             chunks.append(chunk)
         if deadline.remaining() <= 0:
             raise TimeoutError('the deadline passed while reading the body')
+        # read1 は Content-Length に足りないまま閉じても b'' を返す（read() と chunked は IncompleteRead を投げる。
+        # event-store-adapter-rs#380 と同じ穴）。受け取った部分を本文にしない
+        if isinstance(getattr(response, 'length', None), int) and response.length > 0:
+            raise http_client.IncompleteRead(b''.join(chunks), response.length)
         return b''.join(chunks)
     finally:
         if watchdog is not None:
@@ -189,22 +193,42 @@ class Watchdog:
             raise TimeoutError(f'could not shut the socket down at the deadline: {self.failure}') from self.failure
 
 
-def http(url, deadline, timeout=60, headers=None):
-    """GET して Response を返す。接続の失敗、時間切れ、本文の途中の切断（IncompleteRead）は code=None。
-    締め切りの残りで照会を打ち切り、残りが無ければ照会しない。締め切りのあとに読み終えた応答は使わない。"""
-    left = deadline.remaining()
-    if left <= 0:
-        return Response(None)
-    request = urllib.request.Request(url, headers={'User-Agent': USER_AGENT, **(headers or {})})
+def query(url, headers, deadline, timeout):
     try:
         try:
-            with urllib.request.urlopen(request, timeout=min(timeout, left)) as response:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=timeout) as response:
                 return Response(response.status, read_body(response, deadline, timeout))
         except urllib.error.HTTPError as error:
             with error:
                 return Response(error.code, read_body(getattr(error, 'fp', None) or error, deadline, timeout))
     except (urllib.error.URLError, http_client.HTTPException, TimeoutError, OSError, ValueError):
         return Response(None)
+
+
+def http(url, deadline, timeout=60, headers=None):
+    """GET して Response を返す。接続の失敗、時間切れ、本文の途中の切断（IncompleteRead）は code=None。
+    締め切りの残りで照会を打ち切り、残りが無ければ照会しない。締め切りのあとに読み終えた応答は使わない。
+    urlopen の timeout は1回の受信ごとで、少しずつ届く見出しを止められない（#1163 の Devin と CodeRabbit の指摘）。
+    照会を別のスレッドで動かし、締め切りまでしか待たない（event-store-adapter-rs#381 と同じ作り）。待つのをやめた照会は
+    捨てる（GET だけなので、あとで終わっても何も変えない）。本文は read_body が締め切りで socket を閉じる。"""
+    left = deadline.remaining()
+    if left <= 0:
+        return Response(None)
+    outcome = []
+
+    def run():
+        try:
+            outcome.append(query(url, {'User-Agent': USER_AGENT, **(headers or {})}, deadline, min(timeout, left)))
+        except BaseException as error:   # 想定の外の誤りは、呼んだ側で投げ直す（握りつぶさない）
+            outcome.append(error)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(left)
+    result = outcome[0] if outcome else Response(None)   # 締め切りまでに終わらなければ照会の失敗
+    if isinstance(result, BaseException):
+        raise result
+    return result
 
 
 def packument_url():

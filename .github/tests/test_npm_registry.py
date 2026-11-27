@@ -164,6 +164,123 @@ class TrickleServer:
         self.server.server_close()
 
 
+class CutServer:
+    """本文の途中で接続を閉じる HTTP サーバー。mode は 'length'（Content-Length より短く送って閉じる）、'chunked'（終わりの
+    0 の塊を送らずに閉じる）。送る部分は、それだけで READY と読める packument にする（切れたことに気づかないと誤って通る形）。"""
+
+    SENT = packument('5.3.1', '5.3.1')
+
+    def __init__(self, mode, status=200):
+        sent = self.SENT
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.1'
+
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                self.send_response(status)
+                if mode == 'chunked':
+                    self.send_header('Transfer-Encoding', 'chunked')
+                    self.end_headers()
+                    self.wfile.write(b'%x\r\n%s\r\n' % (len(sent), sent))
+                else:
+                    self.send_header('Content-Length', str(len(sent) + 10))
+                    self.end_headers()
+                    self.wfile.write(sent)
+                self.wfile.flush()
+                self.close_connection = True
+
+        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.server.daemon_threads = True
+        self.url = f'http://127.0.0.1:{self.server.server_address[1]}/x'
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+class CutBodyTest(unittest.TestCase):
+    """read1 は、Content-Length に足りないまま閉じた本文でも例外を投げずに b'' を返す（event-store-adapter-rs#380 と同じ穴）。
+    受け取った部分を本文にせず、照会の失敗にする。短い締め切りと、待ちに効かない長い締め切りの両方で確かめる。"""
+
+    def setUp(self):
+        self.no_proxy = mock.patch.dict(os.environ, {'no_proxy': LOOPBACK, 'NO_PROXY': LOOPBACK})
+        self.no_proxy.start()
+        self.addCleanup(self.no_proxy.stop)
+
+    def test_a_cut_body_is_a_failed_query(self):
+        for mode in ('length', 'chunked'):
+            for status in (200, 404):
+                for seconds in (5.0, 3600.0):
+                    with self.subTest(mode=mode, status=status, deadline=seconds):
+                        server = CutServer(mode, status)
+                        self.addCleanup(server.close)
+                        self.assertEqual(npm.http(server.url, npm.Deadline(seconds)), npm.Response(None))
+
+
+class SlowHeaderServer:
+    """見出し（status line と headers）を 1 バイトずつ送り続ける HTTP サーバー。1回の受信ごとの timeout は毎回満たされる
+    ので、urlopen は見出しを読み終えるまで戻らない。"""
+
+    def __init__(self, every=0.05, total=8.0):
+        stop = self.stop = threading.Event()
+        head = b'HTTP/1.1 200 OK\r\n' + b''.join(b'X-Slow-%d: x\r\n' % index for index in range(int(total / every)))
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                try:
+                    for byte in head:
+                        if stop.wait(every):
+                            return
+                        self.wfile.write(bytes([byte]))
+                        self.wfile.flush()
+                except OSError:
+                    pass
+
+        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.server.daemon_threads = True
+        self.url = f'http://127.0.0.1:{self.server.server_address[1]}/x'
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.stop.set()
+        self.server.shutdown()
+        self.server.server_close()
+
+
+class SlowHeaderTest(unittest.TestCase):
+    """urlopen の timeout は1回の受信ごとなので、見出しが少しずつ届くと締め切りを超えて待つ（#1163 の Devin と CodeRabbit の
+    指摘。event-store-adapter-java#871・event-store-adapter-rs#381 と同じ穴）。http は締め切り（1 秒）までしか待たない。"""
+
+    def setUp(self):
+        self.no_proxy = mock.patch.dict(os.environ, {'no_proxy': LOOPBACK, 'NO_PROXY': LOOPBACK})
+        self.no_proxy.start()
+        self.addCleanup(self.no_proxy.stop)
+
+    def test_trickling_headers_are_cut_at_the_deadline(self):
+        server = SlowHeaderServer()
+        self.addCleanup(server.close)
+        started = time.monotonic()
+        result = npm.http(server.url, npm.Deadline(1.0))
+        elapsed = time.monotonic() - started
+        self.assertEqual(result, npm.Response(None))
+        self.assertLess(elapsed, 2.5)
+
+    def test_an_unexpected_error_in_the_query_is_raised(self):
+        """照会を別のスレッドで動かしても、想定の外の誤りは握りつぶさずに呼んだ側で投げ直す。"""
+        def urlopen(request, timeout):
+            raise RuntimeError('boom')
+        with mock.patch.object(npm.urllib.request, 'urlopen', urlopen):
+            with self.assertRaisesRegex(RuntimeError, 'boom'):
+                npm.http('http://127.0.0.1:9/x', npm.Deadline(10))
+
+
 class WatchdogTest(unittest.TestCase):
     def test_a_socket_that_cannot_be_shut_down_fails_the_query(self):
         class Broken:
