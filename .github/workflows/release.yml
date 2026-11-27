@@ -109,35 +109,43 @@ jobs:
             exit 1
           fi
       - run: pnpm --filter event-store-adapter-js publish --access public --no-git-checks
+  # 公開のあとの確認は、公開と別のジョブにする。時間切れなら「失敗したジョブを再実行」で、このジョブと github-release だけが
+  # やり直され、公開はやり直されない（#1161）。npm を読むだけなので、id-token と秘密を持たせない
+  confirm:
+    name: Check that npm serves the published version
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      # npm-registry.py はワークフローの版から読む（タグの版から読まない）。手で古いタグを公開するとき、タグの版には
+      # このスクリプトが無い（#1163 の Cursor Bugbot と CodeRabbit の指摘）。確かめる版は RELEASE_TAG から渡す
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15"
+      # 待ちの上限は、利用者が読む CDN の側の遅れ（v5.3.0 の実測の元のサーバーの約190秒と、キャッシュの最大300秒）を覆う
       - name: Check that npm serves the published version
-        id: npm_after
+        id: confirm
         env:
-          RELEASE_VERSION: ${{ steps.package_version.outputs.version }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           EXPECT_PROVENANCE: ${{ github.event_name == 'push' }}
+          CONFIRM_DEADLINE_SECONDS: 900
+          CONFIRM_INTERVAL_SECONDS: 20
         run: |
-          for attempt in 1 2 3 4 5 6; do
-            PUBLISHED=$(npm view "event-store-adapter-js@${RELEASE_VERSION}" version 2> /dev/null || true)
-            LATEST=$(npm view event-store-adapter-js dist-tags.latest 2> /dev/null || true)
-            if [[ "$PUBLISHED" == "$RELEASE_VERSION" && "$LATEST" == "$RELEASE_VERSION" ]]; then
-              break
-            fi
-            echo "npm does not serve ${RELEASE_VERSION} as latest yet (${attempt}/6)"
-            sleep 10
-          done
-          if [[ "$PUBLISHED" != "$RELEASE_VERSION" || "$LATEST" != "$RELEASE_VERSION" ]]; then
-            echo "::error::npm serves version '${PUBLISHED}' and latest '${LATEST}', expected ${RELEASE_VERSION}"
-            exit 1
-          fi
+          PROVENANCE=()
           if [[ "$EXPECT_PROVENANCE" == "true" ]]; then
-            PROVENANCE=$(npm view "event-store-adapter-js@${RELEASE_VERSION}" dist.attestations.provenance.predicateType)
-            if [[ -z "$PROVENANCE" ]]; then
-              echo "::error::event-store-adapter-js@${RELEASE_VERSION} has no provenance attestation"
-              exit 1
-            fi
+            PROVENANCE=(--provenance)
           fi
+          python3 "${GITHUB_WORKSPACE}"/.github/npm-registry.py confirm --version "${RELEASE_TAG#v}" "${PROVENANCE[@]}" \
+            --interval "$CONFIRM_INTERVAL_SECONDS" --deadline "$CONFIRM_DEADLINE_SECONDS"
   github-release:
     name: Create the GitHub release
-    needs: release
+    needs: confirm
+    if: always() && needs.confirm.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -171,5 +179,25 @@ jobs:
           git log "${PREV_TAG}..${RELEASE_TAG}" --no-merges --format='%H%x1f%s%x1f%b%x1e' \
             | python3 "${GITHUB_WORKSPACE}"/.github/create-release-note-body.py "$SERVER_URL" "$GITHUB_REPOSITORY" \
             >> "${RUNNER_TEMP}/changelog.txt"
+          # Latest はここでは付けない。次の手順が、一覧を読み直して最大の版を Latest にする
           gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "Release ${RELEASE_TAG}" --notes-file "${RUNNER_TEMP}/changelog.txt"
+            --title "Release ${RELEASE_TAG}" --notes-file "${RUNNER_TEMP}/changelog.txt" --latest=false
+      - name: Mark the greatest release as latest
+        id: latest_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -o pipefail
+          # 確認だけを再実行して古い版のリリースを作ったときも、最大の正式版（vX.Y.Z）のリリースを Latest にする。
+          # 版の違う実行が同時にこの手順を動かず、一覧に最大の版が出ている限り、最大の版が Latest になる（何度動いても同じ結果）。
+          # 作った直後のリリースが一覧にまだ出ないことがあるので、RELEASE_TAG を足して選ぶ
+          RELEASED=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" --jq '.[] | select(.draft | not) | .tag_name')
+          LATEST_TAG=$(printf '%s\n%s\n' "$RELEASED" "$RELEASE_TAG" \
+            | python3 "${GITHUB_WORKSPACE}"/.github/release-gate.py latest-tag)
+          if [[ -z "$LATEST_TAG" ]]; then
+            echo "::error::no GitHub release of a version vX.Y.Z exists"
+            exit 1
+          fi
+          echo "the greatest release is ${LATEST_TAG}; mark it latest"
+          gh release edit "$LATEST_TAG" --repo "$GITHUB_REPOSITORY" --latest

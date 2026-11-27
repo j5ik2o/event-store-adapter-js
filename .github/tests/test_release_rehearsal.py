@@ -8,9 +8,18 @@ from pathlib import Path
 
 FAKE_GH = '''#!/bin/sh
 # 偽の gh。api は FAKE_GH_FAIL 回だけ失敗し、続く FAKE_GH_EMPTY 回は [] を返し、その後に $FAKE_PULLS を返す。
+# リリースの一覧（api --paginate repos/.../releases）は $FAKE_RELEASES のタグ名を返す。release edit の引数は $FAKE_RELEASE_EDIT_ARGS へ。
 if [ "$1" = release ]; then
   [ "$2" = view ] && exit 1
+  if [ "$2" = edit ]; then
+    printf '%s\\n' "$@" > "$FAKE_RELEASE_EDIT_ARGS"
+    exit 0
+  fi
   printf '%s\\n' "$@" > "$FAKE_RELEASE_ARGS"
+  exit 0
+fi
+if [ "$1" = api ] && [ "$3" = "repos/${GITHUB_REPOSITORY}/releases" ]; then
+  cat "$FAKE_RELEASES"
   exit 0
 fi
 calls=$(cat "$FAKE_GH_CALLS" 2>/dev/null || echo 0)
@@ -27,7 +36,8 @@ fi
 cat "$FAKE_PULLS"
 '''
 
-from release_test_support import BUMP, GITHUB, PACKAGE, RELEASE, REPOSITORY, outputs, pull, run_body
+from release_test_support import (BUMP, GITHUB, LOOPBACK, PACKAGE, RELEASE, REPOSITORY, NpmStub, outputs, packument,
+                                  pull, run_body)
 
 
 class ReleaseRehearsalTest(unittest.TestCase):
@@ -50,6 +60,8 @@ class ReleaseRehearsalTest(unittest.TestCase):
             'FAKE_PULLS': str(self.pulls),
             'FAKE_GH_CALLS': str(self.directory / 'gh-calls'),
             'FAKE_RELEASE_ARGS': str(self.directory / 'release-args'),
+            'FAKE_RELEASE_EDIT_ARGS': str(self.directory / 'release-edit-args'),
+            'FAKE_RELEASES': str(self.directory / 'releases'),
             'PULLS_RETRY_SECONDS': '0',
             'GIT_CONFIG_GLOBAL': str(self.directory / 'gitconfig'),
             'GIT_CONFIG_NOSYSTEM': '1',
@@ -281,6 +293,54 @@ class ReleaseRehearsalTest(unittest.TestCase):
         root = self.git(self.remote, 'rev-list', '--max-parents=0', 'main')
         notes = self.github_release_notes('v5.3.0')
         self.assertIn(f'compare/{root}...v5.3.0', notes)
+
+    def test_the_greatest_release_is_marked_latest(self):
+        """確認だけの再実行で古い版のリリースを作っても、Latest は最大の版のまま（設計レビュー M2）。"""
+        for released, tag, expected in (('v5.2.0\nv5.4.0\n', 'v5.3.1', 'v5.4.0'),
+                                        ('v5.2.0\nv5.3.1-rc.1\n', 'v5.3.1', 'v5.3.1'),
+                                        ('', 'v5.3.1', 'v5.3.1')):
+            with self.subTest(released=released, tag=tag):
+                (self.directory / 'releases').write_text(released)
+                result, _ = self.step(RELEASE, 'latest_release', self.work, RELEASE_TAG=tag)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual((self.directory / 'release-edit-args').read_text().splitlines(),
+                                 ['release', 'edit', expected, '--repo', REPOSITORY, '--latest'])
+
+    def confirm(self, replies, provenance='true'):
+        stub = NpmStub(replies)
+        self.addCleanup(stub.close)
+        result, _ = self.step(RELEASE, 'confirm', self.work, RELEASE_TAG='v5.3.1', EXPECT_PROVENANCE=provenance,
+                              CONFIRM_DEADLINE_SECONDS='2', CONFIRM_INTERVAL_SECONDS='0.05',
+                              NPM_REGISTRY_URL=stub.url, no_proxy=LOOPBACK, NO_PROXY=LOOPBACK)
+        self.assertEqual({(method, path) for method, path, _ in stub.requests}, {('GET', '/event-store-adapter-js')})
+        return result, stub
+
+    def test_confirm_waits_until_npm_serves_the_version_as_latest(self):
+        """#1161：公開の終わりから反映まで約3分。数回目に版が現れ、そのあとに latest が追いつく。"""
+        result, stub = self.confirm([(404, b'{"error":"Not found"}'), (200, packument(None, '5.3.0')),
+                                     (200, packument('5.3.1', '5.3.0')), (200, packument('5.3.1', '5.3.1'))])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(stub.requests), 4)
+        self.assertIn('(attempt 4)', result.stdout)
+
+    def test_confirm_passes_when_a_newer_version_is_latest(self):
+        result, _ = self.confirm([(200, packument('5.3.1', '5.4.0'))])
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_confirm_times_out_without_publishing_when_the_version_never_appears(self):
+        result, _ = self.confirm([(200, packument(None, '5.3.0'))])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('::error::npm did not serve event-store-adapter-js@5.3.1 within 2 seconds. '
+                      'The package may have been published', result.stderr)
+        self.assertIn('re-run only the failed jobs of this run (the confirm job)', result.stderr)
+
+    def test_confirm_needs_provenance_only_for_a_tag_push(self):
+        replies = [(200, packument('5.3.1', '5.3.1', provenance=False))]
+        result, _ = self.confirm(replies)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('has no provenance attestation after 2 seconds', result.stderr)
+        result, _ = self.confirm(replies, provenance='false')
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_push_without_a_version_change_is_not_tagged(self):
         self.write_version(self.work, '5.2.1-snapshot.0', dependencies={'x': '1.0.0'})
