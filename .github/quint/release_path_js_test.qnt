@@ -4,11 +4,12 @@
 
 // js：npm は受け付け＝公開。公開のあとの確認は別のジョブ（confirm）。GitHub のリリースは確認のあと（RELEASE_AFTER_CONFIRM）。
 // 1刻みは60秒、確認の上限は10刻み（release_path_js.qnt の js と同じ）。遅れは publishJobAt の d で決める。
-// 遅れが上限を超える経路（時間切れ）を作れるように、MAX_DELAY は jsShortConfirm と同じ 12 にする
+// 遅れが上限を超える経路（時間切れ）を作れるように、MAX_DELAY は jsShortConfirm と同じ 12 にする。事前の確認が公開済みの
+// 版を見落とす経路（jsRepublishRefusedTest）を作れるように、PRECHECK_SEES_DEPLOYMENTS は jsPrecheckMisses と同じ false にする
 module jsPathsTest {
   import release_path(
     VERSIONS = 1.to(3), INIT_VER = 1, INIT_PRE = false, INIT_TAG = 1, LEGACY = Set(), REQUIRED_PUBLISHED = Set(),
-    TAG_IS_PUBLISH = false, ASYNC_PORTAL = false, PRECHECK_SEES_DEPLOYMENTS = true, MANUAL_TAGS = false, OTHER_PRS = false,
+    TAG_IS_PUBLISH = false, ASYNC_PORTAL = false, PRECHECK_SEES_DEPLOYMENTS = false, MANUAL_TAGS = false, OTHER_PRS = false,
     LOOKUP_ATTEMPTS = 5, MAX_ASSOC_DELAY = 0, CONFIRM_ATTEMPTS = 10, MAX_DELAY = 12,
     NEW_PATH = true, TAG_PUSH_ENABLED = true, OLD_PUBLISH = false, OLD_BUMP = false, PRECHECK_SEES_OTHER_DEPLOYMENTS = true,
     RECORD_VIEW = false, UNKNOWN_DETECTED = true, UNKNOWN_STOPS = true, NONE_SKIPS_QUERY = false, PRECHECK_LATEST_TAG = true, RERUN_CANCELLED = true, RELEASE_AFTER_CONFIRM = true, PRECHECK_ACCEPTED_LATEST = false,
@@ -59,6 +60,16 @@ module jsPathsTest {
       .then(10.reps(_ => confirmPoll(2)))
       .expect(s.confirm.get(2).status == TimedOut)
       .then(githubRelease(2).fail())
+
+  // 公開のあとでジョブが落ち（failAfterSubmit）、再実行の事前の確認が遅れで版を「無い」と読んで公開を試みる。npm が断るので
+  // 二度目の公開は起きない（試みは duplicateAttempts に数え、公開は publishOrder に1回だけ）。断られたジョブは失敗で終わる
+  run jsRepublishRefusedTest =
+    taggedRelease
+      .then(publishJobAt(2, true, 0, 9))
+      .expect(s.published.contains(2) and s.publishFailed.contains(2) and not(s.jobOk.contains(2)))
+      .then(rerunPublishJob(2))
+      .then(publishJobAt(2, true, 0, 9))
+      .expect(s.publishOrder == [2] and s.duplicateAttempts == 1 and s.publishFailed.contains(2) and publishedMonotonic)
 
   // 2つの版を続けて出す
   run jsTwoReleasesTest =

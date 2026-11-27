@@ -2,8 +2,8 @@
 # release_path.qnt（rs の写し）と release_path_js.qnt（js の instance）の検査を流す。
 # 使い方:
 #   bash .github/quint/run-quint.sh ci          CI 用：typecheck、quint test（jsPathsTest と、写しの confirmBoundaryTest）、
-#                                               違反なしを期待する js（safety と neverTimesOutAfterPublished）と、違反を期待する4つの
-#                                               quint run（500 サンプル）。ほかの言語のインスタンスの乱数の試行は full だけ
+#                                               違反なしを期待する js（safety と neverTimesOutAfterPublished）と jsPrecheckMisses
+#                                               （publishedMonotonic）、違反を期待する5つの quint run（500 サンプル）。ほかの言語のインスタンスの乱数の試行は full だけ
 #   bash .github/quint/run-quint.sh full [N]    全 instance を N サンプル（既定 3000）で流す。モデルを変えた PR で手元で流し、結果を PR に書く
 # 環境変数 QUINT：quint のコマンド（既定 quint）。CI は npx で版を固定して使う。
 set -euo pipefail
@@ -15,12 +15,13 @@ mode="${1:-ci}"
 SEED=7
 STEPS=30
 # release_path_js.qnt にある instance。ほかは release_path.qnt にある
-JS_INSTANCES=" js jsShortConfirm jsReleaseNotGated "
+JS_INSTANCES=" js jsShortConfirm jsReleaseNotGated jsPrecheckMisses "
 # 「instance:不変条件」の組
 POSITIVE_ALL=(java:safety javaReleasesOnly:safety kotlin:safety kotlinNoManual:safety kotlinReleasesOnly:safety scala:safety
   scalaNoManual:safety scalaReleasesOnly:safety rs:safety rsNoManual:safety rsReleasesOnly:safety rsNoLatestTagCheck:safety
   rsVisibleLatest:safety go:safety javaR2aOnly:safety scalaBeforeR5:safety javaR2b:safety javaR2bReleasesOnly:safety
-  java:neverTimesOutAfterPublished js:safety js:neverTimesOutAfterPublished)
+  java:neverTimesOutAfterPublished js:safety js:neverTimesOutAfterPublished
+  jsPrecheckMisses:publishedMonotonic)
 # 前提を外すと破れることを示す instance と、破れる不変条件
 NEGATIVE_ALL=(kotlinNoRequired:legacyBeforeNewer scalaNoRequired:legacyBeforeNewer goManualTags:publishedOnlyFromReleasePR
   jsBefore1161:neverTimesOutAfterPublished wholeRerun:noDuplicatePublish noDeploymentCheck:noDuplicatePublish
@@ -29,10 +30,10 @@ NEGATIVE_ALL=(kotlinNoRequired:legacyBeforeNewer scalaNoRequired:legacyBeforeNew
   noneSkipsQuery:publishedMonotonic noLatestTagCheck:publishedMonotonic
   cancelledLeftAlone:stopsAreRecoverable cancelledLeftAlone:untaggedReleaseRecoverable
   rsNoPrecheck:noDuplicatePublish rsNoLatestCheck:publishedMonotonic rsShortConfirm:neverTimesOutAfterPublished rsReleaseNotGated:releaseOnlyAfterConfirmed
-  jsShortConfirm:neverTimesOutAfterPublished jsReleaseNotGated:releaseOnlyAfterConfirmed)
-POSITIVE_CI=(js:safety js:neverTimesOutAfterPublished)
+  jsShortConfirm:neverTimesOutAfterPublished jsReleaseNotGated:releaseOnlyAfterConfirmed jsPrecheckMisses:noDuplicatePublish)
+POSITIVE_CI=(js:safety js:neverTimesOutAfterPublished jsPrecheckMisses:publishedMonotonic)
 NEGATIVE_CI=(jsBefore1161:neverTimesOutAfterPublished jsShortConfirm:neverTimesOutAfterPublished
-  jsReleaseNotGated:releaseOnlyAfterConfirmed cancelledLeftAlone:stopsAreRecoverable)
+  jsReleaseNotGated:releaseOnlyAfterConfirmed jsPrecheckMisses:noDuplicatePublish cancelledLeftAlone:stopsAreRecoverable)
 # 「ファイル:module」の組
 TESTS_CI=(release_path_js_test.qnt:jsPathsTest release_path_test.qnt:confirmBoundaryTest)
 TESTS_ALL=("${TESTS_CI[@]}" release_path_test.qnt:rsPathsTest release_path_test.qnt:javaPathsTest
